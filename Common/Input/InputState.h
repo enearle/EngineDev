@@ -5,6 +5,7 @@
 class InputState
 {
 public:
+    
     static InputState& GetInstance();
     
     bool IsKeyDown(int keyCode) const;
@@ -27,6 +28,7 @@ public:
     void SetMouseButtonUp(int button);
 
 private:
+    
     InputState() = default;
 
     static constexpr int MAX_KEYS = 256;

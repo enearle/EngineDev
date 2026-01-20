@@ -23,6 +23,7 @@ namespace Win32Utils
         std::wstring result(sizeNeeded, 0);
         MultiByteToWideChar(CP_ACP, 0, &narrowString[0], (int)narrowString.size(), &result[0],
             sizeNeeded);
+        return result;
     }
 
 };
