@@ -500,8 +500,6 @@ bool D3DApp::InitDirect3D()
 	return true;
 }
 
-
-
 void D3DApp::CreateCommandObjects()
 {
 	D3D12_COMMAND_QUEUE_DESC queueDesc = {};

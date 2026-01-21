@@ -7,7 +7,7 @@ int main()
 
     ShowWindow(window->GetWindowHandle(), 5);
 
-    D3DCore::GetInstance().InitDirect3D();
+    D3DCore::GetInstance().InitDirect3D(window);
 
     while (!window->PeekMessages())
     {
