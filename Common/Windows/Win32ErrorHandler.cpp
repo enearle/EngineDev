@@ -1,7 +1,4 @@
-﻿#include <windows.h>
-#include <windowsx.h>
-#include <winuser.h>
-#include <iostream>
+﻿#include <iostream>
 #include "Win32ErrorHandler.h"
 #include <ranges>
 #include <format>

@@ -26,14 +26,36 @@ bool D3DCore::InitDirect3D(Window* window)
         CreateFence();
         CreateCommandObjects();
         CreateSwapChain();
-
-        
+        CreateSwapChainDescriptorHeaps();
     }
-    catch (const std::exception& e)
+    catch (const std::exception& exception)
     {
-        ErrorMessage(e.what());
+        ErrorMessage(exception.what());
     }
+}
+
+void D3DCore::WaitForGPU()
+{
+    CommandQueue->Signal(Fence.Get(), ++CurrentFence) >> ERROR_HANDLER;
+    if(Fence->GetCompletedValue() < CurrentFence)
+    {
+        HANDLE eventHandle = CreateEventEx(nullptr, nullptr, false, EVENT_ALL_ACCESS);
+        Fence->SetEventOnCompletion(CurrentFence, eventHandle) >> ERROR_HANDLER;
+        WaitForSingleObject(eventHandle, INFINITE);
+        CloseHandle(eventHandle);
+    }
+}
+
+void D3DCore::Reset()
+{
+    WaitForGPU();
     
+    CommandList.Reset();
+    CommandAllocator.Reset();
+    CommandQueue.Reset();
+    SwapChain.Reset();
+    Device.Reset();
+    Factory.Reset();
 }
 
 void D3DCore::InitDebugLayer()
@@ -161,5 +183,29 @@ void D3DCore::CreateSwapChain()
         nullptr,
         SwapChain.GetAddressOf()
         ) >> ERROR_HANDLER;
+}
+
+void D3DCore::CreateSwapChainDescriptorHeaps()
+{
+    RenderTargetDescriptorOffset = Device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+    DepthStencilDescriptorOffset = Device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
+    ShaderResourceDescriptorOffset = Device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+
+    D3D12_DESCRIPTOR_HEAP_DESC RenderTargetHeapDescription;
+    RenderTargetHeapDescription.NumDescriptors = SwapChainBufferCount;
+    RenderTargetHeapDescription.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
+    RenderTargetHeapDescription.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+    RenderTargetHeapDescription.NodeMask = 0;
+    Device->CreateDescriptorHeap(
+        &RenderTargetHeapDescription, IID_PPV_ARGS(RenderTargetDescriptorHeap.GetAddressOf())) >> ERROR_HANDLER;
+
+
+    D3D12_DESCRIPTOR_HEAP_DESC DephtStencilHeapDesc;
+    DephtStencilHeapDesc.NumDescriptors = 1;
+    DephtStencilHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
+    DephtStencilHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+    DephtStencilHeapDesc.NodeMask = 0;
+    Device->CreateDescriptorHeap(
+        &DephtStencilHeapDesc, IID_PPV_ARGS(DepthStencilDescriptorHeap.GetAddressOf())) >> ERROR_HANDLER;
 }
 

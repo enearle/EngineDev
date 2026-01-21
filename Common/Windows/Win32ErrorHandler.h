@@ -1,6 +1,6 @@
 ﻿#pragma once
+#include "../Windows/WindowsHeaders.h"
 #include <string>
-#include <windows.h>
 #include <source_location>
 
 namespace Win32ErrorHandler

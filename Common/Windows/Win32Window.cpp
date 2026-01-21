@@ -1,8 +1,8 @@
 ﻿#include "Win32Window.h"
-#include <windowsx.h>
+
 #include "Win32ErrorHandler.h"
 
-u_long Win32Window::windowClassNum = 0;
+unsigned long Win32Window::windowClassNum = 0;
 
 HWND Win32Window::NewWindow(WNDPROC windowProcedure, HINSTANCE applicationInstance, LONG xSize, LONG ySize,
                                     LPCWSTR& name, HICON iconHandle, HICON smallIconHandle, HCURSOR cursorHandle)

@@ -1,9 +1,10 @@
 ﻿#pragma once
-#include <windows.h>
+#include "../Windows/WindowsHeaders.h"
+
 
 class Win32Window
 {
-    static u_long windowClassNum;   
+    static unsigned long windowClassNum;   
 public:
     static HWND NewWindow(WNDPROC windowProcedure, HINSTANCE applicationInstance, LONG xSize, LONG ySize,
         LPCWSTR& name, HICON iconHandle = nullptr, HICON smallIconHandle = nullptr, HCURSOR cursorHandle = nullptr);

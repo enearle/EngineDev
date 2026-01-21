@@ -1,5 +1,5 @@
 ﻿#pragma once
-#include <wrl.h>
+#include "../Windows/WindowsHeaders.h"
 #include <dxgi1_6.h>
 #include <d3d12.h>
 
@@ -13,8 +13,7 @@ class Window;
 
 class D3DCore
 {
-    static D3DCore* Instance;
-
+    D3DCore() = default;
     bool Initialized = false;
 
     Window* RendererWindow;
@@ -49,6 +48,8 @@ public:
     static D3DCore& GetInstance();
     
     bool InitDirect3D(Window* window);
+    void WaitForGPU();
+    void Reset();
 
 private:
 
@@ -58,9 +59,6 @@ private:
     void CreateFence();
     void CreateCommandObjects();
     void CreateSwapChain();
-    
-    
-    
-    
+    void CreateSwapChainDescriptorHeaps();
     
 };

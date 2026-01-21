@@ -2,9 +2,8 @@
 #include <functional>
 #include <map>
 #include <mutex>
-#include <Windows.h>
-
 #include "Data/Event.h"
+#include "Windows/WindowsHeaders.h"
 
 enum WindowType
 {

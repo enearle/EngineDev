@@ -1,7 +1,4 @@
 ﻿#include "Window.h"
-
-#include <windowsx.h>
-
 #include "Input/InputState.h"
 #include "Windows/Win32ErrorHandler.h"
 #include "Windows/Win32Window.h"

@@ -9,7 +9,7 @@ enum API
 
 inline struct GraphicsSettings
 {
-    API APIToUse = Direct3D12;
+    API APIToUse = Vulkan;
     bool MSAA = false;
     bool HDR = false;
 } GRAPHICS_SETTINGS;

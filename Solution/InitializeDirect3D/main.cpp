@@ -1,5 +1,5 @@
+#include "../../Common/Renderer.h"
 #include "../../Common/Window.h"
-#include "../../Common/DirectX12/D3DCore.h"
 
 int main()
 {
@@ -7,13 +7,15 @@ int main()
 
     ShowWindow(window->GetWindowHandle(), 5);
 
-    D3DCore::GetInstance().InitDirect3D(window);
+    Renderer::StartRender(window);
 
     while (!window->PeekMessages())
     {
         // Game logic;
         // Renderer;
     }
+
+    Renderer::EndRender();
 
     delete window;
     return 0;
