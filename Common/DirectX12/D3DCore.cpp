@@ -12,7 +12,7 @@ D3DCore& D3DCore::GetInstance()
     return instance;
 }
 
-bool D3DCore::InitDirect3D(Window* window)
+void D3DCore::InitDirect3D(Window* window)
 {
     try
     {

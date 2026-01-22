@@ -47,7 +47,7 @@ public:
 
     static D3DCore& GetInstance();
     
-    bool InitDirect3D(Window* window);
+    void InitDirect3D(Window* window);
     void WaitForGPU();
     void Reset();
 

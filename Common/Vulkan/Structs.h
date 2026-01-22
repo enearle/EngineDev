@@ -31,4 +31,5 @@ namespace VulkanStructs
             return GraphicsFamily != -1 && PresentFamily != -1;
         }
     };
+
 }

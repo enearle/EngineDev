@@ -18,13 +18,17 @@ void VulkanCore::InitVulkan(Window* window)
     {
         if (!window) throw std::runtime_error("Window pointer is null.");
         RenderWindow = window;
-
+        if (Initialized)throw std::runtime_error("Vulkan already initialized.");
+        Initialized = true;
         CreateInstance();
         EnableDebugMessenger();
         CreateSurface();
         GetPhysicalDevice();
         CreateLogicalDevice();
         CreateSwapchain();
+        CreateCommandPool(); 
+        CreateSynchronizationPrimitives();
+
     }
     catch (const std::runtime_error& error)
     {
@@ -34,6 +38,15 @@ void VulkanCore::InitVulkan(Window* window)
 
 void VulkanCore::Cleanup()
 {
+    // Synchronization
+    for (uint32_t i = 0; i < SwapChainImageCount; i++)
+    {
+        vkDestroySemaphore(Device, ImageAvailableSemaphores[i], nullptr);
+        vkDestroySemaphore(Device, RenderFinishedSemaphores[i], nullptr);
+        vkDestroyFence(Device, InFlightFences[i], nullptr);
+    }
+    
+    vkDestroyCommandPool(Device, CommandPool, nullptr);
     vkDestroySwapchainKHR(Device, Swapchain, nullptr);
     DestroySwapchainViews();
     vkDestroySurfaceKHR(VulkanInstance, Surface, nullptr);
@@ -44,9 +57,12 @@ void VulkanCore::Cleanup()
     Initialized = false;
 }
 
+//======================================================//
+// Init Functions                                       //
+//======================================================//
+
 void VulkanCore::CreateInstance()
 {
-    
     // Application meta data
     VkApplicationInfo appInfo = {};
     appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
@@ -127,6 +143,11 @@ void VulkanCore::CreateLogicalDevice()
     deviceFeatures.geometryShader = VK_TRUE;        // Enable geometry shader feature
     deviceFeatures.depthClamp = VK_TRUE;             // Enable depth clamp feature
 
+    // Enable dynamic rendering feature
+    VkPhysicalDeviceDynamicRenderingFeatures dynamicRenderingFeature{};
+    dynamicRenderingFeature.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES;
+    dynamicRenderingFeature.dynamicRendering = VK_TRUE;
+
     // Info used to create the device (logical) including required queues, features, and device extensions
     VkDeviceCreateInfo deviceInfo = {};
     deviceInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
@@ -135,6 +156,7 @@ void VulkanCore::CreateLogicalDevice()
     deviceInfo.enabledExtensionCount = static_cast<uint32_t>(DEVICE_EXTENSIONS.size());
     deviceInfo.ppEnabledExtensionNames = DEVICE_EXTENSIONS.data();
     deviceInfo.pEnabledFeatures = &deviceFeatures;
+    deviceInfo.pNext = &dynamicRenderingFeature;
 
     VkResult result = vkCreateDevice(PhysicalDevice, &deviceInfo, nullptr, &Device);
     if (result != VK_SUCCESS)
@@ -203,13 +225,12 @@ void VulkanCore::CreateSwapchain()
     VkSurfaceFormatKHR surfaceFormat = SelectSwapchainSurfaceFormat(details.Formats);
     VkPresentModeKHR presentMode = SelectPresentMode(details.PresentModes);
     VkExtent2D extent2D = SelectExtent(details.Capabilities);
-
-
-    // If maxImageCount is 0 then there is no limit
-    // If not, we clamp the image count under maxImageCount
-    uint32_t imageCount = details.Capabilities.minImageCount + 1;
+    
+    // Swapchain imageCount = 3 Clamped to min and max supported
+    uint32_t imageCount = SwapChainImageCount;
     if (details.Capabilities.maxImageCount > 0)
         imageCount = std::min(imageCount, details.Capabilities.maxImageCount);
+    imageCount = std::max(imageCount, details.Capabilities.minImageCount);
     
     VkSwapchainCreateInfoKHR swapchainInfo = {};
     swapchainInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
@@ -292,8 +313,62 @@ void VulkanCore::CreateSwapchain()
         SwapchainImages.push_back(newSwapchainImage);
     }
 
-    MaxFramesInFlight = SwapchainImages.size();
+    SwapChainImageCount = SwapchainImages.size();
 }
+
+void VulkanCore::CreateSynchronizationPrimitives()
+{
+    ImageAvailableSemaphores.resize(SwapChainImageCount);
+    RenderFinishedSemaphores.resize(SwapChainImageCount);
+    InFlightFences.resize(SwapChainImageCount);
+    
+    VkSemaphoreCreateInfo semaphoreInfo{};
+    semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+    
+    VkFenceCreateInfo fenceInfo{};
+    fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;  // Start signaled
+    
+    for (uint32_t i = 0; i < SwapChainImageCount; i++)
+    {
+        if (vkCreateSemaphore(Device, &semaphoreInfo, nullptr, &ImageAvailableSemaphores[i]) != VK_SUCCESS ||
+            vkCreateSemaphore(Device, &semaphoreInfo, nullptr, &RenderFinishedSemaphores[i]) != VK_SUCCESS ||
+            vkCreateFence(Device, &fenceInfo, nullptr, &InFlightFences[i]) != VK_SUCCESS)
+        {
+            throw std::runtime_error("Failed to create synchronization primitives.");
+        }
+    }
+}
+
+void VulkanCore::CreateCommandPool()
+{
+    QueueFamilyIndicesData queueFamilyIndices = FindQueueFamilies(PhysicalDevice);
+    
+    VkCommandPoolCreateInfo commandPoolInfo{};
+    commandPoolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+    commandPoolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+    commandPoolInfo.queueFamilyIndex = queueFamilyIndices.GraphicsFamily;
+
+    VkResult result = vkCreateCommandPool(Device, &commandPoolInfo, nullptr, &CommandPool);
+    if (result != VK_SUCCESS)
+        throw std::runtime_error("Failed to create command pool.");
+
+    // Allocate command buffers
+    VkCommandBufferAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    allocInfo.commandPool = CommandPool;
+    allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    allocInfo.commandBufferCount = SwapChainImageCount;
+
+    SwapchainCommandBuffers.resize(SwapChainImageCount);
+    result = vkAllocateCommandBuffers(Device, &allocInfo, SwapchainCommandBuffers.data());
+    if (result != VK_SUCCESS)
+        throw std::runtime_error("Failed to allocate command buffers.");
+}
+
+//======================================================//
+// Support Functions                                    //
+//======================================================//
 
 SwapchainDetailsData VulkanCore::GetSwapchainDetails()
 {
