@@ -133,7 +133,8 @@
     <ClCompile Include="..\..\Common\DirectX12\D3DCore.cpp" />
     <ClCompile Include="..\..\Common\Input\InputState.cpp" />
     <ClCompile Include="..\..\Common\MetaData.cpp" />
-    <ClCompile Include="..\..\Common\Renderer.cpp">
+    <ClCompile Include="..\..\Common\RHI\Pipeline.cpp" />
+    <ClCompile Include="..\..\Common\RHI\Renderer.cpp">
       <RuntimeLibrary>MultiThreadedDebugDll</RuntimeLibrary>
       <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
       <Optimization>Disabled</Optimization>
@@ -210,6 +211,7 @@
       <AdditionalOptions>-IC:\Users\SwaggyJ\Documents\Vinyl\VulkanAPI\Include </AdditionalOptions>
       <LinkCompiled>true</LinkCompiled>
     </ClCompile>
+    <ClCompile Include="..\..\Common\RHI\RHIStructures.cpp" />
     <ClCompile Include="..\..\Common\Vulkan\VulkanCore.cpp" />
     <ClCompile Include="..\..\Common\Vulkan\VulkanResource.cpp" />
     <ClCompile Include="..\..\Common\Window.cpp" />
@@ -231,7 +233,9 @@
     <ClInclude Include="..\..\Common\GraphicsSettings.h" />
     <ClInclude Include="..\..\Common\Input\InputState.h" />
     <ClInclude Include="..\..\Common\MetaData.h" />
-    <ClInclude Include="..\..\Common\Renderer.h" />
+    <ClInclude Include="..\..\Common\RHI\Pipeline.h" />
+    <ClInclude Include="..\..\Common\RHI\Renderer.h" />
+    <ClInclude Include="..\..\Common\RHI\RHIStructures.h" />
     <ClInclude Include="..\..\Common\Vulkan\Constant.h" />
     <ClInclude Include="..\..\Common\Vulkan\Structs.h" />
     <ClInclude Include="..\..\Common\Vulkan\VulkanCore.h" />
