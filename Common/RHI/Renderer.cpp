@@ -1,8 +1,8 @@
 ﻿#include "Renderer.h"
 
-#include "GraphicsSettings.h"
-#include "DirectX12/D3DCore.h"
-#include "Vulkan/VulkanCore.h"
+#include "../GraphicsSettings.h"
+#include "../DirectX12/D3DCore.h"
+#include "../Vulkan/VulkanCore.h"
 
 void Renderer::StartRender(Window* window)
 {

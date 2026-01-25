@@ -2,8 +2,6 @@
 
 #if defined(_WIN64) || defined(__x86_64__) || defined(__amd64__)
     #define _WIN64 1
-#elif defined(_WIN32) || defined(__i386__)
-    #define _WIN32 1
 #else
     #error "Unknown or unsupported architecture"
 #endif

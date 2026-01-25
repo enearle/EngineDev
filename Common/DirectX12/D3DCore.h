@@ -51,6 +51,12 @@ public:
     void WaitForGPU();
     void Reset();
 
+    ComPtr<ID3D12Device> GetDevice() const { return Device; }
+    ComPtr<ID3D12CommandQueue> GetCommandQueue() const { return CommandQueue; }
+    ComPtr<ID3D12GraphicsCommandList> GetCommandList() const { return CommandList; }
+    ComPtr<ID3D12DescriptorHeap> GetRenderTargetDescriptorHeap() const { return RenderTargetDescriptorHeap; }
+    ComPtr<ID3D12DescriptorHeap> GetDepthStencilDescriptorHeap() const { return DepthStencilDescriptorHeap; }
+
 private:
 
     void InitDebugLayer();

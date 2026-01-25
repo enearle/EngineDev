@@ -1,12 +1,21 @@
 ﻿#pragma once
 #include <cstdint>
+#include <cstdint>
+#include <array>
+#include <d3d12.h>
 #include <dxgiformat.h>
 #include <vector>
+
 
 #include "../Windows/WindowsHeaders.h"
 
 namespace RHIStructures
 {
+    
+    //=====================================//
+    //  ----------  Pipeline  -----------  //
+    //=====================================//
+    
     enum class Format : uint8_t
     {
         Unknown = 0,
@@ -29,7 +38,7 @@ namespace RHIStructures
     };
 
     VkFormat VulkanFormat(Format format);
-    DXGI_FORMAT DXGIFormat(Format format);
+    DXGI_FORMAT DXFormat(Format format);
     
     struct ShaderStage
     {
@@ -62,9 +71,16 @@ namespace RHIStructures
         LineStrip = 4,
         PointList = 5
     };
+    VkPrimitiveTopology VulkanPrimitiveTopology(PrimitiveTopology primitiveTopology);
+    D3D12_PRIMITIVE_TOPOLOGY DXPrimitiveTopology(PrimitiveTopology primitiveTopology);
 
     enum class FillMode : uint8_t { Solid, Wireframe };
+    VkPolygonMode VulkanFillMode(FillMode fillMode);
+    D3D12_FILL_MODE DXFillMode(FillMode fillMode);
+    
     enum class CullMode : uint8_t { None, Back, Front };
+    VkCullModeFlags VulkanCullMode(CullMode cullMode);
+    D3D12_CULL_MODE DXCullMode(CullMode cullMode);
 
     struct RasterizerState
     {
@@ -73,11 +89,14 @@ namespace RHIStructures
         bool FrontCounterClockwise;
         float DepthBias;
         float SlopeScaledDepthBias;
+        float DepthBiasClamp;
         bool DepthClipEnable;
     };
 
     enum class CompareOp : uint8_t { Never, Less, Equal, LessEqual, Greater, NotEqual, GreaterEqual, Always };
-
+    VkCompareOp VulkanCompareOp(CompareOp compareOp);
+    D3D12_COMPARISON_FUNC DXCompareOp(CompareOp compareOp);
+    
     struct DepthStencilState
     {
         CompareOp CompareOp;
@@ -87,6 +106,9 @@ namespace RHIStructures
     };
 
     enum class BlendOp : uint8_t { Add, Subtract, ReverseSubtract, Min, Max };
+    VkBlendOp VulkanBlendOp(BlendOp blendOp);
+    D3D12_BLEND_OP DXBlendOp(BlendOp blendOp);
+    
     enum class BlendFactor : uint8_t
     {
         Zero,       One,
@@ -96,6 +118,8 @@ namespace RHIStructures
         DestColor,  InvDestColor,
         ConstColor, InvConstColor
     };
+    VkBlendFactor VulkanBlendFactor(BlendFactor blendFactor);
+    D3D12_BLEND DXBlendFactor(BlendFactor blendFactor);
 
     struct BlendAttachmentState
     {
@@ -106,6 +130,13 @@ namespace RHIStructures
         BlendFactor SrcAlphaBlendFactor;
         BlendFactor DestAlphaBlendFactor;
         bool BlendEnable;
+    };
+
+    struct MultisampleState
+    {
+        uint32_t SampleCount;
+        bool AlphaToCoverageEnable;
+        bool AlphaToOneEnable;  // Vulkan-specific (clamps alpha to 1.0)
     };
     
     struct PipelineDesc
@@ -124,12 +155,7 @@ namespace RHIStructures
         std::vector<BlendAttachmentState> BlendAttachmentStates;
         std::vector<Format> RenderTargetFormats;
         Format DepthStencilFormat;
-        bool MultiSampleEnable;
-        uint32_t SampleCount;
-        
-        
-        
-    
+        MultisampleState MultisampleState;
     };
     
 };
