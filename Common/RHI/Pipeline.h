@@ -19,16 +19,18 @@ public:
     D3DPipeline(const PipelineDesc& desc);
     
 private:
+    ComPtr<ID3D12RootSignature> RootSignature;
     ComPtr<ID3D12PipelineState> PipelineState;
-    D3D12_PRIMITIVE_TOPOLOGY PrimitiveTopology;
 };
 
 class VulkanPipeline : public Pipeline
 {
 public:
     VulkanPipeline(const PipelineDesc& desc);
+    void Cleanup();
     
 private:
     VkPipeline Pipeline;
     VkPipelineLayout PipelineLayout;
+    VkPipelineCache PipelineCache = VK_NULL_HANDLE;
 };

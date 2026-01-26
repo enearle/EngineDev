@@ -6,7 +6,6 @@
 #include <dxgiformat.h>
 #include <vector>
 
-
 #include "../Windows/WindowsHeaders.h"
 
 namespace RHIStructures
@@ -36,7 +35,6 @@ namespace RHIStructures
         BC6H_UF16 = 15,
         BC7_UNORM = 16
     };
-
     VkFormat VulkanFormat(Format format);
     DXGI_FORMAT DXFormat(Format format);
     
@@ -46,6 +44,22 @@ namespace RHIStructures
         size_t ByteCodeSize;
         const char* EntryPoint;
     };
+    VkShaderModule VulkanShaderModule(ShaderStage shaderStage);
+    D3D12_SHADER_BYTECODE DXShaderBytecode(ShaderStage shaderStage);
+
+    enum class SemanticName : uint8_t
+    {
+        Position = 0,
+        Normal = 1,
+        TexCoord = 2,
+        Tangent = 3,
+        Binormal = 4,
+        Color = 5,
+        BlendWeight = 6,
+        BlendIndices = 7,
+        PointSize = 8,
+    };
+    const char* SemanticNameString(SemanticName semanticName);
 
     struct VertexAttribute
     {
@@ -53,6 +67,7 @@ namespace RHIStructures
         uint32_t Location;
         Format Format;
         uint32_t Offset;
+        SemanticName SemanticName;
     };
 
     struct VertexBinding
@@ -69,10 +84,20 @@ namespace RHIStructures
         TriangleFan = 2,
         LineList = 3,
         LineStrip = 4,
-        PointList = 5
+        PointList = 5,
+        PatchList1 = 6,
+        PatchList2 = 7,
+        PatchList3 = 8,
+        PatchList4 = 9,
+        PatchList5 = 10,
+        PatchList6 = 11,
+        PatchList7 = 12,
+        PatchList8 = 13
     };
     VkPrimitiveTopology VulkanPrimitiveTopology(PrimitiveTopology primitiveTopology);
     D3D12_PRIMITIVE_TOPOLOGY DXPrimitiveTopology(PrimitiveTopology primitiveTopology);
+    D3D12_PRIMITIVE_TOPOLOGY_TYPE DXPrimitiveTopologyType(PrimitiveTopology primitiveTopology);
+    uint32_t GetPatchControlPoints(PrimitiveTopology primitiveTopology);
 
     enum class FillMode : uint8_t { Solid, Wireframe };
     VkPolygonMode VulkanFillMode(FillMode fillMode);
@@ -92,17 +117,46 @@ namespace RHIStructures
         float DepthBiasClamp;
         bool DepthClipEnable;
     };
-
     enum class CompareOp : uint8_t { Never, Less, Equal, LessEqual, Greater, NotEqual, GreaterEqual, Always };
     VkCompareOp VulkanCompareOp(CompareOp compareOp);
     D3D12_COMPARISON_FUNC DXCompareOp(CompareOp compareOp);
     
-    struct DepthStencilState
+    enum class StencilOp : uint8_t
+    {
+        Keep,
+        Zero,
+        Replace,
+        IncrementAndClamp,
+        DecrementAndClamp,
+        Invert,
+        IncrementAndWrap,
+        DecrementAndWrap
+    };
+    VkStencilOp VulkanStencilOp(StencilOp stencilOp);
+    D3D12_STENCIL_OP DXStencilOp(StencilOp stencilOp);
+
+    struct StencilOpState
     {
         CompareOp CompareOp;
+        StencilOp FailOp;
+        StencilOp DepthFailOp;
+        StencilOp PassOp;
+    };
+    VkStencilOpState VulkanStencilOpState(StencilOpState stencilOpState);
+    
+    struct DepthStencilState
+    {
         bool DepthTestEnable;
         bool DepthWriteEnable;
+        CompareOp DepthCompareOp;
+        bool DepthBoundsTestEnable;
+        float MinDepthBounds;
+        float MaxDepthBounds;
         bool StencilTestEnable;
+        uint32_t StencilReadMask;
+        uint32_t StencilWriteMask;
+        StencilOpState FrontStencil;
+        StencilOpState BackStencil;
     };
 
     enum class BlendOp : uint8_t { Add, Subtract, ReverseSubtract, Min, Max };
@@ -136,7 +190,42 @@ namespace RHIStructures
     {
         uint32_t SampleCount;
         bool AlphaToCoverageEnable;
-        bool AlphaToOneEnable;  // Vulkan-specific (clamps alpha to 1.0)
+    };
+
+    enum class DescriptorType : uint8_t
+    {
+        UniformBuffer = 0,          // CBV in D3D12, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER in Vulkan
+        StorageBuffer = 1,          // SRV buffer in D3D12, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER in Vulkan
+        StorageImage = 2,           // UAV in D3D12, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE in Vulkan
+        SampledImage = 3            // SRV+Sampler in D3D12, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER in Vulkan
+    };
+    VkDescriptorType VulkanDescriptorType(DescriptorType descriptorType);
+    D3D12_DESCRIPTOR_HEAP_TYPE DXDescriptorType(DescriptorType descriptorType);
+
+    struct ShaderStageMask
+    {
+        bool Vertex : 1 = false;
+        bool Fragment : 1 = false;
+        bool Geometry : 1 = false;
+        bool TessControl : 1 = false;
+        bool TessEval : 1 = false;   
+        bool Compute : 1 = false;
+    };
+    VkShaderStageFlags VulkanShaderStageFlags(ShaderStageMask flags);
+    D3D12_SHADER_VISIBILITY DXShaderStageFlags(ShaderStageMask flags);
+    
+    struct DescriptorBinding
+    {
+        DescriptorType Type;
+        uint32_t Slot;                  // "Binding index" (replaces Register)
+        uint32_t Set;                   // "Descriptor set" (replaces Space) - 0 for most cases
+        uint32_t Count;                 // For arrays
+        ShaderStageMask VisibleStages;
+    };
+
+    struct ResourceLayout               // RootSignatureDesc 
+    {
+        std::vector<DescriptorBinding> Bindings;
     };
     
     struct PipelineDesc
@@ -156,6 +245,12 @@ namespace RHIStructures
         std::vector<Format> RenderTargetFormats;
         Format DepthStencilFormat;
         MultisampleState MultisampleState;
+        ResourceLayout ResourceLayout;
+        const void* CachedPipelineData = nullptr;
+        size_t CachedPipelineDataSize = 0;
     };
+
+    void DXRenderTargetFormats(const std::vector<Format>& formats, DXGI_FORMAT outFormats[8]);
     
-};
+    
+}

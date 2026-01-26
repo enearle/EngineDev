@@ -4,6 +4,7 @@
 #include <exception>
 #include <stdexcept>
 #include "../GraphicsSettings.h"
+#include "../RHI/Renderer.h"
 using namespace Win32ErrorHandler;
 
 D3DCore& D3DCore::GetInstance()
@@ -12,7 +13,7 @@ D3DCore& D3DCore::GetInstance()
     return instance;
 }
 
-void D3DCore::InitDirect3D(Window* window)
+void D3DCore::InitDirect3D(Window* window, CoreInitData data)
 {
     try
     {
@@ -20,6 +21,8 @@ void D3DCore::InitDirect3D(Window* window)
         RendererWindow = window;
         if (Initialized == true) throw std::runtime_error("Direct3D already initialized.");
         Initialized = true;
+        SwapChainMSAA = data.SwapchainMSAA;
+        SwapChainMSAASamples = data.SwapchainMSAASamples;
         InitDebugLayer();
         CreateFactory();
         CreateDevice();
@@ -137,22 +140,12 @@ void D3DCore::CreateSwapChain()
     RenderTargetFormat = renderTargetSupport && GRAPHICS_SETTINGS.HDR
         ? DXGI_FORMAT_R16G16B16A16_FLOAT : DXGI_FORMAT_R8G8B8A8_UNORM;
     
-    D3D12_FEATURE_DATA_MULTISAMPLE_QUALITY_LEVELS msaaQualityLevels;
-    msaaQualityLevels.Format = RenderTargetFormat;
-    msaaQualityLevels.SampleCount = 4;
-    msaaQualityLevels.Flags = D3D12_MULTISAMPLE_QUALITY_LEVELS_FLAG_NONE;
-    msaaQualityLevels.NumQualityLevels = 0;
-    Device->CheckFeatureSupport(
-        D3D12_FEATURE_MULTISAMPLE_QUALITY_LEVELS,
-        &msaaQualityLevels,
-        sizeof(msaaQualityLevels)
-        ) >> ERROR_HANDLER;
-
-    bool msaaSupported = msaaQualityLevels.NumQualityLevels > 0;
+    UINT msaaQualityLevels = GetMSAAQualityLevel(RenderTargetFormat, SwapChainMSAASamples);
+    bool msaaSupported = msaaQualityLevels > 0;
 
     DXGI_SAMPLE_DESC msaaSampleDesc;
-    msaaSampleDesc.Count = GRAPHICS_SETTINGS.MSAA && msaaSupported ? 4 : 1;
-    msaaSampleDesc.Quality = GRAPHICS_SETTINGS.MSAA && msaaSupported ? msaaQualityLevels.NumQualityLevels - 1 : 0;
+    msaaSampleDesc.Count = SwapChainMSAA && msaaSupported ? SwapChainMSAASamples : 1;
+    msaaSampleDesc.Quality = SwapChainMSAA && msaaSupported ? msaaQualityLevels : 0;
     
     SwapChain.Reset();
     DXGI_SWAP_CHAIN_DESC1 swapChainDesc = {};
@@ -207,5 +200,25 @@ void D3DCore::CreateSwapChainDescriptorHeaps()
     DephtStencilHeapDesc.NodeMask = 0;
     Device->CreateDescriptorHeap(
         &DephtStencilHeapDesc, IID_PPV_ARGS(DepthStencilDescriptorHeap.GetAddressOf())) >> ERROR_HANDLER;
+}
+
+UINT D3DCore::GetMSAAQualityLevel(DXGI_FORMAT format, UINT sampleCount)
+{
+    if (sampleCount <= 1) return 0;
+    
+    D3D12_FEATURE_DATA_MULTISAMPLE_QUALITY_LEVELS msaaQualityLevels = {};
+    msaaQualityLevels.Format = format;
+    msaaQualityLevels.SampleCount = sampleCount;
+    msaaQualityLevels.Flags = D3D12_MULTISAMPLE_QUALITY_LEVELS_FLAG_NONE;
+    
+    Device->CheckFeatureSupport(
+        D3D12_FEATURE_MULTISAMPLE_QUALITY_LEVELS,
+        &msaaQualityLevels,
+        sizeof(msaaQualityLevels)
+    ) >> ERROR_HANDLER;
+
+    return msaaQualityLevels.NumQualityLevels > 0 
+        ? msaaQualityLevels.NumQualityLevels - 1 
+        : 0;
 }
 

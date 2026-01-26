@@ -1,5 +1,8 @@
 ﻿#include "RHIStructures.h"
 #include <d3d12.h>
+#include <string>
+
+#include "../Vulkan/VulkanCore.h"
 
 namespace RHIStructures
 {
@@ -64,23 +67,84 @@ namespace RHIStructures
         return DXGI_FORMAT_UNKNOWN;
     }
 
+    // Semantic names
+
+    constexpr std::array<std::string_view, 9> SEMANTIC_NAMES = {
+        "POSITION",
+        "NORMAL",
+        "TEXCOORD",
+        "TANGENT",
+        "BINORMAL",
+        "COLOR",
+        "BLENDWEIGHT",
+        "BLENDINDICES",
+        "PSIZE"
+        
+    };
+
+    VkShaderModule VulkanShaderModule(ShaderStage shaderStage)
+    {
+        VkShaderModuleCreateInfo createInfo = {};
+        createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+        createInfo.codeSize = shaderStage.ByteCodeSize;
+        createInfo.pCode = reinterpret_cast<const uint32_t*>(shaderStage.ByteCode);
+        VkShaderModule shaderModule;
+        VkResult result;
+        result = vkCreateShaderModule(VulkanCore::GetInstance().GetDevice(), &createInfo, nullptr, &shaderModule);
+        if (result != VK_SUCCESS)
+            throw std::runtime_error("Failed to create shader module!");
+        return shaderModule;
+    }
+
+    D3D12_SHADER_BYTECODE DXShaderBytecode(ShaderStage shaderStage)
+    {
+        D3D12_SHADER_BYTECODE bytecode = {};
+        bytecode.pShaderBytecode = shaderStage.ByteCode;
+        bytecode.BytecodeLength = shaderStage.ByteCodeSize;
+        return bytecode;
+    }
+
+    const char* SemanticNameString(SemanticName semanticName)
+    {
+        const auto index = static_cast<uint8_t>(semanticName);
+        if (index < SEMANTIC_NAMES.size())
+            return SEMANTIC_NAMES[index].data();
+        return nullptr;
+    }
+
     // PrimitiveTopology Mappings
-    constexpr std::array<VkPrimitiveTopology, 6> VULKAN_PRIMITIVE_TOPOLOGIES = {
+    constexpr std::array<VkPrimitiveTopology, 14> VULKAN_PRIMITIVE_TOPOLOGIES = {
         VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,   // TriangleList = 0
         VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP,  // TriangleStrip = 1
         VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN,    // TriangleFan = 2
         VK_PRIMITIVE_TOPOLOGY_LINE_LIST,       // LineList = 3
         VK_PRIMITIVE_TOPOLOGY_LINE_STRIP,      // LineStrip = 4
-        VK_PRIMITIVE_TOPOLOGY_POINT_LIST       // PointList = 5
+        VK_PRIMITIVE_TOPOLOGY_POINT_LIST,      // PointList = 5
+        VK_PRIMITIVE_TOPOLOGY_PATCH_LIST,      // PatchList1 = 6
+        VK_PRIMITIVE_TOPOLOGY_PATCH_LIST,      // PatchList2 = 7
+        VK_PRIMITIVE_TOPOLOGY_PATCH_LIST,      // PatchList3 = 8
+        VK_PRIMITIVE_TOPOLOGY_PATCH_LIST,      // PatchList4 = 9
+        VK_PRIMITIVE_TOPOLOGY_PATCH_LIST,      // PatchList5 = 10
+        VK_PRIMITIVE_TOPOLOGY_PATCH_LIST,      // PatchList6 = 11
+        VK_PRIMITIVE_TOPOLOGY_PATCH_LIST,      // PatchList7 = 12
+        VK_PRIMITIVE_TOPOLOGY_PATCH_LIST,      // PatchList8 = 13
     };
 
-    constexpr std::array<D3D12_PRIMITIVE_TOPOLOGY, 6> DX_PRIMITIVE_TOPOLOGIES = {
-        D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST,   // TriangleList = 0
-        D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP,  // TriangleStrip = 1
-        D3D_PRIMITIVE_TOPOLOGY_TRIANGLEFAN,    // TriangleFan = 2
-        D3D_PRIMITIVE_TOPOLOGY_LINELIST,       // LineList = 3
-        D3D_PRIMITIVE_TOPOLOGY_LINESTRIP,      // LineStrip = 4
-        D3D_PRIMITIVE_TOPOLOGY_POINTLIST       // PointList = 5
+    constexpr std::array<D3D12_PRIMITIVE_TOPOLOGY, 14> DX_PRIMITIVE_TOPOLOGIES = {
+        D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST,                    // TriangleList = 0
+        D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP,                   // TriangleStrip = 1
+        D3D_PRIMITIVE_TOPOLOGY_TRIANGLEFAN,                     // TriangleFan = 2
+        D3D_PRIMITIVE_TOPOLOGY_LINELIST,                        // LineList = 3
+        D3D_PRIMITIVE_TOPOLOGY_LINESTRIP,                       // LineStrip = 4
+        D3D_PRIMITIVE_TOPOLOGY_POINTLIST,                       // PointList = 5
+        D3D_PRIMITIVE_TOPOLOGY_1_CONTROL_POINT_PATCHLIST,       // PatchList1 = 6
+        D3D_PRIMITIVE_TOPOLOGY_2_CONTROL_POINT_PATCHLIST,       // PatchList2 = 7
+        D3D_PRIMITIVE_TOPOLOGY_3_CONTROL_POINT_PATCHLIST,       // PatchList3 = 8
+        D3D_PRIMITIVE_TOPOLOGY_4_CONTROL_POINT_PATCHLIST,       // PatchList4 = 9
+        D3D_PRIMITIVE_TOPOLOGY_5_CONTROL_POINT_PATCHLIST,       // PatchList5 = 10
+        D3D_PRIMITIVE_TOPOLOGY_6_CONTROL_POINT_PATCHLIST,       // PatchList6 = 11
+        D3D_PRIMITIVE_TOPOLOGY_7_CONTROL_POINT_PATCHLIST,       // PatchList7 = 12
+        D3D_PRIMITIVE_TOPOLOGY_8_CONTROL_POINT_PATCHLIST,       // PatchList8 = 13
     };
 
     VkPrimitiveTopology VulkanPrimitiveTopology(PrimitiveTopology primitiveTopology)
@@ -99,6 +163,43 @@ namespace RHIStructures
         return D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
     }
 
+    D3D12_PRIMITIVE_TOPOLOGY_TYPE DXPrimitiveTopologyType(PrimitiveTopology primitiveTopology)
+    {
+        const auto index = static_cast<uint8_t>(primitiveTopology);
+        
+        if (index >= static_cast<uint8_t>(PrimitiveTopology::PatchList1) && 
+            index <= static_cast<uint8_t>(PrimitiveTopology::PatchList8))
+        {
+            return D3D12_PRIMITIVE_TOPOLOGY_TYPE_PATCH;
+        }
+        
+        switch (primitiveTopology)
+        {
+            case PrimitiveTopology::TriangleList:
+            case PrimitiveTopology::TriangleStrip:
+            case PrimitiveTopology::TriangleFan:
+                return D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+            case PrimitiveTopology::LineList:
+            case PrimitiveTopology::LineStrip:
+                return D3D12_PRIMITIVE_TOPOLOGY_TYPE_LINE;
+            case PrimitiveTopology::PointList:
+                return D3D12_PRIMITIVE_TOPOLOGY_TYPE_POINT;
+            default:
+                return D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+        }
+    }
+
+    uint32_t GetPatchControlPoints(PrimitiveTopology primitiveTopology)
+    {
+        const auto index = static_cast<uint8_t>(primitiveTopology);
+        if (index >= static_cast<uint8_t>(PrimitiveTopology::PatchList1) && 
+            index <= static_cast<uint8_t>(PrimitiveTopology::PatchList8))
+        {
+            return index - static_cast<uint8_t>(PrimitiveTopology::PatchList1) + 1;
+        }
+        return 0;
+    }
+    
     // FillMode Mappings
     constexpr std::array<VkPolygonMode, 2> VULKAN_FILL_MODES = {
         VK_POLYGON_MODE_FILL,   // Solid = 0
@@ -194,6 +295,58 @@ namespace RHIStructures
         return D3D12_COMPARISON_FUNC_NEVER;
     }
 
+    // StencilOP Mappings
+    constexpr std::array<VkStencilOp, 8> VULKAN_STENCIL_OPS = {
+        VK_STENCIL_OP_KEEP,
+        VK_STENCIL_OP_ZERO,
+        VK_STENCIL_OP_REPLACE,
+        VK_STENCIL_OP_INCREMENT_AND_CLAMP,
+        VK_STENCIL_OP_DECREMENT_AND_CLAMP,
+        VK_STENCIL_OP_INVERT,
+        VK_STENCIL_OP_INCREMENT_AND_WRAP,
+        VK_STENCIL_OP_DECREMENT_AND_WRAP
+    };
+
+    constexpr std::array<D3D12_STENCIL_OP, 8> DX_STENCIL_OPS = {
+        D3D12_STENCIL_OP_KEEP,
+        D3D12_STENCIL_OP_ZERO,
+        D3D12_STENCIL_OP_REPLACE,
+        D3D12_STENCIL_OP_INCR_SAT,
+        D3D12_STENCIL_OP_DECR_SAT,
+        D3D12_STENCIL_OP_INVERT,
+        D3D12_STENCIL_OP_INCR,
+        D3D12_STENCIL_OP_DECR
+    };
+
+    VkStencilOp VulkanStencilOp(StencilOp stencilOp)
+    {
+        const auto index = static_cast<uint8_t>(stencilOp);
+        if (index < VULKAN_STENCIL_OPS.size())
+            return VULKAN_STENCIL_OPS[index];
+        return VK_STENCIL_OP_KEEP;
+    }
+
+    D3D12_STENCIL_OP DXStencilOp(StencilOp stencilOp)
+    {
+        const auto index = static_cast<uint8_t>(stencilOp);
+        if (index < DX_STENCIL_OPS.size())
+            return DX_STENCIL_OPS[index];
+        return D3D12_STENCIL_OP_KEEP;
+    }
+
+    VkStencilOpState VulkanStencilOpState(StencilOpState stencilOpState)
+    {
+        VkStencilOpState state = {};
+        state.failOp = VulkanStencilOp(stencilOpState.FailOp);
+        state.passOp = VulkanStencilOp(stencilOpState.PassOp);
+        state.depthFailOp = VulkanStencilOp(stencilOpState.DepthFailOp);
+        state.compareOp = VulkanCompareOp(stencilOpState.CompareOp);
+        uint32_t CompareMask = 0xFFFFFFFF;
+        uint32_t WriteMask = 0xFFFFFFFF;
+        uint32_t Reference = 0;
+        return state;
+    }
+
     // BlendOp Mappings
     constexpr std::array<VkBlendOp, 5> VULKAN_BLEND_OPS = {
         VK_BLEND_OP_ADD,                 // Add = 0
@@ -272,6 +425,42 @@ namespace RHIStructures
         if (index < DX_BLEND_FACTORS.size())
             return DX_BLEND_FACTORS[index];
         return D3D12_BLEND_ZERO;
+    }
+
+    VkDescriptorType VulkanDescriptorType(DescriptorType type)
+    {
+        constexpr std::array<VkDescriptorType, 4> TYPES = {
+            VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+            VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+            VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
+        };
+        return TYPES[static_cast<uint8_t>(type)];
+    }
+
+    D3D12_DESCRIPTOR_HEAP_TYPE DXDescriptorType(DescriptorType descriptorType)
+    {
+        return D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+    }
+
+    VkShaderStageFlags VulkanShaderStageFlags(ShaderStageMask flags)
+    {
+        VkShaderStageFlags result = 0;
+        if (flags.Vertex) result |= VK_SHADER_STAGE_VERTEX_BIT;
+        if (flags.Fragment) result |= VK_SHADER_STAGE_FRAGMENT_BIT;
+        if (flags.Geometry) result |= VK_SHADER_STAGE_GEOMETRY_BIT;
+        if (flags.TessControl) result |= VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT;
+        if (flags.TessEval) result |= VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT;
+        if (flags.Compute) result |= VK_SHADER_STAGE_COMPUTE_BIT;
+        return result;
+    }
+
+    void DXRenderTargetFormats(const std::vector<Format>& formats, DXGI_FORMAT outFormats[8])
+    {
+        for (int i = 0; i < formats.size(); i++)
+        {
+            outFormats[i] = DXFormat(formats[i]);
+        }
     }
 }
 

@@ -42,12 +42,15 @@ class D3DCore
     UINT ShaderResourceDescriptorOffset = 0;
 
     DXGI_FORMAT RenderTargetFormat;
+
+    bool SwapChainMSAA = false;
+    UINT SwapChainMSAASamples = 1;
     
 public:
 
     static D3DCore& GetInstance();
     
-    void InitDirect3D(Window* window);
+    void InitDirect3D(Window* window, struct CoreInitData data);
     void WaitForGPU();
     void Reset();
 
@@ -56,6 +59,7 @@ public:
     ComPtr<ID3D12GraphicsCommandList> GetCommandList() const { return CommandList; }
     ComPtr<ID3D12DescriptorHeap> GetRenderTargetDescriptorHeap() const { return RenderTargetDescriptorHeap; }
     ComPtr<ID3D12DescriptorHeap> GetDepthStencilDescriptorHeap() const { return DepthStencilDescriptorHeap; }
+    UINT GetMSAAQualityLevel(DXGI_FORMAT format, UINT sampleCount);
 
 private:
 

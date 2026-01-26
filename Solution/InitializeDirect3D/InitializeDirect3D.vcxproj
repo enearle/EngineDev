@@ -131,6 +131,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="..\..\Common\DirectX12\D3DCore.cpp" />
+    <ClCompile Include="..\..\Common\DirectX12\D3DRootSignatureBuilder.cpp" />
     <ClCompile Include="..\..\Common\Input\InputState.cpp" />
     <ClCompile Include="..\..\Common\MetaData.cpp" />
     <ClCompile Include="..\..\Common\RHI\Pipeline.cpp" />
@@ -213,6 +214,7 @@
     </ClCompile>
     <ClCompile Include="..\..\Common\RHI\RHIStructures.cpp" />
     <ClCompile Include="..\..\Common\Vulkan\VulkanCore.cpp" />
+    <ClCompile Include="..\..\Common\Vulkan\VulkanPipelineLayoutBuilder.cpp" />
     <ClCompile Include="..\..\Common\Vulkan\VulkanResource.cpp" />
     <ClCompile Include="..\..\Common\Window.cpp" />
     <ClCompile Include="..\..\Common\Windows\Win32ErrorHandler.cpp" />
@@ -230,6 +232,7 @@
   <ItemGroup>
     <ClInclude Include="..\..\Common\Data\Event.h" />
     <ClInclude Include="..\..\Common\DirectX12\D3DCore.h" />
+    <ClInclude Include="..\..\Common\DirectX12\D3DRootSignatureBuilder.h" />
     <ClInclude Include="..\..\Common\GraphicsSettings.h" />
     <ClInclude Include="..\..\Common\Input\InputState.h" />
     <ClInclude Include="..\..\Common\MetaData.h" />
@@ -239,6 +242,7 @@
     <ClInclude Include="..\..\Common\Vulkan\Constant.h" />
     <ClInclude Include="..\..\Common\Vulkan\Structs.h" />
     <ClInclude Include="..\..\Common\Vulkan\VulkanCore.h" />
+    <ClInclude Include="..\..\Common\Vulkan\VulkanPipelineLayoutBuilder.h" />
     <ClInclude Include="..\..\Common\Vulkan\VulkanResource.h" />
     <ClInclude Include="..\..\Common\Window.h" />
     <ClInclude Include="..\..\Common\Windows\Win32Utils.h" />

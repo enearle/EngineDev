@@ -52,11 +52,14 @@ class VulkanCore
         "VK_LAYER_KHRONOS_validation"
     };
 
+    bool SwapChainMSAA = false;
+    UINT SwapChainMSAASamples = 1;
+
 public:
 
     static VulkanCore& GetInstance();
     
-    void InitVulkan(Window* window);
+    void InitVulkan(Window* window, struct CoreInitData data);
     void Cleanup();
 
     // Getters for rendering

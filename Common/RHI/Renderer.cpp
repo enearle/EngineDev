@@ -4,15 +4,15 @@
 #include "../DirectX12/D3DCore.h"
 #include "../Vulkan/VulkanCore.h"
 
-void Renderer::StartRender(Window* window)
+void Renderer::StartRender(Window* window, CoreInitData data)
 {
     switch (GRAPHICS_SETTINGS.APIToUse)
     {
     case Direct3D12:
-        D3DCore::GetInstance().InitDirect3D(window);
+        D3DCore::GetInstance().InitDirect3D(window, data);
         break;
     case Vulkan:
-        VulkanCore::GetInstance().InitVulkan(window);
+        VulkanCore::GetInstance().InitVulkan(window, data);
         break;
     default:
         throw std::runtime_error("Invalid graphics API selected.");

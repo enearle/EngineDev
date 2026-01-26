@@ -3,6 +3,7 @@
 #include "../Window.h"
 #include "../Windows/Win32ErrorHandler.h"
 #include "../MetaData.h"
+#include "../RHI/Renderer.h"
 
 using namespace Win32ErrorHandler;
 
@@ -12,7 +13,7 @@ VulkanCore& VulkanCore::GetInstance()
     return instance;
 }
 
-void VulkanCore::InitVulkan(Window* window)
+void VulkanCore::InitVulkan(Window* window, CoreInitData data)
 {
     try
     {
@@ -20,6 +21,8 @@ void VulkanCore::InitVulkan(Window* window)
         RenderWindow = window;
         if (Initialized)throw std::runtime_error("Vulkan already initialized.");
         Initialized = true;
+        SwapChainMSAA = data.SwapchainMSAA;
+        SwapChainMSAASamples = data.SwapchainMSAASamples;
         CreateInstance();
         EnableDebugMessenger();
         CreateSurface();
@@ -139,9 +142,9 @@ void VulkanCore::CreateLogicalDevice()
     
     // Creat device features
     VkPhysicalDeviceFeatures deviceFeatures = {};
-    deviceFeatures.samplerAnisotropy = VK_TRUE;    // Enable anisotropy feature
+    deviceFeatures.samplerAnisotropy = VK_TRUE;     // Enable anisotropy feature
     deviceFeatures.geometryShader = VK_TRUE;        // Enable geometry shader feature
-    deviceFeatures.depthClamp = VK_TRUE;             // Enable depth clamp feature
+    deviceFeatures.depthClamp = VK_TRUE;            // Enable depth clamp feature
 
     // Enable dynamic rendering feature
     VkPhysicalDeviceDynamicRenderingFeatures dynamicRenderingFeature{};
