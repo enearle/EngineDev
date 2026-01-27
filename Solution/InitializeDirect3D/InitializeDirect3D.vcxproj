@@ -132,8 +132,12 @@
   <ItemGroup>
     <ClCompile Include="..\..\Common\DirectX12\D3DCore.cpp" />
     <ClCompile Include="..\..\Common\DirectX12\D3DRootSignatureBuilder.cpp" />
+    <FxCompile Include="..\..\Common\DirectX12\Shaders\ps_rainbow.hlsl" />
+    <FxCompile Include="..\..\Common\DirectX12\Shaders\vs_rainbow.hlsl" />
     <ClCompile Include="..\..\Common\Input\InputState.cpp" />
     <ClCompile Include="..\..\Common\MetaData.cpp" />
+    <ClCompile Include="..\..\Common\RHI\BufferManager.cpp" />
+    <ClCompile Include="..\..\Common\RHI\ImageManager.cpp" />
     <ClCompile Include="..\..\Common\RHI\Pipeline.cpp" />
     <ClCompile Include="..\..\Common\RHI\Renderer.cpp">
       <RuntimeLibrary>MultiThreadedDebugDll</RuntimeLibrary>
@@ -212,6 +216,9 @@
       <AdditionalOptions>-IC:\Users\SwaggyJ\Documents\Vinyl\VulkanAPI\Include </AdditionalOptions>
       <LinkCompiled>true</LinkCompiled>
     </ClCompile>
+    <ClCompile Include="..\..\Common\RHI\RenderPassExecutor.cpp" />
+    <ClCompile Include="..\..\Common\RHI\ResourceBinder.cpp" />
+    <ClCompile Include="..\..\Common\RHI\ResourceManager.cpp" />
     <ClCompile Include="..\..\Common\RHI\RHIStructures.cpp" />
     <ClCompile Include="..\..\Common\Vulkan\VulkanCore.cpp" />
     <ClCompile Include="..\..\Common\Vulkan\VulkanPipelineLayoutBuilder.cpp" />
@@ -236,10 +243,15 @@
     <ClInclude Include="..\..\Common\GraphicsSettings.h" />
     <ClInclude Include="..\..\Common\Input\InputState.h" />
     <ClInclude Include="..\..\Common\MetaData.h" />
+    <ClInclude Include="..\..\Common\RHI\BufferManager.h" />
+    <ClInclude Include="..\..\Common\RHI\ImageManager.h" />
     <ClInclude Include="..\..\Common\RHI\Pipeline.h" />
     <ClInclude Include="..\..\Common\RHI\Renderer.h" />
+    <ClInclude Include="..\..\Common\RHI\RenderPassExecutor.h" />
+    <ClInclude Include="..\..\Common\RHI\ResourceBinder.h" />
+    <ClInclude Include="..\..\Common\RHI\ResourceManager.h" />
+    <ClInclude Include="..\..\Common\RHI\RHIConstants.h" />
     <ClInclude Include="..\..\Common\RHI\RHIStructures.h" />
-    <ClInclude Include="..\..\Common\Vulkan\Constant.h" />
     <ClInclude Include="..\..\Common\Vulkan\Structs.h" />
     <ClInclude Include="..\..\Common\Vulkan\VulkanCore.h" />
     <ClInclude Include="..\..\Common\Vulkan\VulkanPipelineLayoutBuilder.h" />
@@ -250,7 +262,18 @@
     <ClInclude Include="..\..\Common\Windows\Win32Window.h" />
     <ClInclude Include="..\..\Common\Windows\WindowsHeaders.h" />
   </ItemGroup>
+  <ItemGroup>
+    <Content Include="..\..\Common\CompileShaders.bat" />
+    <Content Include="..\..\Common\Vulkan\Shaders\ps_rainbow.glsl" />
+    <Content Include="..\..\Common\Vulkan\Shaders\vs_rainbow.glsl" />
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
+  <Target Name="FixHlslBuildAction" BeforeTargets="Build">
+    <ItemGroup>
+      <ClCompile Remove="@(ClCompile)" Condition="'%(ClCompile.Extension)' == '.hlsl'" />
+      <FxCompile Include="@(ClCompile)" Condition="'%(ClCompile.Extension)' == '.hlsl'" />
+    </ItemGroup>
+  </Target>
 </Project>

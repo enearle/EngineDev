@@ -39,26 +39,45 @@ void D3DCore::InitDirect3D(Window* window, CoreInitData data)
 
 void D3DCore::WaitForGPU()
 {
-    CommandQueue->Signal(Fence.Get(), ++CurrentFence) >> ERROR_HANDLER;
-    if(Fence->GetCompletedValue() < CurrentFence)
+    for (int i = 0; i < SwapChainBufferCount; ++i)
     {
-        HANDLE eventHandle = CreateEventEx(nullptr, nullptr, false, EVENT_ALL_ACCESS);
-        Fence->SetEventOnCompletion(CurrentFence, eventHandle) >> ERROR_HANDLER;
-        WaitForSingleObject(eventHandle, INFINITE);
-        CloseHandle(eventHandle);
+        WaitForFrame(i);
     }
+
 }
 
 void D3DCore::Reset()
 {
     WaitForGPU();
-    
-    CommandList.Reset();
-    CommandAllocator.Reset();
+
+    for (UINT i = 0; i < SwapChainBufferCount; i++)
+    {
+        CommandLists[i].Reset();
+        CommandAllocators[i].Reset();
+    }
     CommandQueue.Reset();
     SwapChain.Reset();
     Device.Reset();
     Factory.Reset();
+}
+
+void D3DCore::BeginFrame()
+{
+    WaitForFrame(CurrentFrameIndex);
+    CommandAllocators[CurrentFrameIndex]->Reset();
+    CommandLists[CurrentFrameIndex]->Reset(CommandAllocators[CurrentFrameIndex].Get(), nullptr);
+}
+
+void D3DCore::EndFrame()
+{
+    CommandLists[CurrentFrameIndex]->Close();
+    ID3D12CommandList* ppCommandLists[] = { CommandLists[CurrentFrameIndex].Get() };
+    CommandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
+    CurrentFence++;
+    FrameFences[CurrentFrameIndex] = CurrentFence;
+    CommandQueue->Signal(Fence.Get(), CurrentFence) >> ERROR_HANDLER;
+    SwapChain->Present(1, 0) >> ERROR_HANDLER;
+    CurrentFrameIndex = (CurrentFrameIndex + 1) % SwapChainBufferCount;
 }
 
 void D3DCore::InitDebugLayer()
@@ -108,20 +127,24 @@ void D3DCore::CreateCommandObjects()
         IID_PPV_ARGS(&CommandQueue)
         ) >> ERROR_HANDLER;
     
-    Device->CreateCommandAllocator(
-        D3D12_COMMAND_LIST_TYPE_DIRECT,
-        IID_PPV_ARGS(CommandAllocator.GetAddressOf())
-        ) >> ERROR_HANDLER;
-    
-    Device->CreateCommandList(
-        0,
-        D3D12_COMMAND_LIST_TYPE_DIRECT,
-        CommandAllocator.Get(),
-        nullptr,
-        IID_PPV_ARGS(CommandList.GetAddressOf())
-        ) >> ERROR_HANDLER;
+    for (int i = 0; i < SwapChainBufferCount; ++i)
+    {
+        Device->CreateCommandAllocator(
+            D3D12_COMMAND_LIST_TYPE_DIRECT,
+            IID_PPV_ARGS(CommandAllocators[i].GetAddressOf())) >> ERROR_HANDLER;
 
-    CommandList->Close();
+        Device->CreateCommandList(
+            0,
+            D3D12_COMMAND_LIST_TYPE_DIRECT,
+            CommandAllocators[i].Get(),
+            nullptr,
+            IID_PPV_ARGS(CommandLists[i].GetAddressOf())) >> ERROR_HANDLER;
+        
+        CommandLists[i]->Close();
+        
+        FrameFences[i] = 0;
+    }
+
 }
 
 void D3DCore::CreateSwapChain()
@@ -200,6 +223,18 @@ void D3DCore::CreateSwapChainDescriptorHeaps()
     DephtStencilHeapDesc.NodeMask = 0;
     Device->CreateDescriptorHeap(
         &DephtStencilHeapDesc, IID_PPV_ARGS(DepthStencilDescriptorHeap.GetAddressOf())) >> ERROR_HANDLER;
+}
+
+void D3DCore::WaitForFrame(uint32_t frameIndex)
+{
+    UINT64 frameFence = FrameFences[frameIndex];
+    if (Fence->GetCompletedValue() < frameFence)
+    {
+        HANDLE eventHandle = CreateEventEx(nullptr, false, false, EVENT_ALL_ACCESS);
+        Fence->SetEventOnCompletion(frameFence, eventHandle) >> ERROR_HANDLER;
+        WaitForSingleObject(eventHandle, INFINITE);
+        CloseHandle(eventHandle);
+    }
 }
 
 UINT D3DCore::GetMSAAQualityLevel(DXGI_FORMAT format, UINT sampleCount)

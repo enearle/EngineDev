@@ -1,4 +1,6 @@
 ﻿#pragma once
+#include <array>
+
 #include "../Windows/WindowsHeaders.h"
 #include <dxgi1_6.h>
 #include <d3d12.h>
@@ -20,17 +22,23 @@ class D3DCore
     
     ComPtr<IDXGIFactory6> Factory;
     ComPtr<ID3D12Device> Device;
+
+
+    static const int SwapChainBufferCount = 3;
+    int CurrentBackBuffer = 0;
+    uint32_t CurrentFrameIndex = 0;
     
     ComPtr<IDXGISwapChain1> SwapChain;
     ComPtr<ID3D12Fence> Fence;
     UINT64 CurrentFence = 0;
 	
     ComPtr<ID3D12CommandQueue> CommandQueue;
-    ComPtr<ID3D12CommandAllocator> CommandAllocator;
-    ComPtr<ID3D12GraphicsCommandList> CommandList;
+    std::array<ComPtr<ID3D12CommandAllocator>, SwapChainBufferCount> CommandAllocators;
+    std::array<ComPtr<ID3D12GraphicsCommandList>, SwapChainBufferCount> CommandLists;
+    std::array<UINT64, SwapChainBufferCount> FrameFences;
 
-    static const int SwapChainBufferCount = 3;
-    int CurrBackBuffer = 0;
+
+
     ComPtr<ID3D12Resource> SwapChainBuffer[SwapChainBufferCount];
     ComPtr<ID3D12Resource> DepthStencilBuffer;
 
@@ -53,16 +61,19 @@ public:
     void InitDirect3D(Window* window, struct CoreInitData data);
     void WaitForGPU();
     void Reset();
+    void BeginFrame();
+    void EndFrame();
 
     ComPtr<ID3D12Device> GetDevice() const { return Device; }
     ComPtr<ID3D12CommandQueue> GetCommandQueue() const { return CommandQueue; }
-    ComPtr<ID3D12GraphicsCommandList> GetCommandList() const { return CommandList; }
+    ComPtr<ID3D12GraphicsCommandList> GetCommandList() const { return CommandLists[CurrentFrameIndex]; }
+    uint32_t GetCurrentFrameIndex() const { return CurrentFrameIndex; }
     ComPtr<ID3D12DescriptorHeap> GetRenderTargetDescriptorHeap() const { return RenderTargetDescriptorHeap; }
     ComPtr<ID3D12DescriptorHeap> GetDepthStencilDescriptorHeap() const { return DepthStencilDescriptorHeap; }
     UINT GetMSAAQualityLevel(DXGI_FORMAT format, UINT sampleCount);
 
 private:
-
+     
     void InitDebugLayer();
     void CreateFactory();
     void CreateDevice();
@@ -70,5 +81,6 @@ private:
     void CreateCommandObjects();
     void CreateSwapChain();
     void CreateSwapChainDescriptorHeaps();
+    void WaitForFrame(uint32_t frameIndex);
     
 };

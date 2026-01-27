@@ -1,8 +1,10 @@
 ﻿#include "RHIStructures.h"
 #include <d3d12.h>
+#include <fstream>
 #include <string>
 
 #include "../Vulkan/VulkanCore.h"
+#include "../GraphicsSettings.h"
 
 namespace RHIStructures
 {
@@ -81,6 +83,39 @@ namespace RHIStructures
         "PSIZE"
         
     };
+
+    ShaderStage ImportShader(const std::string& filename, const char* entryPoint)
+    {
+        ShaderStage shaderStage;
+        std::string path;
+        if (GRAPHICS_SETTINGS.APIToUse == Direct3D12)
+            path = "../DirectX12/Shaders/CSO/";
+        else if (GRAPHICS_SETTINGS.APIToUse == Vulkan)
+            path = "../Vulkan/Shaders/SPIRV/";
+        else
+            throw std::runtime_error("Invalid API selected!");
+        
+        std::ifstream shaderFile(filename, std::ios::binary | std::ios::ate);
+        if (!shaderFile.is_open())
+            throw std::runtime_error("Failed to open shader file: " + filename);
+    
+        std::streamsize fileSize = shaderFile.tellg();
+        shaderFile.seekg(0, std::ios::beg);
+    
+        void* shaderBytecode = malloc(fileSize);
+        if (!shaderFile.read(static_cast<char*>(shaderBytecode), fileSize))
+        {
+            free(shaderBytecode);
+            throw std::runtime_error("Failed to read shader file: " + filename);
+        }
+        shaderFile.close();
+
+        shaderStage.ByteCode = shaderBytecode;
+        shaderStage.ByteCodeSize = fileSize;
+        shaderStage.EntryPoint = entryPoint;
+    
+        return shaderStage;
+    }
 
     VkShaderModule VulkanShaderModule(ShaderStage shaderStage)
     {
@@ -453,6 +488,23 @@ namespace RHIStructures
         if (flags.TessEval) result |= VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT;
         if (flags.Compute) result |= VK_SHADER_STAGE_COMPUTE_BIT;
         return result;
+    }
+
+    D3D12_RESOURCE_STATES ConvertLayoutToResourceState(ImageLayout layout)
+    {
+        switch (layout)
+        {
+            case ImageLayout::Undefined: return D3D12_RESOURCE_STATE_COMMON;
+            case ImageLayout::General: return D3D12_RESOURCE_STATE_COMMON;
+            case ImageLayout::ColorAttachment: return D3D12_RESOURCE_STATE_RENDER_TARGET;
+            case ImageLayout::DepthStencilAttachment: return D3D12_RESOURCE_STATE_DEPTH_WRITE;
+            case ImageLayout::DepthStencilReadOnly: return D3D12_RESOURCE_STATE_DEPTH_READ;
+            case ImageLayout::ShaderReadOnly: return D3D12_RESOURCE_STATE_GENERIC_READ;
+            case ImageLayout::TransferSrc: return D3D12_RESOURCE_STATE_COPY_SOURCE;
+            case ImageLayout::TransferDst: return D3D12_RESOURCE_STATE_COPY_DEST;
+            case ImageLayout::Present: return D3D12_RESOURCE_STATE_PRESENT;
+            default: return D3D12_RESOURCE_STATE_COMMON;
+        }
     }
 
     void DXRenderTargetFormats(const std::vector<Format>& formats, DXGI_FORMAT outFormats[8])

@@ -28,8 +28,11 @@ class VulkanCore
     std::vector<VkSemaphore> RenderFinishedSemaphores;
     std::vector<VkFence> InFlightFences;
 
-    uint32_t SwapChainImageCount = 3;                                         // Maximum number of frames == swapchain size
-
+    uint32_t SwapChainImageCount = 3;                                       // Maximum number of frames == swapchain size
+    
+    uint32_t CurrentFrameIndex = 0;                                         // Frame index for CPU work (cycles through command allocators/fences)
+    uint32_t CurrentSwapchainImageIndex = 0;                                // Swapchain image index currently acquired for presentation
+    
     VkQueue GraphicsQueue                               = VK_NULL_HANDLE;   // Queue for graphics operations.
     VkQueue PresentQueue                                = VK_NULL_HANDLE;   // Queue for presentation.
 
@@ -40,7 +43,7 @@ class VulkanCore
     VkExtent2D Extent2D;                                                    // Window dimensions used in current swapchain.
     VkFormat SwapchainFormat;                                               // Colour data packing and colour space.
     std::vector<SwapchainImageData> SwapchainImages;                        // Images and their views used in the swapchain.
-    std::vector<VkCommandBuffer> SwapchainCommandBuffers;                   // Command buffer for each swapchain image.
+    std::vector<VkCommandBuffer> CommandBuffers;                            // Command buffer for each swapchain image.
 
     
     // Debug
@@ -61,26 +64,30 @@ public:
     
     void InitVulkan(Window* window, struct CoreInitData data);
     void Cleanup();
-
-    // Getters for rendering
     VkDevice GetDevice() const { return Device; }
+    VkPhysicalDevice GetPhysicalDevice() const { return PhysicalDevice; }
     VkQueue GetGraphicsQueue() const { return GraphicsQueue; }
     VkExtent2D GetExtent() const { return Extent2D; }
     VkFormat GetSwapchainFormat() const { return SwapchainFormat; }
     const std::vector<SwapchainImageData>& GetSwapchainImages() const { return SwapchainImages; }
-    const std::vector<VkCommandBuffer>& GetCommandBuffers() const { return SwapchainCommandBuffers; }
+    VkCommandBuffer GetCommandBuffer() const { return CommandBuffers[CurrentFrameIndex]; }
     const std::vector<VkSemaphore>& GetImageAvailableSemaphores() const { return ImageAvailableSemaphores; }
     const std::vector<VkSemaphore>& GetRenderFinishedSemaphores() const { return RenderFinishedSemaphores; }
     const std::vector<VkFence>& GetInFlightFences() const { return InFlightFences; }
     uint32_t GetSwapchainImageCount() const { return SwapChainImageCount; }
+    void BeginFrame();
+    void EndFrame();
+    uint32_t GetCurrentFrameIndex() const { return CurrentFrameIndex; }
+    uint32_t GetCurrentSwapchainImageIndex() const { return CurrentSwapchainImageIndex; }
 
-    
 private:
-    // Create an instance of Vulkan API.
+    
+    void WaitForFrame(uint32_t frameIndex);
+    void WaitForGPU();
     void CreateInstance();
     void EnableDebugMessenger();
     void CreateSurface();
-    void GetPhysicalDevice();
+    void SelectPhysicalDevice();
     void CreateLogicalDevice();
     void CreateSynchronizationPrimitives();
     void CreateCommandPool();

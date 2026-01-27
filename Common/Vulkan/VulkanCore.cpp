@@ -26,7 +26,7 @@ void VulkanCore::InitVulkan(Window* window, CoreInitData data)
         CreateInstance();
         EnableDebugMessenger();
         CreateSurface();
-        GetPhysicalDevice();
+        SelectPhysicalDevice();
         CreateLogicalDevice();
         CreateSwapchain();
         CreateCommandPool(); 
@@ -363,8 +363,8 @@ void VulkanCore::CreateCommandPool()
     allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
     allocInfo.commandBufferCount = SwapChainImageCount;
 
-    SwapchainCommandBuffers.resize(SwapChainImageCount);
-    result = vkAllocateCommandBuffers(Device, &allocInfo, SwapchainCommandBuffers.data());
+    CommandBuffers.resize(SwapChainImageCount);
+    result = vkAllocateCommandBuffers(Device, &allocInfo, CommandBuffers.data());
     if (result != VK_SUCCESS)
         throw std::runtime_error("Failed to allocate command buffers.");
 }
@@ -581,7 +581,7 @@ bool VulkanCore::CheckValidationLayerSupport()
     return true;
 }
 
-void VulkanCore::GetPhysicalDevice()
+void VulkanCore::SelectPhysicalDevice()
 {
     // Get count of devices
     uint32_t deviceCount = 0;
@@ -607,9 +607,6 @@ void VulkanCore::GetPhysicalDevice()
     // Set minimum alignment
     VkPhysicalDeviceProperties properties;
     vkGetPhysicalDeviceProperties(PhysicalDevice, &properties);
-    
-    // FOR DYNAMIC UNIFORMS
-    //MinUniformAlignment = properties.limits.minUniformBufferOffsetAlignment;
 }
 
 QueueFamilyIndicesData VulkanCore::FindQueueFamilies(VkPhysicalDevice device)
@@ -696,4 +693,121 @@ void VulkanCore::DestroySwapchainViews()
 {
     for (auto& swapchainImage : SwapchainImages)
         vkDestroyImageView(Device, swapchainImage.ImageView, nullptr);
+}
+
+//======================================================//
+// Command Recording                                    //
+//======================================================//
+
+void VulkanCore::BeginFrame()
+{
+    WaitForFrame(CurrentFrameIndex);
+    
+    VkResult result = vkAcquireNextImageKHR(
+        Device,
+        Swapchain,
+        UINT64_MAX,
+        ImageAvailableSemaphores[CurrentFrameIndex],
+        VK_NULL_HANDLE,
+        &CurrentSwapchainImageIndex
+    );
+
+    if (result == VK_ERROR_OUT_OF_DATE_KHR)
+    {
+        // TODO: Recreate swapchain for window resize
+        throw std::runtime_error("Swapchain out of date - recreation needed");
+    }
+    else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR)
+    {
+        throw std::runtime_error("Failed to acquire swapchain image");
+    }
+    
+    result = vkResetCommandBuffer(CommandBuffers[CurrentFrameIndex], 0);
+    if (result != VK_SUCCESS)
+        throw std::runtime_error("Failed to reset command buffer");
+    
+    VkCommandBufferBeginInfo beginInfo{};
+    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT; 
+    
+    result = vkBeginCommandBuffer(CommandBuffers[CurrentFrameIndex], &beginInfo);
+    if (result != VK_SUCCESS)
+        throw std::runtime_error("Failed to begin recording command buffer");
+}
+
+void VulkanCore::EndFrame()
+{
+    VkResult result = vkEndCommandBuffer(CommandBuffers[CurrentFrameIndex]);
+    if (result != VK_SUCCESS)
+        throw std::runtime_error("Failed to end recording command buffer");
+    
+    VkSubmitInfo submitInfo{};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers = &CommandBuffers[CurrentFrameIndex];
+    
+    VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
+    submitInfo.waitSemaphoreCount = 1;
+    submitInfo.pWaitSemaphores = &ImageAvailableSemaphores[CurrentFrameIndex];
+    submitInfo.pWaitDstStageMask = waitStages;
+    
+    submitInfo.signalSemaphoreCount = 1;
+    submitInfo.pSignalSemaphores = &RenderFinishedSemaphores[CurrentFrameIndex];
+    
+    result = vkQueueSubmit(
+        GraphicsQueue,
+        1,
+        &submitInfo,
+        InFlightFences[CurrentFrameIndex]
+    );
+
+    if (result != VK_SUCCESS)
+        throw std::runtime_error("Failed to submit command buffer");
+
+    // Present the rendered image
+    VkPresentInfoKHR presentInfo{};
+    presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+    presentInfo.waitSemaphoreCount = 1;
+    presentInfo.pWaitSemaphores = &RenderFinishedSemaphores[CurrentFrameIndex];
+    presentInfo.swapchainCount = 1;
+    presentInfo.pSwapchains = &Swapchain;
+    presentInfo.pImageIndices = &CurrentSwapchainImageIndex;
+    presentInfo.pResults = nullptr;
+
+    result = vkQueuePresentKHR(PresentQueue, &presentInfo);
+
+    if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR)
+    {
+        throw std::runtime_error("Swapchain out of date or suboptimal - recreation needed");
+    }
+    else if (result != VK_SUCCESS)
+    {
+        throw std::runtime_error("Failed to present swapchain image");
+    }
+
+    // Advance to next frame
+    CurrentFrameIndex = (CurrentFrameIndex + 1) % SwapChainImageCount;
+}
+
+void VulkanCore::WaitForFrame(uint32_t frameIndex)
+{
+    VkResult result = vkWaitForFences(
+        Device,
+        1,
+        &InFlightFences[frameIndex],
+        VK_TRUE,
+        UINT64_MAX
+    );
+
+    if (result != VK_SUCCESS)
+        throw std::runtime_error("Failed to wait for frame fence");
+
+    // Reset fence for next use
+    vkResetFences(Device, 1, &InFlightFences[frameIndex]);
+}
+
+void VulkanCore::WaitForGPU()
+{
+    for (uint32_t i = 0; i < SwapChainImageCount; i++)
+        WaitForFrame(i);
 }
