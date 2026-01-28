@@ -36,9 +36,7 @@ class D3DCore
     std::array<ComPtr<ID3D12CommandAllocator>, SwapChainBufferCount> CommandAllocators;
     std::array<ComPtr<ID3D12GraphicsCommandList>, SwapChainBufferCount> CommandLists;
     std::array<UINT64, SwapChainBufferCount> FrameFences;
-
-
-
+    
     ComPtr<ID3D12Resource> SwapChainBuffer[SwapChainBufferCount];
     ComPtr<ID3D12Resource> DepthStencilBuffer;
 
@@ -71,6 +69,8 @@ public:
     ComPtr<ID3D12DescriptorHeap> GetRenderTargetDescriptorHeap() const { return RenderTargetDescriptorHeap; }
     ComPtr<ID3D12DescriptorHeap> GetDepthStencilDescriptorHeap() const { return DepthStencilDescriptorHeap; }
     UINT GetMSAAQualityLevel(DXGI_FORMAT format, UINT sampleCount);
+    D3D12_CPU_DESCRIPTOR_HANDLE GetRenderTargetDescriptor();
+    ID3D12Resource* GetBackBuffer() const { return SwapChainBuffer[CurrentFrameIndex].Get(); }
 
 private:
      

@@ -38,15 +38,14 @@ namespace RHIStructures
     };
     VkFormat VulkanFormat(Format format);
     DXGI_FORMAT DXFormat(Format format);
-
-
     
     struct ShaderStage
     {
-        const void* ByteCode;
-        size_t ByteCodeSize;
-        const char* EntryPoint;
+        const void* ByteCode = nullptr;
+        size_t ByteCodeSize = 0;
+        const char* EntryPoint = nullptr;
     };
+    
     ShaderStage ImportShader(const std::string& filename, const char* entryPoint);
     VkShaderModule VulkanShaderModule(ShaderStage shaderStage);
     D3D12_SHADER_BYTECODE DXShaderBytecode(ShaderStage shaderStage);
@@ -488,7 +487,11 @@ namespace RHIStructures
         void* VulkanMemory = nullptr;
         
         // Descriptor handles for binding
-        void* DescriptorHandle = nullptr;
+        // For D3D12: Store the CPU descriptor handle directly
+        D3D12_CPU_DESCRIPTOR_HANDLE D3D12CpuDescriptorHandle = {0};
+        // For Vulkan: Store the image view
+        void* VulkanImageViewHandle = nullptr;
+
     };
 
     struct ResourceBinding

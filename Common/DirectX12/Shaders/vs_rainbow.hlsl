@@ -1,7 +1,3 @@
-struct VS_INPUT
-{
-    uint vertexID : SV_VertexID;
-};
 
 struct VS_OUTPUT
 {
@@ -9,7 +5,7 @@ struct VS_OUTPUT
     float4 color : COLOR;
 };
 
-VS_OUTPUT main(VS_INPUT input)
+VS_OUTPUT main(uint vertexID : SV_VertexID)
 {
     VS_OUTPUT output;
     
@@ -29,12 +25,8 @@ VS_OUTPUT main(VS_INPUT input)
     };
     
     // Get vertex data based on vertex ID
-    float3 position = positions[input.vertexID];
-    float4 color = colors[input.vertexID];
-    
-    // Output position in clip space (already in NDC, so just convert to homogeneous)
-    output.position = float4(position, 1.0f);
-    output.color = color;
+    output.position = float4(positions[vertexID], 1.0f);
+    output.color = colors[vertexID];
     
     return output;
 }

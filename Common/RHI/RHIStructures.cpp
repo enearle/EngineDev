@@ -2,9 +2,13 @@
 #include <d3d12.h>
 #include <fstream>
 #include <string>
+#include <filesystem>
 
 #include "../Vulkan/VulkanCore.h"
 #include "../GraphicsSettings.h"
+#include "../Windows/Win32ErrorHandler.h"
+
+using namespace Win32ErrorHandler;
 
 namespace RHIStructures
 {
@@ -88,16 +92,32 @@ namespace RHIStructures
     {
         ShaderStage shaderStage;
         std::string path;
-        if (GRAPHICS_SETTINGS.APIToUse == Direct3D12)
-            path = "../DirectX12/Shaders/CSO/";
+        if (GRAPHICS_SETTINGS.APIToUse == DirectX12)
+        {
+            path = "../../Common/DirectX12/Shaders/CSO/";
+            path += filename;
+            path += ".cso";
+        }
         else if (GRAPHICS_SETTINGS.APIToUse == Vulkan)
-            path = "../Vulkan/Shaders/SPIRV/";
+        {
+            path = "../../Common/Vulkan/Shaders/SPIRV/";
+            path += filename;
+            path += ".spv";
+        }
         else
             throw std::runtime_error("Invalid API selected!");
+
+        std::filesystem::path absolutePath = std::filesystem::absolute(path);
         
-        std::ifstream shaderFile(filename, std::ios::binary | std::ios::ate);
+        std::ifstream shaderFile(absolutePath, std::ios::binary | std::ios::ate);
         if (!shaderFile.is_open())
-            throw std::runtime_error("Failed to open shader file: " + filename);
+        {
+            std::string log = "Failed to open shader file.\n"
+                "Expected at: " + absolutePath.string() + "\n"
+                "Current working directory: " + std::filesystem::current_path().string();
+            ErrorMessage(log.c_str());
+            throw std::runtime_error(log);
+        }
     
         std::streamsize fileSize = shaderFile.tellg();
         shaderFile.seekg(0, std::ios::beg);
@@ -106,7 +126,7 @@ namespace RHIStructures
         if (!shaderFile.read(static_cast<char*>(shaderBytecode), fileSize))
         {
             free(shaderBytecode);
-            throw std::runtime_error("Failed to read shader file: " + filename);
+            throw std::runtime_error("Failed to read shader file: " + path);
         }
         shaderFile.close();
 

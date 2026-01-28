@@ -9,15 +9,18 @@ class Pipeline
 public:
     static Pipeline* Create(const PipelineDesc& desc);
     virtual ~Pipeline() = default;
+    virtual const PipelineDesc& GetDesc() const { return Desc; }
+protected:
+    PipelineDesc Desc;
 };
 
 class D3DPipeline : public Pipeline
 {
 public:
     D3DPipeline(const PipelineDesc& desc);
-    
     ID3D12PipelineState* GetPipelineState() const { return PipelineState.Get(); }
     ID3D12RootSignature* GetRootSignature() const { return RootSignature.Get(); }
+    
     
 private:
     ComPtr<ID3D12RootSignature> RootSignature;
@@ -32,7 +35,7 @@ public:
     
     VkPipeline GetVulkanPipeline() const { return Pipeline; }
     VkPipelineLayout GetPipelineLayout() const { return PipelineLayout; }
-    VkRenderPass GetRenderPass() const { return RenderPass; }  // <-- Baked in!
+    VkRenderPass GetRenderPass() const { return RenderPass; }
     
 private:
     void CreateRenderPass(const PipelineDesc& desc);
@@ -40,6 +43,6 @@ private:
     VkPipeline Pipeline = VK_NULL_HANDLE;
     VkPipelineLayout PipelineLayout = VK_NULL_HANDLE;
     VkPipelineCache PipelineCache = VK_NULL_HANDLE;
-    VkRenderPass RenderPass = VK_NULL_HANDLE;  // <-- Stored here
+    VkRenderPass RenderPass = VK_NULL_HANDLE;
 };
 

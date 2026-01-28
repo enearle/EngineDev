@@ -2,6 +2,7 @@
 #include "../Windows/Win32ErrorHandler.h"
 #include "../Window.h"
 #include <exception>
+#include <iostream>
 #include <stdexcept>
 #include "../GraphicsSettings.h"
 #include "../RHI/Renderer.h"
@@ -34,6 +35,8 @@ void D3DCore::InitDirect3D(Window* window, CoreInitData data)
     catch (const std::exception& exception)
     {
         ErrorMessage(exception.what());
+        Initialized = false;
+        throw;
     }
 }
 
@@ -70,9 +73,27 @@ void D3DCore::BeginFrame()
 
 void D3DCore::EndFrame()
 {
-    CommandLists[CurrentFrameIndex]->Close();
+    std::cerr << "EndFrame: Closing command list..." << std::endl;
+    HRESULT hrClose = CommandLists[CurrentFrameIndex]->Close();
+    if (FAILED(hrClose))
+    {
+        throw std::runtime_error("Failed to close command list. HRESULT: 0x" + 
+            std::to_string(static_cast<unsigned int>(hrClose)));
+    }
+    
+    std::cerr << "EndFrame: Command list closed successfully" << std::endl;
+    std::cerr << "EndFrame: Executing command lists..." << std::endl;
+    
     ID3D12CommandList* ppCommandLists[] = { CommandLists[CurrentFrameIndex].Get() };
+    
+    // This will crash if the command list or queue is in a bad state
     CommandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
+    
+    std::cerr << "EndFrame: Command lists executed successfully" << std::endl;
+    
+    CurrentFence++;
+    FrameFences[CurrentFrameIndex] = CurrentFence;
+
     CurrentFence++;
     FrameFences[CurrentFrameIndex] = CurrentFence;
     CommandQueue->Signal(Fence.Get(), CurrentFence) >> ERROR_HANDLER;
@@ -82,13 +103,19 @@ void D3DCore::EndFrame()
 
 void D3DCore::InitDebugLayer()
 {
-#if defined(DEBUG) || defined(_DEBUG) 
+#if defined(DEBUG) || defined(_DEBUG)
+    ComPtr<ID3D12Debug> debugController;
+    ComPtr<ID3D12Debug1> debugController1;
+    if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debugController))))
     {
-        ComPtr<ID3D12Debug> debugController;
-        D3D12GetDebugInterface(IID_PPV_ARGS(&debugController)) >> ERROR_HANDLER;
         debugController->EnableDebugLayer();
+        if (SUCCEEDED(debugController->QueryInterface(IID_PPV_ARGS(&debugController1))))
+        {
+            debugController1->SetEnableGPUBasedValidation(true);
+        }
     }
 #endif
+
 }
 
 void D3DCore::CreateFactory()
@@ -223,6 +250,20 @@ void D3DCore::CreateSwapChainDescriptorHeaps()
     DephtStencilHeapDesc.NodeMask = 0;
     Device->CreateDescriptorHeap(
         &DephtStencilHeapDesc, IID_PPV_ARGS(DepthStencilDescriptorHeap.GetAddressOf())) >> ERROR_HANDLER;
+
+    for (UINT i = 0; i < SwapChainBufferCount; ++i)
+    {
+        ComPtr<ID3D12Resource> backBuffer;
+        SwapChain->GetBuffer(i, IID_PPV_ARGS(&backBuffer));
+
+        SwapChainBuffer[i] = backBuffer;
+        
+        D3D12_CPU_DESCRIPTOR_HANDLE rtvHandle = 
+            RenderTargetDescriptorHeap->GetCPUDescriptorHandleForHeapStart();
+        rtvHandle.ptr += i * RenderTargetDescriptorOffset;
+        
+        Device->CreateRenderTargetView(backBuffer.Get(), nullptr, rtvHandle);
+    }
 }
 
 void D3DCore::WaitForFrame(uint32_t frameIndex)
@@ -230,7 +271,7 @@ void D3DCore::WaitForFrame(uint32_t frameIndex)
     UINT64 frameFence = FrameFences[frameIndex];
     if (Fence->GetCompletedValue() < frameFence)
     {
-        HANDLE eventHandle = CreateEventEx(nullptr, false, false, EVENT_ALL_ACCESS);
+        HANDLE eventHandle = CreateEventEx(nullptr, nullptr, 0, EVENT_ALL_ACCESS);
         Fence->SetEventOnCompletion(frameFence, eventHandle) >> ERROR_HANDLER;
         WaitForSingleObject(eventHandle, INFINITE);
         CloseHandle(eventHandle);
@@ -257,3 +298,10 @@ UINT D3DCore::GetMSAAQualityLevel(DXGI_FORMAT format, UINT sampleCount)
         : 0;
 }
 
+D3D12_CPU_DESCRIPTOR_HANDLE D3DCore::GetRenderTargetDescriptor()
+{
+    D3D12_CPU_DESCRIPTOR_HANDLE rtvHandle = 
+        RenderTargetDescriptorHeap->GetCPUDescriptorHandleForHeapStart();
+    rtvHandle.ptr += CurrentFrameIndex * RenderTargetDescriptorOffset;
+    return rtvHandle;
+}

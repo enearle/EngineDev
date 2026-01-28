@@ -1,4 +1,6 @@
 ﻿#pragma once
+#include <iostream>
+
 #include "Pipeline.h"
 #include "RHIStructures.h"
 
@@ -6,44 +8,27 @@ using namespace RHIStructures;
 
 namespace RHIConstants
 {
-    static Pipeline* CreateRainbowTrianglePipeline(PipelineDesc& rainbowTrianglePipeline)
+    static Pipeline* CreateRainbowTrianglePipeline()
     {
         PipelineDesc rainbowTrianglePipeline;
 
         // 1. Shader stages
     
-        rainbowTrianglePipeline.VertexShader = 
-        rainbowTrianglePipeline.FragmentShader = {
-            fragmentShaderBytecode,    // Your compiled PS bytecode
-            fragmentShaderSize,        // Size of bytecode
-            "main"                     // Entry point
-        };
+        rainbowTrianglePipeline.VertexShader = ImportShader("vs_rainbow", "main");
+        rainbowTrianglePipeline.FragmentShader = ImportShader("ps_rainbow", "main");
+
+        if (!rainbowTrianglePipeline.VertexShader.ByteCode || rainbowTrianglePipeline.VertexShader.ByteCodeSize == 0)
+            throw std::runtime_error("Failed to load vertex shader!");
+        if (!rainbowTrianglePipeline.FragmentShader.ByteCode || rainbowTrianglePipeline.FragmentShader.ByteCodeSize == 0)
+            throw std::runtime_error("Failed to load fragment shader!");
+        
+        std::cerr << "VS size: " << rainbowTrianglePipeline.VertexShader.ByteCodeSize << std::endl;
+        std::cerr << "PS size: " << rainbowTrianglePipeline.FragmentShader.ByteCodeSize << std::endl;
+
 
         // 2. Vertex input layout
-        rainbowTrianglePipeline.VertexAttributes = {
-            {
-                0,                                    // Binding
-                0,                                    // Location (POSITION)
-                Format::R32G32B32_FLOAT,             // 3D position
-                0,                                    // Offset
-                SemanticName::Position
-            },
-            {
-                0,                                    // Binding
-                1,                                    // Location (COLOR)
-                Format::R32G32B32A32_FLOAT,          // RGBA color
-                12,                                   // Offset (after position)
-                SemanticName::Color
-            }
-        };
-
-        rainbowTrianglePipeline.VertexBindings = {
-            {
-                0,                                    // Binding index
-                28,                                   // Stride (3 floats + 4 floats = 28 bytes)
-                false                                 // Not instanced
-            }
-        };
+        rainbowTrianglePipeline.VertexAttributes = {}; // Empty - shader uses SV_VertexID
+        rainbowTrianglePipeline.VertexBindings = {};   // Empty - no bindings needed
 
         // 3. Primitive topology
         rainbowTrianglePipeline.PrimitiveTopology = PrimitiveTopology::TriangleList;
@@ -83,7 +68,7 @@ namespace RHIConstants
                 BlendOp::Add,                       // Alpha blend op
                 BlendFactor::One,                   // Source alpha factor
                 BlendFactor::Zero,                  // Dest alpha factor
-                true                                // Blending enabled
+                false                               // Blending DISABLED
             }
         };
 

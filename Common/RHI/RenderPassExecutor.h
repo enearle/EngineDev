@@ -7,6 +7,7 @@ class RenderPassExecutor
 {
 public:
     static RenderPassExecutor* Create();
+    
     virtual ~RenderPassExecutor() = default;
     
     // Begin a rendering operation with a pipeline and its attachments

@@ -17,7 +17,7 @@ Pipeline* Pipeline::Create(const PipelineDesc& desc)
     {
         return new VulkanPipeline(desc);
     }
-    else if (GRAPHICS_SETTINGS.APIToUse == Direct3D12)
+    else if (GRAPHICS_SETTINGS.APIToUse == DirectX12)
     {
         return new D3DPipeline(desc);
     }
@@ -29,7 +29,7 @@ Pipeline* Pipeline::Create(const PipelineDesc& desc)
 
 D3DPipeline::D3DPipeline(const PipelineDesc& desc)
 {
-
+    Desc = desc;
     RootSignature = D3DRootSignatureBuilder::BuildRootSignature(
         D3DCore::GetInstance().GetDevice().Get(),
         desc.ResourceLayout
@@ -41,19 +41,40 @@ D3DPipeline::D3DPipeline(const PipelineDesc& desc)
     D3D12_STREAM_OUTPUT_DESC streamOutputDesc = {};
     streamOutputDesc.NumEntries = 0;
     
+    //D3D12_BLEND_DESC blendDesc = {};
+    //// AlphaToCoverage factors out MSAA samples per fragment based on the fragment's alpha (or combined sampled alpha).
+    //// Lower fragment alpha == less active MSAA samples.
+    //blendDesc.AlphaToCoverageEnable = desc.MultisampleState.SampleCount > 1 ? desc.MultisampleState.AlphaToCoverageEnable : FALSE;
+    //// Default allow different blend modes per render target.
+    //blendDesc.IndependentBlendEnable = desc.BlendAttachmentStates.size() > 1;
+    //if (desc.BlendAttachmentStates.size() > 8)
+    //    throw std::runtime_error("Too many render targets (max 8 for D3D12)");
+
     D3D12_BLEND_DESC blendDesc = {};
-    // AlphaToCoverage factors out MSAA samples per fragment based on the fragment's alpha (or combined sampled alpha).
-    // Lower fragment alpha == less active MSAA samples.
     blendDesc.AlphaToCoverageEnable = desc.MultisampleState.SampleCount > 1 ? desc.MultisampleState.AlphaToCoverageEnable : FALSE;
-    // Default allow different blend modes per render target.
     blendDesc.IndependentBlendEnable = desc.BlendAttachmentStates.size() > 1;
     if (desc.BlendAttachmentStates.size() > 8)
         throw std::runtime_error("Too many render targets (max 8 for D3D12)");
+
+    // Initialize all 8 render target blend descs to defaults first
+    for (int i = 0; i < 8; i++)
+    {
+        blendDesc.RenderTarget[i] = {};
+        blendDesc.RenderTarget[i].BlendEnable = FALSE;
+        blendDesc.RenderTarget[i].SrcBlend = D3D12_BLEND_ONE;
+        blendDesc.RenderTarget[i].DestBlend = D3D12_BLEND_ZERO;
+        blendDesc.RenderTarget[i].BlendOp = D3D12_BLEND_OP_ADD;
+        blendDesc.RenderTarget[i].SrcBlendAlpha = D3D12_BLEND_ONE;
+        blendDesc.RenderTarget[i].DestBlendAlpha = D3D12_BLEND_ZERO;
+        blendDesc.RenderTarget[i].BlendOpAlpha = D3D12_BLEND_OP_ADD;
+        blendDesc.RenderTarget[i].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+    }
+
     for (size_t i = 0; i < desc.BlendAttachmentStates.size() && i < 8; i++)
     {
         const BlendAttachmentState& attachmentState = desc.BlendAttachmentStates[i];
         D3D12_RENDER_TARGET_BLEND_DESC& renderTargetBlendDesc = blendDesc.RenderTarget[i];
-    
+
         renderTargetBlendDesc.BlendEnable = attachmentState.BlendEnable;
         renderTargetBlendDesc.SrcBlend = DXBlendFactor(attachmentState.SrcColorBlendFactor);
         renderTargetBlendDesc.DestBlend = DXBlendFactor(attachmentState.DestColorBlendFactor);
@@ -87,7 +108,7 @@ D3DPipeline::D3DPipeline(const PipelineDesc& desc)
     backFaceStencil.StencilFunc = DXCompareOp(desc.DepthStencilState.BackStencil.CompareOp);
     
     D3D12_DEPTH_STENCIL_DESC depthStencilDesc = {};
-    depthStencilDesc.DepthEnable = desc.DepthStencilState.DepthBoundsTestEnable;
+    depthStencilDesc.DepthEnable = desc.DepthStencilState.DepthTestEnable;
     depthStencilDesc.DepthWriteMask = desc.DepthStencilState.DepthWriteEnable
         ? D3D12_DEPTH_WRITE_MASK_ALL
         : D3D12_DEPTH_WRITE_MASK_ZERO;
@@ -124,8 +145,17 @@ D3DPipeline::D3DPipeline(const PipelineDesc& desc)
     
         inputElements.push_back(element);
     }
-    inputLayoutDesc.pInputElementDescs = inputElements.data();
-    inputLayoutDesc.NumElements = static_cast<UINT>(inputElements.size());
+    if (!inputElements.empty())
+    {
+        inputLayoutDesc.pInputElementDescs = inputElements.data();
+        inputLayoutDesc.NumElements = static_cast<UINT>(inputElements.size());
+    }
+    else
+    {
+        inputLayoutDesc.pInputElementDescs = nullptr;
+        inputLayoutDesc.NumElements = 0;
+    }
+
 
     
     DXGI_SAMPLE_DESC sampleDesc = {};
@@ -159,7 +189,18 @@ D3DPipeline::D3DPipeline(const PipelineDesc& desc)
     pipelineStateDesc.IBStripCutValue = D3D12_INDEX_BUFFER_STRIP_CUT_VALUE_DISABLED; // Splits up geometry in a single draw call (rarely useful and can be done by other explicit means)
     pipelineStateDesc.PrimitiveTopologyType = DXPrimitiveTopologyType(desc.PrimitiveTopology);
     pipelineStateDesc.NumRenderTargets = static_cast<UINT>(desc.RenderTargetFormats.size());
-    DXRenderTargetFormats(desc.RenderTargetFormats, pipelineStateDesc.RTVFormats);
+    // Initialize RTVFormats array to UNKNOWN first
+    for (int i = 0; i < 8; i++)
+    {
+        pipelineStateDesc.RTVFormats[i] = DXGI_FORMAT_UNKNOWN;
+    }
+
+    // Then fill in the actual formats
+    for (size_t i = 0; i < desc.RenderTargetFormats.size() && i < 8; i++)
+    {
+        pipelineStateDesc.RTVFormats[i] = DXFormat(desc.RenderTargetFormats[i]);
+    }
+
     pipelineStateDesc.DSVFormat = DXFormat(desc.DepthStencilFormat);
     pipelineStateDesc.SampleDesc = sampleDesc;
     pipelineStateDesc.NodeMask = 0; // Which (or both) gpu(s) to use in multi-gpu setup (NVidia SLI or AMD Crossfire)
@@ -174,15 +215,92 @@ D3DPipeline::D3DPipeline(const PipelineDesc& desc)
         pipelineStateDesc.CachedPSO = {};
     }
     D3D12_PIPELINE_STATE_FLAGS flags = D3D12_PIPELINE_STATE_FLAG_NONE;
-#if defined(DEBUG) || defined(_DEBUG)
-    flags |= D3D12_PIPELINE_STATE_FLAG_TOOL_DEBUG;
-#endif
     pipelineStateDesc.Flags = flags;
-    D3DCore::GetInstance().GetDevice()->CreateGraphicsPipelineState(&pipelineStateDesc, IID_PPV_ARGS(&PipelineState)) >> ERROR_HANDLER;
+
+    // VALIDATION
+    if (!pipelineStateDesc.pRootSignature)
+        throw std::runtime_error("Root signature is null");
+    if (!pipelineStateDesc.VS.pShaderBytecode)
+        throw std::runtime_error("Vertex shader bytecode is null");
+    if (!pipelineStateDesc.PS.pShaderBytecode)
+        throw std::runtime_error("Pixel shader bytecode is null");
+    if (inputLayoutDesc.pInputElementDescs == nullptr && inputLayoutDesc.NumElements > 0)
+        throw std::runtime_error("Input element descriptors pointer is null");
+    else if (inputLayoutDesc.pInputElementDescs != nullptr && inputLayoutDesc.NumElements == 0)
+        throw std::runtime_error("Input element descriptors provided but NumElements is 0");
+
+    if (pipelineStateDesc.VS.BytecodeLength == 0 || pipelineStateDesc.PS.BytecodeLength == 0)
+    {
+        std::cerr << "Warning: Vertex or pixel shader bytecode is empty!" << std::endl;
+    }
+    else
+    {
+        std::cerr << "Vertex shader bytecode size: " << pipelineStateDesc.VS.BytecodeLength << std::endl;
+        std::cerr << "Pixel shader bytecode size: " << pipelineStateDesc.PS.BytecodeLength << std::endl;
+    }
+
+    std::cerr << "Pipeline validation passed. Input elements: " << inputLayoutDesc.NumElements << std::endl;
+
+    ID3D12InfoQueue* infoQueue = nullptr;
+    D3DCore::GetInstance().GetDevice()->QueryInterface(IID_PPV_ARGS(&infoQueue));
+
+    if (infoQueue)
+    {
+        infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_ERROR, TRUE);
+        infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_CORRUPTION, TRUE);
+        infoQueue->ClearStoredMessages();
+    }
+
+    // Debug: Print pipeline state details
+    std::cerr << "\n=== Pipeline State Debug ===" << std::endl;
+    std::cerr << "NumRenderTargets: " << pipelineStateDesc.NumRenderTargets << std::endl;
+    std::cerr << "RTVFormats[0]: " << pipelineStateDesc.RTVFormats[0] << std::endl;
+    std::cerr << "DSVFormat: " << pipelineStateDesc.DSVFormat << std::endl;
+    std::cerr << "PrimitiveTopologyType: " << pipelineStateDesc.PrimitiveTopologyType << std::endl;
+    std::cerr << "BlendState.IndependentBlendEnable: " << pipelineStateDesc.BlendState.IndependentBlendEnable << std::endl;
+    std::cerr << "BlendState.RenderTarget[0].BlendEnable: " << pipelineStateDesc.BlendState.RenderTarget[0].BlendEnable << std::endl;
+    std::cerr << "BlendState.RenderTarget[0].RenderTargetWriteMask: " << pipelineStateDesc.BlendState.RenderTarget[0].RenderTargetWriteMask << std::endl;
+    std::cerr << "DepthStencilState.DepthEnable: " << pipelineStateDesc.DepthStencilState.DepthEnable << std::endl;
+    std::cerr << "InputLayout.NumElements: " << pipelineStateDesc.InputLayout.NumElements << std::endl;
+    std::cerr << "=========================\n" << std::endl;
+
+    
+    HRESULT e = D3DCore::GetInstance().GetDevice()->CreateGraphicsPipelineState(&pipelineStateDesc, IID_PPV_ARGS(&PipelineState));
+    if (infoQueue)
+    {
+        UINT64 numMessages = infoQueue->GetNumStoredMessages();
+        std::cerr << "D3D12 Messages: " << numMessages << std::endl;
+        for (UINT64 i = 0; i < numMessages; ++i)
+        {
+            SIZE_T messageLength = 0;
+            infoQueue->GetMessage(i, nullptr, &messageLength);
+        
+            D3D12_MESSAGE* message = (D3D12_MESSAGE*)malloc(messageLength);
+            infoQueue->GetMessage(i, message, &messageLength);
+        
+            std::cerr << "[" << message->Severity << "] " 
+                      << (const char*)message->pDescription << std::endl;
+            free(message);
+        }
+        infoQueue->Release();
+    }
+
+    if (e != S_OK)
+    {
+        std::cerr << "CreateGraphicsPipelineState FAILED with HRESULT: 0x" 
+                  << std::hex << static_cast<unsigned int>(e) << std::dec << std::endl;
+        throw std::runtime_error("Failed to create graphics pipeline state!");
+    }
+
+    std::cerr << "Pipeline created successfully!" << std::endl;
+
+
+
 }
 
 VulkanPipeline::VulkanPipeline(const PipelineDesc& desc)
 {
+    Desc = desc;
     CreateRenderPass(desc);
     
     std::vector<VkPipelineShaderStageCreateInfo> shaderStages;

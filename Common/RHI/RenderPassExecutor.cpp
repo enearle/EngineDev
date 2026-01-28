@@ -11,7 +11,7 @@ RenderPassExecutor* RenderPassExecutor::Create()
     {
         return new VulkanRenderPassExecutor();
     }
-    else if (GRAPHICS_SETTINGS.APIToUse == Direct3D12)
+    else if (GRAPHICS_SETTINGS.APIToUse == DirectX12)
     {
         return new D3DRenderPassExecutor();
     }
@@ -46,6 +46,17 @@ void D3DRenderPassExecutor::Begin(Pipeline* pipeline,
     
     ID3D12GraphicsCommandList* cmdList = GetCommandList();
     D3DPipeline* d3dPipeline = static_cast<D3DPipeline*>(pipeline);
+
+    ID3D12Resource* backBuffer = D3DCore::GetInstance().GetBackBuffer();
+    
+    D3D12_RESOURCE_BARRIER barrier{};
+    barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+    barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+    barrier.Transition.pResource = backBuffer;
+    barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
+    barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
+    barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+    cmdList->ResourceBarrier(1, &barrier);
     
     // Set root signature and pipeline state
     cmdList->SetGraphicsRootSignature(d3dPipeline->GetRootSignature());
@@ -55,7 +66,9 @@ void D3DRenderPassExecutor::Begin(Pipeline* pipeline,
     std::vector<D3D12_CPU_DESCRIPTOR_HANDLE> rtvHandles;
     for (const auto& colorView : colorViews)
     {
-        rtvHandles.push_back(*reinterpret_cast<D3D12_CPU_DESCRIPTOR_HANDLE*>(colorView));
+        D3D12_CPU_DESCRIPTOR_HANDLE handle;
+        handle.ptr = reinterpret_cast<SIZE_T>(colorView);  // Reconstruct from the value
+        rtvHandles.push_back(handle);
     }
     
     D3D12_CPU_DESCRIPTOR_HANDLE* pDsvHandle = nullptr;
@@ -96,6 +109,8 @@ void D3DRenderPassExecutor::Begin(Pipeline* pipeline,
             nullptr
         );
     }
+
+    cmdList->IASetPrimitiveTopology( DXPrimitiveTopology(pipeline->GetDesc().PrimitiveTopology));
     
     D3D12_VIEWPORT viewport{};
     viewport.TopLeftX = 0.0f;
@@ -116,8 +131,20 @@ void D3DRenderPassExecutor::Begin(Pipeline* pipeline,
 
 void D3DRenderPassExecutor::End()
 {
-    // D3D12: No explicit "end" needed, but could transition resources if needed
-    // Usually done via barriers in IssueImageMemoryBarrier()
+    ID3D12GraphicsCommandList* cmdList = GetCommandList();
+    
+    // Transition backbuffer back to PRESENT state
+    ID3D12Resource* backBuffer = D3DCore::GetInstance().GetBackBuffer();
+    
+    D3D12_RESOURCE_BARRIER barrier{};
+    barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+    barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+    barrier.Transition.pResource = backBuffer;
+    barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
+    barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
+    barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+    cmdList->ResourceBarrier(1, &barrier);
+
 }
 
 void D3DRenderPassExecutor::BindPipeline(Pipeline* pipeline)

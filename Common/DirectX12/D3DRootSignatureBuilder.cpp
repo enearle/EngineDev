@@ -23,8 +23,16 @@ ComPtr<ID3D12RootSignature> D3DRootSignatureBuilder::BuildRootSignature(
         rootParameters.push_back(CreateRootParameter(binding, rootParameterIndex));
         rootParameterIndex++;
     }
+    
+    for (auto& rp : rootParameters)
+    {
+        if (rp.parameter.ParameterType == D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE)
+        {
+            rp.parameter.DescriptorTable.pDescriptorRanges = rp.ranges.data();
+        }
+    }
 
-    // Extract the actual parameter descriptors (need to be kept alive)
+    // Extract the actual parameter descriptors
     std::vector<D3D12_ROOT_PARAMETER> parameters;
     parameters.reserve(rootParameters.size());
     for (auto& rp : rootParameters)
@@ -75,6 +83,7 @@ ComPtr<ID3D12RootSignature> D3DRootSignatureBuilder::BuildRootSignature(
 
     return rootSignature;
 }
+
 
 D3DRootSignatureBuilder::RootParameter D3DRootSignatureBuilder::CreateRootParameter(
     const DescriptorBinding& binding,
