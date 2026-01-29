@@ -79,11 +79,13 @@ public:
     void EndFrame();
     uint32_t GetCurrentFrameIndex() const { return CurrentFrameIndex; }
     uint32_t GetCurrentSwapchainImageIndex() const { return CurrentSwapchainImageIndex; }
-
+    VkImageView GetCurrentSwapchainImageView() const { return SwapchainImages[CurrentSwapchainImageIndex].ImageView; }
+    VkImage GetCurrentSwapchainImage() const {return SwapchainImages[CurrentSwapchainImageIndex].ImageHandle; }
+    void WaitForGPU();
+    
 private:
     
     void WaitForFrame(uint32_t frameIndex);
-    void WaitForGPU();
     void CreateInstance();
     void EnableDebugMessenger();
     void CreateSurface();
@@ -92,8 +94,9 @@ private:
     void CreateSynchronizationPrimitives();
     void CreateCommandPool();
     void CreateSwapchain();
-
     
+
+
     // Debug Support
     VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo,
         const VkAllocationCallbacks* pAllocator, VkDebugUtilsMessengerEXT* pDebugMessenger);

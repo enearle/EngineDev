@@ -382,12 +382,15 @@ namespace RHIStructures
         uint32_t DstAccessMask;
         ImageLayout OldLayout;
         ImageLayout NewLayout;
-        void* Image;                        // VkImage* or D3D12 resource*
+        void* VkImage;                        // VkImage* or D3D12 resource*
         uint32_t BaseMipLevel = 0;
         uint32_t MipLevelCount = 1;
         uint32_t BaseArrayLayer = 0;
         uint32_t ArrayLayerCount = 1;
     };
+    VkPipelineStageFlags ConvertPipelineStage(PipelineStage stage);
+    VkImageLayout VulkanImageLayout(ImageLayout layout);
+
 
     //===================================//
     //  ---------  Resorces  ----------  //

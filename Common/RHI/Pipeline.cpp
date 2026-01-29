@@ -29,7 +29,7 @@ Pipeline* Pipeline::Create(const PipelineDesc& desc)
 
 D3DPipeline::D3DPipeline(const PipelineDesc& desc)
 {
-    Desc = desc;
+    Topology = DXPrimitiveTopology(desc.PrimitiveTopology);
     RootSignature = D3DRootSignatureBuilder::BuildRootSignature(
         D3DCore::GetInstance().GetDevice().Get(),
         desc.ResourceLayout
@@ -40,23 +40,13 @@ D3DPipeline::D3DPipeline(const PipelineDesc& desc)
     // in compute shaders and only use graphics pipelines for a purely rasterized process.
     D3D12_STREAM_OUTPUT_DESC streamOutputDesc = {};
     streamOutputDesc.NumEntries = 0;
-    
-    //D3D12_BLEND_DESC blendDesc = {};
-    //// AlphaToCoverage factors out MSAA samples per fragment based on the fragment's alpha (or combined sampled alpha).
-    //// Lower fragment alpha == less active MSAA samples.
-    //blendDesc.AlphaToCoverageEnable = desc.MultisampleState.SampleCount > 1 ? desc.MultisampleState.AlphaToCoverageEnable : FALSE;
-    //// Default allow different blend modes per render target.
-    //blendDesc.IndependentBlendEnable = desc.BlendAttachmentStates.size() > 1;
-    //if (desc.BlendAttachmentStates.size() > 8)
-    //    throw std::runtime_error("Too many render targets (max 8 for D3D12)");
 
     D3D12_BLEND_DESC blendDesc = {};
     blendDesc.AlphaToCoverageEnable = desc.MultisampleState.SampleCount > 1 ? desc.MultisampleState.AlphaToCoverageEnable : FALSE;
     blendDesc.IndependentBlendEnable = desc.BlendAttachmentStates.size() > 1;
     if (desc.BlendAttachmentStates.size() > 8)
         throw std::runtime_error("Too many render targets (max 8 for D3D12)");
-
-    // Initialize all 8 render target blend descs to defaults first
+    
     for (int i = 0; i < 8; i++)
     {
         blendDesc.RenderTarget[i] = {};
@@ -155,8 +145,6 @@ D3DPipeline::D3DPipeline(const PipelineDesc& desc)
         inputLayoutDesc.pInputElementDescs = nullptr;
         inputLayoutDesc.NumElements = 0;
     }
-
-
     
     DXGI_SAMPLE_DESC sampleDesc = {};
     if (desc.MultisampleState.SampleCount > 1)
@@ -217,137 +205,70 @@ D3DPipeline::D3DPipeline(const PipelineDesc& desc)
     D3D12_PIPELINE_STATE_FLAGS flags = D3D12_PIPELINE_STATE_FLAG_NONE;
     pipelineStateDesc.Flags = flags;
 
-    // VALIDATION
-    if (!pipelineStateDesc.pRootSignature)
-        throw std::runtime_error("Root signature is null");
-    if (!pipelineStateDesc.VS.pShaderBytecode)
-        throw std::runtime_error("Vertex shader bytecode is null");
-    if (!pipelineStateDesc.PS.pShaderBytecode)
-        throw std::runtime_error("Pixel shader bytecode is null");
-    if (inputLayoutDesc.pInputElementDescs == nullptr && inputLayoutDesc.NumElements > 0)
-        throw std::runtime_error("Input element descriptors pointer is null");
-    else if (inputLayoutDesc.pInputElementDescs != nullptr && inputLayoutDesc.NumElements == 0)
-        throw std::runtime_error("Input element descriptors provided but NumElements is 0");
-
-    if (pipelineStateDesc.VS.BytecodeLength == 0 || pipelineStateDesc.PS.BytecodeLength == 0)
-    {
-        std::cerr << "Warning: Vertex or pixel shader bytecode is empty!" << std::endl;
-    }
-    else
-    {
-        std::cerr << "Vertex shader bytecode size: " << pipelineStateDesc.VS.BytecodeLength << std::endl;
-        std::cerr << "Pixel shader bytecode size: " << pipelineStateDesc.PS.BytecodeLength << std::endl;
-    }
-
-    std::cerr << "Pipeline validation passed. Input elements: " << inputLayoutDesc.NumElements << std::endl;
-
-    ID3D12InfoQueue* infoQueue = nullptr;
-    D3DCore::GetInstance().GetDevice()->QueryInterface(IID_PPV_ARGS(&infoQueue));
-
-    if (infoQueue)
-    {
-        infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_ERROR, TRUE);
-        infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_CORRUPTION, TRUE);
-        infoQueue->ClearStoredMessages();
-    }
-
-    // Debug: Print pipeline state details
-    std::cerr << "\n=== Pipeline State Debug ===" << std::endl;
-    std::cerr << "NumRenderTargets: " << pipelineStateDesc.NumRenderTargets << std::endl;
-    std::cerr << "RTVFormats[0]: " << pipelineStateDesc.RTVFormats[0] << std::endl;
-    std::cerr << "DSVFormat: " << pipelineStateDesc.DSVFormat << std::endl;
-    std::cerr << "PrimitiveTopologyType: " << pipelineStateDesc.PrimitiveTopologyType << std::endl;
-    std::cerr << "BlendState.IndependentBlendEnable: " << pipelineStateDesc.BlendState.IndependentBlendEnable << std::endl;
-    std::cerr << "BlendState.RenderTarget[0].BlendEnable: " << pipelineStateDesc.BlendState.RenderTarget[0].BlendEnable << std::endl;
-    std::cerr << "BlendState.RenderTarget[0].RenderTargetWriteMask: " << pipelineStateDesc.BlendState.RenderTarget[0].RenderTargetWriteMask << std::endl;
-    std::cerr << "DepthStencilState.DepthEnable: " << pipelineStateDesc.DepthStencilState.DepthEnable << std::endl;
-    std::cerr << "InputLayout.NumElements: " << pipelineStateDesc.InputLayout.NumElements << std::endl;
-    std::cerr << "=========================\n" << std::endl;
-
-    
-    HRESULT e = D3DCore::GetInstance().GetDevice()->CreateGraphicsPipelineState(&pipelineStateDesc, IID_PPV_ARGS(&PipelineState));
-    if (infoQueue)
-    {
-        UINT64 numMessages = infoQueue->GetNumStoredMessages();
-        std::cerr << "D3D12 Messages: " << numMessages << std::endl;
-        for (UINT64 i = 0; i < numMessages; ++i)
-        {
-            SIZE_T messageLength = 0;
-            infoQueue->GetMessage(i, nullptr, &messageLength);
-        
-            D3D12_MESSAGE* message = (D3D12_MESSAGE*)malloc(messageLength);
-            infoQueue->GetMessage(i, message, &messageLength);
-        
-            std::cerr << "[" << message->Severity << "] " 
-                      << (const char*)message->pDescription << std::endl;
-            free(message);
-        }
-        infoQueue->Release();
-    }
-
-    if (e != S_OK)
-    {
-        std::cerr << "CreateGraphicsPipelineState FAILED with HRESULT: 0x" 
-                  << std::hex << static_cast<unsigned int>(e) << std::dec << std::endl;
-        throw std::runtime_error("Failed to create graphics pipeline state!");
-    }
-
-    std::cerr << "Pipeline created successfully!" << std::endl;
-
-
-
+    D3DCore::GetInstance().GetDevice()->CreateGraphicsPipelineState(&pipelineStateDesc, IID_PPV_ARGS(&PipelineState)) >> ERROR_HANDLER;
 }
 
 VulkanPipeline::VulkanPipeline(const PipelineDesc& desc)
 {
-    Desc = desc;
     CreateRenderPass(desc);
-    
+
+    // Cache shader modules for cleanup
+    // All shaders will allways be loaded. This is meh, but for my engine probably fine.
     std::vector<VkPipelineShaderStageCreateInfo> shaderStages;
     if (desc.VertexShader.ByteCode)
     {
+        VkShaderModule vertModule = VulkanShaderModule(desc.VertexShader);
         VkPipelineShaderStageCreateInfo vertexShaderStageInfo{};
         vertexShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
         vertexShaderStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
-        vertexShaderStageInfo.module = VulkanShaderModule(desc.VertexShader);
+        vertexShaderStageInfo.module = vertModule;
         vertexShaderStageInfo.pName = desc.VertexShader.EntryPoint ? desc.VertexShader.EntryPoint : "main";
         shaderStages.push_back(vertexShaderStageInfo);
+        ShaderModules.push_back(vertModule);
     }
     if (desc.FragmentShader.ByteCode)
     {
+        VkShaderModule fragModule = VulkanShaderModule(desc.FragmentShader);
         VkPipelineShaderStageCreateInfo fragmentShaderStageInfo{};
         fragmentShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
         fragmentShaderStageInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-        fragmentShaderStageInfo.module = VulkanShaderModule(desc.FragmentShader);
+        fragmentShaderStageInfo.module = fragModule;
         fragmentShaderStageInfo.pName = desc.FragmentShader.EntryPoint ? desc.FragmentShader.EntryPoint : "main";
         shaderStages.push_back(fragmentShaderStageInfo);
+        ShaderModules.push_back(fragModule);
     }
     if (desc.GeometryShader.ByteCode)
     {
+        VkShaderModule geomModule = VulkanShaderModule(desc.GeometryShader);
         VkPipelineShaderStageCreateInfo geometryShaderStageInfo{};
         geometryShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
         geometryShaderStageInfo.stage = VK_SHADER_STAGE_GEOMETRY_BIT;
-        geometryShaderStageInfo.module = VulkanShaderModule(desc.GeometryShader);
+        geometryShaderStageInfo.module = geomModule;
         geometryShaderStageInfo.pName = desc.GeometryShader.EntryPoint ? desc.GeometryShader.EntryPoint : "main";
         shaderStages.push_back(geometryShaderStageInfo);
+        ShaderModules.push_back(geomModule);
     }
     if (desc.DomainShader.ByteCode)
     {
+        VkShaderModule domainModule = VulkanShaderModule(desc.DomainShader);
         VkPipelineShaderStageCreateInfo domainShaderStageInfo{};
         domainShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
         domainShaderStageInfo.stage = VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT;
-        domainShaderStageInfo.module = VulkanShaderModule(desc.DomainShader);
+        domainShaderStageInfo.module = domainModule;
         domainShaderStageInfo.pName = desc.DomainShader.EntryPoint ? desc.DomainShader.EntryPoint : "main";
         shaderStages.push_back(domainShaderStageInfo);
+        ShaderModules.push_back(domainModule);
     }
     if (desc.HullShader.ByteCode)
     {
+        VkShaderModule hullModule = VulkanShaderModule(desc.HullShader);
         VkPipelineShaderStageCreateInfo hullShaderStageInfo{};
         hullShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
         hullShaderStageInfo.stage = VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT;
-        hullShaderStageInfo.module = VulkanShaderModule(desc.HullShader);
+        hullShaderStageInfo.module = hullModule;
         hullShaderStageInfo.pName = desc.HullShader.EntryPoint ? desc.HullShader.EntryPoint : "main";
         shaderStages.push_back(hullShaderStageInfo);
+        ShaderModules.push_back(hullModule);
     }
 
     std::vector<VkVertexInputBindingDescription> bindingDescriptions;
@@ -415,7 +336,7 @@ VulkanPipeline::VulkanPipeline(const PipelineDesc& desc)
     multisampling.alphaToCoverageEnable = desc.MultisampleState.SampleCount > 1 ? desc.MultisampleState.AlphaToCoverageEnable : VK_FALSE;
     multisampling.alphaToOneEnable = VK_FALSE;
     multisampling.rasterizationSamples = static_cast<VkSampleCountFlagBits>(desc.MultisampleState.SampleCount);
-    multisampling.sampleShadingEnable = VK_TRUE; 
+    multisampling.sampleShadingEnable = desc.MultisampleState.SampleCount > 1 ? VK_TRUE : VK_FALSE;
     multisampling.minSampleShading = 0.5f;  // Sample shading affects the colour quality of MSAA samples.
     multisampling.pSampleMask = nullptr;
 
@@ -512,7 +433,6 @@ VulkanPipeline::VulkanPipeline(const PipelineDesc& desc)
     VkResult result = vkCreateGraphicsPipelines(VulkanCore::GetInstance().GetDevice(), PipelineCache, 1, &pipelineCreateInfo, nullptr, &Pipeline);
     if (result != VK_SUCCESS)
         throw std::runtime_error("Failed to create Vulkan graphics pipeline!");
-    
 }
 
 void VulkanPipeline::CreateRenderPass(const PipelineDesc& desc)
@@ -622,5 +542,8 @@ VulkanPipeline::~VulkanPipeline()
         
     if (PipelineLayout != VK_NULL_HANDLE)
         vkDestroyPipelineLayout(device, PipelineLayout, nullptr);
+
+    for (VkShaderModule shaderModule : ShaderModules)
+        vkDestroyShaderModule(device, shaderModule, nullptr);
 }
 

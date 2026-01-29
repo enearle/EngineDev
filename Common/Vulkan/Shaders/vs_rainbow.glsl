@@ -7,9 +7,9 @@ void main()
     // Define triangle vertices (normalized device coordinates)
     // Top vertex - Red
     vec3 positions[3] = vec3[](
-    vec3(0.0f, 0.5f, 0.0f),      // Top
-    vec3(-0.5f, -0.5f, 0.0f),    // Bottom left
-    vec3(0.5f, -0.5f, 0.0f)      // Bottom right
+    vec3(0.0f, -0.5f, 0.0f),      // Top
+    vec3(-0.5f, 0.5f, 0.0f),    // Bottom left
+    vec3(0.5f, 0.5f, 0.0f)      // Bottom right
     );
 
     // Define colors for each vertex (RGBA)

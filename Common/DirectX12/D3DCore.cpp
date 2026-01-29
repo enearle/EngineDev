@@ -51,8 +51,14 @@ void D3DCore::WaitForGPU()
 
 void D3DCore::Reset()
 {
+    if (CommandQueue)
+    {
+        CurrentFence++;
+        CommandQueue->Signal(Fence.Get(), CurrentFence) >> ERROR_HANDLER;
+    }
+    
     WaitForGPU();
-
+    
     for (UINT i = 0; i < SwapChainBufferCount; i++)
     {
         CommandLists[i].Reset();
@@ -73,27 +79,11 @@ void D3DCore::BeginFrame()
 
 void D3DCore::EndFrame()
 {
-    std::cerr << "EndFrame: Closing command list..." << std::endl;
-    HRESULT hrClose = CommandLists[CurrentFrameIndex]->Close();
-    if (FAILED(hrClose))
-    {
-        throw std::runtime_error("Failed to close command list. HRESULT: 0x" + 
-            std::to_string(static_cast<unsigned int>(hrClose)));
-    }
-    
-    std::cerr << "EndFrame: Command list closed successfully" << std::endl;
-    std::cerr << "EndFrame: Executing command lists..." << std::endl;
+    CommandLists[CurrentFrameIndex]->Close() >> ERROR_HANDLER;
     
     ID3D12CommandList* ppCommandLists[] = { CommandLists[CurrentFrameIndex].Get() };
-    
-    // This will crash if the command list or queue is in a bad state
     CommandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
     
-    std::cerr << "EndFrame: Command lists executed successfully" << std::endl;
-    
-    CurrentFence++;
-    FrameFences[CurrentFrameIndex] = CurrentFence;
-
     CurrentFence++;
     FrameFences[CurrentFrameIndex] = CurrentFence;
     CommandQueue->Signal(Fence.Get(), CurrentFence) >> ERROR_HANDLER;
@@ -108,14 +98,16 @@ void D3DCore::InitDebugLayer()
     ComPtr<ID3D12Debug1> debugController1;
     if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debugController))))
     {
-        debugController->EnableDebugLayer();
         if (SUCCEEDED(debugController->QueryInterface(IID_PPV_ARGS(&debugController1))))
         {
+            debugController->EnableDebugLayer();
+            debugController->EnableDebugLayer();
+            debugController->Release();
             debugController1->SetEnableGPUBasedValidation(true);
+            std::cerr << "DirectX debugging enabled." << std::endl;
         }
     }
 #endif
-
 }
 
 void D3DCore::CreateFactory()

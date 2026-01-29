@@ -28,8 +28,8 @@ void VulkanCore::InitVulkan(Window* window, CoreInitData data)
         CreateSurface();
         SelectPhysicalDevice();
         CreateLogicalDevice();
+        CreateCommandPool();
         CreateSwapchain();
-        CreateCommandPool(); 
         CreateSynchronizationPrimitives();
 
     }
@@ -41,7 +41,9 @@ void VulkanCore::InitVulkan(Window* window, CoreInitData data)
 
 void VulkanCore::Cleanup()
 {
-    // Synchronization
+    vkQueueWaitIdle(GraphicsQueue);
+    vkQueueWaitIdle(PresentQueue);
+    
     for (uint32_t i = 0; i < SwapChainImageCount; i++)
     {
         vkDestroySemaphore(Device, ImageAvailableSemaphores[i], nullptr);
@@ -317,7 +319,56 @@ void VulkanCore::CreateSwapchain()
     }
 
     SwapChainImageCount = SwapchainImages.size();
+    
+    VkCommandBuffer cmdBuffer = CommandBuffers[0];  // Use existing buffer
+    
+    vkResetCommandBuffer(cmdBuffer, 0);
+    
+    VkCommandBufferBeginInfo beginInfo{};
+    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    vkBeginCommandBuffer(cmdBuffer, &beginInfo);
+
+    // Transition all swapchain images to PRESENT_SRC_KHR
+    for (auto& swapchainImage : SwapchainImages)
+    {
+        VkImageMemoryBarrier barrier{};
+        barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        barrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+        barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.image = swapchainImage.ImageHandle;
+        barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        barrier.subresourceRange.baseMipLevel = 0;
+        barrier.subresourceRange.levelCount = 1;
+        barrier.subresourceRange.baseArrayLayer = 0;
+        barrier.subresourceRange.layerCount = 1;
+        barrier.srcAccessMask = 0;
+        barrier.dstAccessMask = 0;
+
+        vkCmdPipelineBarrier(
+            cmdBuffer,
+            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+            0,
+            0, nullptr,
+            0, nullptr,
+            1, &barrier
+        );
+    }
+    
+    vkEndCommandBuffer(cmdBuffer);
+    
+    VkSubmitInfo submitInfo{};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers = &cmdBuffer;
+
+    vkQueueSubmit(GraphicsQueue, 1, &submitInfo, VK_NULL_HANDLE);
+    vkQueueWaitIdle(GraphicsQueue);
 }
+
 
 void VulkanCore::CreateSynchronizationPrimitives()
 {
@@ -404,6 +455,7 @@ SwapchainDetailsData VulkanCore::GetSwapchainDetails()
 
 VkSurfaceFormatKHR VulkanCore::SelectSwapchainSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats)
 {
+    // TODO: Make both swapchains take explicit formats
     // If the only available format is VK_FORMAT_UNDEFINED then all formats are available
     // So we just return our preference
     VkSurfaceFormatKHR surfaceFormat;
@@ -417,7 +469,7 @@ VkSurfaceFormatKHR VulkanCore::SelectSwapchainSurfaceFormat(const std::vector<Vk
     // Otherwise we just search for our preferred format
     for (auto availableFormat : availableFormats)
     {
-        if((availableFormat.format == VK_FORMAT_R8G8B8A8_UNORM || availableFormat.format == VK_FORMAT_B8G8R8A8_SRGB)
+        if((availableFormat.format == VK_FORMAT_R8G8B8A8_UNORM)
             && availableFormat.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR)
             return availableFormat;
     }

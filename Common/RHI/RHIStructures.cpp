@@ -230,17 +230,17 @@ namespace RHIStructures
         
         switch (primitiveTopology)
         {
-            case PrimitiveTopology::TriangleList:
-            case PrimitiveTopology::TriangleStrip:
-            case PrimitiveTopology::TriangleFan:
-                return D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-            case PrimitiveTopology::LineList:
-            case PrimitiveTopology::LineStrip:
-                return D3D12_PRIMITIVE_TOPOLOGY_TYPE_LINE;
-            case PrimitiveTopology::PointList:
-                return D3D12_PRIMITIVE_TOPOLOGY_TYPE_POINT;
-            default:
-                return D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+        case PrimitiveTopology::TriangleList:
+        case PrimitiveTopology::TriangleStrip:
+        case PrimitiveTopology::TriangleFan:
+            return D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+        case PrimitiveTopology::LineList:
+        case PrimitiveTopology::LineStrip:
+            return D3D12_PRIMITIVE_TOPOLOGY_TYPE_LINE;
+        case PrimitiveTopology::PointList:
+            return D3D12_PRIMITIVE_TOPOLOGY_TYPE_POINT;
+        default:
+            return D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
         }
     }
 
@@ -514,16 +514,16 @@ namespace RHIStructures
     {
         switch (layout)
         {
-            case ImageLayout::Undefined: return D3D12_RESOURCE_STATE_COMMON;
-            case ImageLayout::General: return D3D12_RESOURCE_STATE_COMMON;
-            case ImageLayout::ColorAttachment: return D3D12_RESOURCE_STATE_RENDER_TARGET;
-            case ImageLayout::DepthStencilAttachment: return D3D12_RESOURCE_STATE_DEPTH_WRITE;
-            case ImageLayout::DepthStencilReadOnly: return D3D12_RESOURCE_STATE_DEPTH_READ;
-            case ImageLayout::ShaderReadOnly: return D3D12_RESOURCE_STATE_GENERIC_READ;
-            case ImageLayout::TransferSrc: return D3D12_RESOURCE_STATE_COPY_SOURCE;
-            case ImageLayout::TransferDst: return D3D12_RESOURCE_STATE_COPY_DEST;
-            case ImageLayout::Present: return D3D12_RESOURCE_STATE_PRESENT;
-            default: return D3D12_RESOURCE_STATE_COMMON;
+        case ImageLayout::Undefined: return D3D12_RESOURCE_STATE_COMMON;
+        case ImageLayout::General: return D3D12_RESOURCE_STATE_COMMON;
+        case ImageLayout::ColorAttachment: return D3D12_RESOURCE_STATE_RENDER_TARGET;
+        case ImageLayout::DepthStencilAttachment: return D3D12_RESOURCE_STATE_DEPTH_WRITE;
+        case ImageLayout::DepthStencilReadOnly: return D3D12_RESOURCE_STATE_DEPTH_READ;
+        case ImageLayout::ShaderReadOnly: return D3D12_RESOURCE_STATE_GENERIC_READ;
+        case ImageLayout::TransferSrc: return D3D12_RESOURCE_STATE_COPY_SOURCE;
+        case ImageLayout::TransferDst: return D3D12_RESOURCE_STATE_COPY_DEST;
+        case ImageLayout::Present: return D3D12_RESOURCE_STATE_PRESENT;
+        default: return D3D12_RESOURCE_STATE_COMMON;
         }
     }
 
@@ -534,6 +534,59 @@ namespace RHIStructures
             outFormats[i] = DXFormat(formats[i]);
         }
     }
+
+    VkPipelineStageFlags ConvertPipelineStage(PipelineStage stage)
+    {
+        switch (stage)
+        {
+        case PipelineStage::TopOfPipe: 
+            return VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+        case PipelineStage::DrawIndirect: 
+            return VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT;
+        case PipelineStage::VertexInput: 
+            return VK_PIPELINE_STAGE_VERTEX_INPUT_BIT;
+        case PipelineStage::VertexShader: 
+            return VK_PIPELINE_STAGE_VERTEX_SHADER_BIT;
+        case PipelineStage::FragmentShader: 
+            return VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+        case PipelineStage::EarlyFragmentTests: 
+            return VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+        case PipelineStage::LateFragmentTests: 
+            return VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+        case PipelineStage::ColorAttachmentOutput: 
+            return VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        case PipelineStage::ComputeShader: 
+            return VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+        case PipelineStage::Transfer: 
+            return VK_PIPELINE_STAGE_TRANSFER_BIT;
+        case PipelineStage::BottomOfPipe: 
+            return VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+        case PipelineStage::AllGraphics: 
+            return VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT;
+        case PipelineStage::AllCommands: 
+            return VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+        default: 
+            return VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+        }
+    }
+    
+    VkImageLayout VulkanImageLayout(ImageLayout layout)
+    {
+        switch (layout)
+        {
+        case ImageLayout::Undefined: return VK_IMAGE_LAYOUT_UNDEFINED;
+        case ImageLayout::General: return VK_IMAGE_LAYOUT_GENERAL;
+        case ImageLayout::ColorAttachment: return VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        case ImageLayout::DepthStencilAttachment: return VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+        case ImageLayout::DepthStencilReadOnly: return VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+        case ImageLayout::ShaderReadOnly: return VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        case ImageLayout::TransferSrc: return VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+        case ImageLayout::TransferDst: return VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        case ImageLayout::Present: return VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+        default: return VK_IMAGE_LAYOUT_UNDEFINED;
+        }
+    }
+
 }
 
 

@@ -13,7 +13,6 @@ namespace RHIConstants
         PipelineDesc rainbowTrianglePipeline;
 
         // 1. Shader stages
-    
         rainbowTrianglePipeline.VertexShader = ImportShader("vs_rainbow", "main");
         rainbowTrianglePipeline.FragmentShader = ImportShader("ps_rainbow", "main");
 
@@ -22,10 +21,6 @@ namespace RHIConstants
         if (!rainbowTrianglePipeline.FragmentShader.ByteCode || rainbowTrianglePipeline.FragmentShader.ByteCodeSize == 0)
             throw std::runtime_error("Failed to load fragment shader!");
         
-        std::cerr << "VS size: " << rainbowTrianglePipeline.VertexShader.ByteCodeSize << std::endl;
-        std::cerr << "PS size: " << rainbowTrianglePipeline.FragmentShader.ByteCodeSize << std::endl;
-
-
         // 2. Vertex input layout
         rainbowTrianglePipeline.VertexAttributes = {}; // Empty - shader uses SV_VertexID
         rainbowTrianglePipeline.VertexBindings = {};   // Empty - no bindings needed

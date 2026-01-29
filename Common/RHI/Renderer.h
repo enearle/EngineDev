@@ -16,5 +16,6 @@ public:
     static void EndRender();
     static void BeginFrame();
     static void EndFrame();
-    static void GetSwapChainRenderTargets(std::vector<void*>& outColorViews);
+    static void GetSwapChainRenderTargets(void*& outBackBufferView, void*& outBackBuffer);
+    static void Wait();
 };

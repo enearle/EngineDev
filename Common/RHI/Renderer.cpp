@@ -56,15 +56,29 @@ void Renderer::EndFrame()
     }
 }
 
-void Renderer::GetSwapChainRenderTargets(std::vector<void*>& outColorViews)
+void Renderer::GetSwapChainRenderTargets(void*& outBackBufferView, void*& outBackBuffer)
 {
+    // TODO: get explicit format from swapchain
     if (GRAPHICS_SETTINGS.APIToUse == Vulkan)
-        throw std::runtime_error("No vulkan support for swapchain RTs!");
+    {
+        VkImageView swapchainImageView = VulkanCore::GetInstance().GetCurrentSwapchainImageView();
+        VkImage vkImage = VulkanCore::GetInstance().GetCurrentSwapchainImage();
+        outBackBufferView = swapchainImageView;
+        outBackBuffer = reinterpret_cast<void*>(vkImage);
+    }
     else if (GRAPHICS_SETTINGS.APIToUse == DirectX12)
     {
-       D3D12_CPU_DESCRIPTOR_HANDLE rtvHandle = D3DCore::GetInstance().GetRenderTargetDescriptor();
-       outColorViews.clear();
-       outColorViews.push_back(reinterpret_cast<void*>(rtvHandle.ptr)); 
+        D3D12_CPU_DESCRIPTOR_HANDLE rtvHandle = D3DCore::GetInstance().GetRenderTargetDescriptor();
+        ID3D12Resource* backBuffer = D3DCore::GetInstance().GetCurrentBackBuffer();
+        outBackBufferView = reinterpret_cast<void*>(rtvHandle.ptr);
+        outBackBuffer = backBuffer;
     }
-    
+}
+
+void Renderer::Wait()
+{
+    if (GRAPHICS_SETTINGS.APIToUse == Vulkan)
+        VulkanCore::GetInstance().WaitForGPU();
+    else if (GRAPHICS_SETTINGS.APIToUse == DirectX12)
+        D3DCore::GetInstance().WaitForGPU();
 }

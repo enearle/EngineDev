@@ -46,17 +46,6 @@ void D3DRenderPassExecutor::Begin(Pipeline* pipeline,
     
     ID3D12GraphicsCommandList* cmdList = GetCommandList();
     D3DPipeline* d3dPipeline = static_cast<D3DPipeline*>(pipeline);
-
-    ID3D12Resource* backBuffer = D3DCore::GetInstance().GetBackBuffer();
-    
-    D3D12_RESOURCE_BARRIER barrier{};
-    barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-    barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-    barrier.Transition.pResource = backBuffer;
-    barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
-    barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
-    barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-    cmdList->ResourceBarrier(1, &barrier);
     
     // Set root signature and pipeline state
     cmdList->SetGraphicsRootSignature(d3dPipeline->GetRootSignature());
@@ -110,7 +99,7 @@ void D3DRenderPassExecutor::Begin(Pipeline* pipeline,
         );
     }
 
-    cmdList->IASetPrimitiveTopology( DXPrimitiveTopology(pipeline->GetDesc().PrimitiveTopology));
+    cmdList->IASetPrimitiveTopology( dynamic_cast<D3DPipeline*>(pipeline)->GetTopology());
     
     D3D12_VIEWPORT viewport{};
     viewport.TopLeftX = 0.0f;
@@ -131,19 +120,7 @@ void D3DRenderPassExecutor::Begin(Pipeline* pipeline,
 
 void D3DRenderPassExecutor::End()
 {
-    ID3D12GraphicsCommandList* cmdList = GetCommandList();
-    
-    // Transition backbuffer back to PRESENT state
-    ID3D12Resource* backBuffer = D3DCore::GetInstance().GetBackBuffer();
-    
-    D3D12_RESOURCE_BARRIER barrier{};
-    barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-    barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-    barrier.Transition.pResource = backBuffer;
-    barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
-    barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
-    barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-    cmdList->ResourceBarrier(1, &barrier);
+    // Empty atm
 
 }
 
@@ -171,7 +148,7 @@ void D3DRenderPassExecutor::IssueMemoryBarrier(const RHIStructures::MemoryBarrie
 void D3DRenderPassExecutor::IssueImageMemoryBarrier(const ImageMemoryBarrier& barrier)
 {
     ID3D12GraphicsCommandList* cmdList = GetCommandList();
-    ID3D12Resource* resource = reinterpret_cast<ID3D12Resource*>(barrier.Image);
+    ID3D12Resource* resource = reinterpret_cast<ID3D12Resource*>(barrier.VkImage);
     
     // Convert layout enums to D3D12 resource states
     D3D12_RESOURCE_STATES stateBefore = ConvertLayoutToResourceState(barrier.OldLayout);
@@ -205,12 +182,7 @@ VulkanRenderPassExecutor::VulkanRenderPassExecutor()
 
 VulkanRenderPassExecutor::~VulkanRenderPassExecutor()
 {
-    VkDevice device = VulkanCore::GetInstance().GetDevice();
-    for (auto framebuffer : Framebuffers)
-    {
-        if (framebuffer != VK_NULL_HANDLE)
-            vkDestroyFramebuffer(device, framebuffer, nullptr);
-    }
+    InvalidateFramebuffers();
 }
 
 void VulkanRenderPassExecutor::Begin(Pipeline* pipeline,
@@ -226,9 +198,9 @@ void VulkanRenderPassExecutor::Begin(Pipeline* pipeline,
     
     std::vector<VkImageView> attachmentViews;
     for (const auto& colorView : colorViews)
-        attachmentViews.push_back(*reinterpret_cast<VkImageView*>(colorView));
+        attachmentViews.push_back(reinterpret_cast<VkImageView>(colorView));
     if (depthView)
-        attachmentViews.push_back(*reinterpret_cast<VkImageView*>(depthView));
+        attachmentViews.push_back(reinterpret_cast<VkImageView>(depthView));
     
     uint32_t swapchainImageIndex = VulkanCore::GetInstance().GetCurrentSwapchainImageIndex();
     VkFramebuffer& framebuffer = Framebuffers[swapchainImageIndex];
@@ -327,35 +299,41 @@ void VulkanRenderPassExecutor::IssueMemoryBarrier(const RHIStructures::MemoryBar
 
 void VulkanRenderPassExecutor::IssueImageMemoryBarrier(const ImageMemoryBarrier& barrier)
 {
-    VkImageMemoryBarrier imgBarrier{};
-    imgBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    imgBarrier.srcAccessMask = barrier.SrcAccessMask;
-    imgBarrier.dstAccessMask = barrier.DstAccessMask;
-    imgBarrier.oldLayout = static_cast<VkImageLayout>(barrier.OldLayout);
-    imgBarrier.newLayout = static_cast<VkImageLayout>(barrier.NewLayout);
-    imgBarrier.image = *reinterpret_cast<VkImage*>(barrier.Image);
-    VkImageAspectFlags aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    if (barrier.OldLayout == ImageLayout::DepthStencilAttachment || 
-        barrier.OldLayout == ImageLayout::DepthStencilReadOnly ||
-        barrier.NewLayout == ImageLayout::DepthStencilAttachment ||
-        barrier.NewLayout == ImageLayout::DepthStencilReadOnly)
-    {
-        aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
-    }
-    imgBarrier.subresourceRange.aspectMask = aspectMask;
-    imgBarrier.subresourceRange.baseMipLevel = barrier.BaseMipLevel;
-    imgBarrier.subresourceRange.levelCount = barrier.MipLevelCount;
-    imgBarrier.subresourceRange.baseArrayLayer = barrier.BaseArrayLayer;
-    imgBarrier.subresourceRange.layerCount = barrier.ArrayLayerCount;
+    VkCommandBuffer cmdBuffer = GetCommandBuffer();
+    
+    VkImageMemoryBarrier vkBarrier{};
+    vkBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    vkBarrier.pNext = nullptr;
+    vkBarrier.oldLayout = VulkanImageLayout(barrier.OldLayout);  // Use conversion function
+    vkBarrier.newLayout = VulkanImageLayout(barrier.NewLayout);  // Use conversion function
+    vkBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    vkBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    vkBarrier.image = reinterpret_cast<VkImage>(barrier.VkImage);
+    vkBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    vkBarrier.subresourceRange.baseMipLevel = barrier.BaseMipLevel;
+    vkBarrier.subresourceRange.levelCount = barrier.MipLevelCount;
+    vkBarrier.subresourceRange.baseArrayLayer = barrier.BaseArrayLayer;
+    vkBarrier.subresourceRange.layerCount = barrier.ArrayLayerCount;
+    vkBarrier.srcAccessMask = barrier.SrcAccessMask;
+    vkBarrier.dstAccessMask = barrier.DstAccessMask;
+    
+    VkPipelineStageFlags srcStage = ConvertPipelineStage(barrier.SrcStage);
+    VkPipelineStageFlags dstStage = ConvertPipelineStage(barrier.DstStage);
+    
+    // Ensure we never pass 0 for srcStageMask
+    if (srcStage == 0)
+        srcStage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+    if (dstStage == 0)
+        dstStage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
     
     vkCmdPipelineBarrier(
-        GetCommandBuffer(),
-        static_cast<VkPipelineStageFlags>(barrier.SrcStage),
-        static_cast<VkPipelineStageFlags>(barrier.DstStage),
-        0,
-        0, nullptr,
-        0, nullptr,
-        1, &imgBarrier
+        cmdBuffer,
+        srcStage,
+        dstStage,
+        0,  // No dependency flags
+        0, nullptr,  // No memory barriers
+        0, nullptr,  // No buffer memory barriers
+        1, &vkBarrier
     );
 }
 

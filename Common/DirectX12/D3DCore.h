@@ -16,6 +16,7 @@ class Window;
 class D3DCore
 {
     D3DCore() = default;
+    
     bool Initialized = false;
 
     Window* RendererWindow;
@@ -53,7 +54,7 @@ class D3DCore
     UINT SwapChainMSAASamples = 1;
     
 public:
-
+    ~D3DCore() = default;
     static D3DCore& GetInstance();
     
     void InitDirect3D(Window* window, struct CoreInitData data);
@@ -70,7 +71,7 @@ public:
     ComPtr<ID3D12DescriptorHeap> GetDepthStencilDescriptorHeap() const { return DepthStencilDescriptorHeap; }
     UINT GetMSAAQualityLevel(DXGI_FORMAT format, UINT sampleCount);
     D3D12_CPU_DESCRIPTOR_HANDLE GetRenderTargetDescriptor();
-    ID3D12Resource* GetBackBuffer() const { return SwapChainBuffer[CurrentFrameIndex].Get(); }
+    ID3D12Resource* GetCurrentBackBuffer() const { return SwapChainBuffer[CurrentFrameIndex].Get(); }
 
 private:
      

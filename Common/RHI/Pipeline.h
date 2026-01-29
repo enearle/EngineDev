@@ -9,9 +9,6 @@ class Pipeline
 public:
     static Pipeline* Create(const PipelineDesc& desc);
     virtual ~Pipeline() = default;
-    virtual const PipelineDesc& GetDesc() const { return Desc; }
-protected:
-    PipelineDesc Desc;
 };
 
 class D3DPipeline : public Pipeline
@@ -20,9 +17,10 @@ public:
     D3DPipeline(const PipelineDesc& desc);
     ID3D12PipelineState* GetPipelineState() const { return PipelineState.Get(); }
     ID3D12RootSignature* GetRootSignature() const { return RootSignature.Get(); }
-    
+    D3D12_PRIMITIVE_TOPOLOGY GetTopology() const { return Topology; }
     
 private:
+    D3D12_PRIMITIVE_TOPOLOGY Topology;
     ComPtr<ID3D12RootSignature> RootSignature;
     ComPtr<ID3D12PipelineState> PipelineState;
 };
@@ -39,7 +37,7 @@ public:
     
 private:
     void CreateRenderPass(const PipelineDesc& desc);
-    
+    std::vector<VkShaderModule> ShaderModules;
     VkPipeline Pipeline = VK_NULL_HANDLE;
     VkPipelineLayout PipelineLayout = VK_NULL_HANDLE;
     VkPipelineCache PipelineCache = VK_NULL_HANDLE;
