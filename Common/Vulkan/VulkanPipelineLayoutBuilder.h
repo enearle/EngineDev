@@ -22,9 +22,6 @@ private:
 
     static DescriptorSetLayoutBinding CreateDescriptorSetLayoutBinding(
         const DescriptorBinding& binding,
-        uint32_t& bindingIndex
+        const ShaderStageMask& visibleStages
     );
-
-    static VkDescriptorType GetVulkanDescriptorType(DescriptorType type);
-    static VkShaderStageFlags GetShaderStageFlags(const ShaderStageMask& stages);
 };

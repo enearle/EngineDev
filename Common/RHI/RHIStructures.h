@@ -1,6 +1,5 @@
 ﻿#pragma once
 #include <cstdint>
-#include <cstdint>
 #include <array>
 #include <d3d12.h>
 #include <dxgiformat.h>
@@ -9,8 +8,35 @@
 #include "../Windows/WindowsHeaders.h"
 #include <DirectXMath.h>
 
+namespace VulkanStructs
+{
+    struct VulkanBufferData;
+}
+
+
 namespace RHIStructures
 {
+    //=====================================//
+    //  ----------  Universal  ----------  //
+    //=====================================//
+
+    class Mask
+    {
+    protected:
+        uint32_t Value = 0;
+    public:
+
+        virtual ~Mask() = default;
+
+        uint32_t Get() const { return Value; }
+        void Set(uint32_t value) { Value = value; }
+
+        operator uint32_t() const { return Value; }
+        Mask& operator=(uint32_t v) { Value = v; return *this; }
+        Mask& operator|=(uint32_t v) { Value |= v; return *this; }
+        Mask& operator&=(uint32_t v) { Value &= v; return *this; }
+        Mask& operator^=(uint32_t v) { Value ^= v; return *this; }
+    };
     
     //=====================================//
     //  ----------  Pipeline  -----------  //
@@ -205,15 +231,24 @@ namespace RHIStructures
     VkDescriptorType VulkanDescriptorType(DescriptorType descriptorType);
     D3D12_DESCRIPTOR_HEAP_TYPE DXDescriptorType(DescriptorType descriptorType);
 
-    struct ShaderStageMask
+    class ShaderStageMask : public Mask
     {
-        bool Vertex : 1 = false;
-        bool Fragment : 1 = false;
-        bool Geometry : 1 = false;
-        bool TessControl : 1 = false;
-        bool TessEval : 1 = false;   
-        bool Compute : 1 = false;
+    public:
+        bool GetVertex() const { return (Value >> 0) & 1; }
+        bool GetTessControl() const { return (Value >> 1) & 1; }
+        bool GetTessEval() const { return (Value >> 2) & 1; }
+        bool GetGeometry() const { return (Value >> 3) & 1; }
+        bool GetFragment() const { return (Value >> 4) & 1; }
+        bool GetCompute() const { return (Value >> 5) & 1; }
+
+        void SetVertex(bool b) { b ? Value |= (1 << 0) : Value &= ~(1 << 0); }
+        void SetTessControl(bool b) { b ? Value |= (1 << 1) : Value &= ~(1 << 1); }
+        void SetTessEval(bool b) { b ? Value |= (1 << 2) : Value &= ~(1 << 2); }
+        void SetGeometry(bool b) { b ? Value |= (1 << 3) : Value &= ~(1 << 3); }
+        void SetFragment(bool b) { b ? Value |= (1 << 4) : Value &= ~(1 << 4); }
+        void SetCompute(bool b) { b ? Value |= (1 << 5) : Value &= ~(1 << 5); }
     };
+
     VkShaderStageFlags VulkanShaderStageFlags(ShaderStageMask flags);
     D3D12_SHADER_VISIBILITY DXShaderStageFlags(ShaderStageMask flags);
     
@@ -223,12 +258,12 @@ namespace RHIStructures
         uint32_t Slot;                  // "Binding index" (replaces Register)
         uint32_t Set;                   // "Descriptor set" (replaces Space) - 0 for most cases
         uint32_t Count;                 // For arrays
-        ShaderStageMask VisibleStages;
     };
 
     struct ResourceLayout               // RootSignatureDesc 
     {
         std::vector<DescriptorBinding> Bindings;
+        ShaderStageMask VisibleStages;
     };
 
     enum class ImageLayout : uint8_t
@@ -412,45 +447,66 @@ namespace RHIStructures
         Sampler
     };
 
-    enum BufferUsage : uint32_t
+    class BufferUsage : public Mask
     {
-        VertexBuffer = 1 << 0,
-        IndexBuffer = 1 << 1,
-        UniformBuffer = 1 << 2,
-        StorageBuffer = 1 << 3,
-        TransferSrcBuffer = 1 << 4,
-        TransferDstBuffer = 1 << 5
-    };
+    public:
+        bool GetTransferSrc() const { return (Value >> 0) & 1; }
+        bool GetTransferDst() const { return (Value >> 1) & 1; }
+        bool GetUniformTexel() const { return (Value >> 2) & 1; }
+        bool GetStorageTexel() const { return (Value >> 3) & 1; }
+        bool GetUniform() const { return (Value >> 4) & 1; }
+        bool GetStorage() const { return (Value >> 5) & 1; }
+        bool GetIndex() const { return (Value >> 6) & 1; }
+        bool GetVertex() const { return (Value >> 7) & 1; }
 
-    enum MemoryAccess : uint32_t
-    {
-        CPUWrite = 1 << 0,
-        CPURead = 1 << 1,
-        GPUWrite = 1 << 2,
-        GPURead = 1 << 3
+        void SetTransferSrc(bool b) { b ? Value |= (1 << 0) : Value &= ~(1 << 0); }
+        void SetTransferDst(bool b) { b ? Value |= (1 << 1) : Value &= ~(1 << 1); }
+        void SetUniformTexel(bool b) { b ? Value |= (1 << 2) : Value &= ~(1 << 2); }
+        void SetStorageTexel(bool b) { b ? Value |= (1 << 3) : Value &= ~(1 << 3); }
+        void SetUniform(bool b) { b ? Value |= (1 << 4) : Value &= ~(1 << 4); }
+        void SetStorage(bool b) { b ? Value |= (1 << 5) : Value &= ~(1 << 5); }
+        void SetIndex(bool b) { b ? Value |= (1 << 6) : Value &= ~(1 << 6); }
+        void SetVertex(bool b) { b ? Value |= (1 << 7) : Value &= ~(1 << 7); }
     };
+    VkBufferUsageFlags VulkanBufferUsage(BufferUsage usage);
+
+    class MemoryAccess : public Mask
+    {
+    public:
+        bool GetCPUWrite() const { return (Value >> 0) & 1; }
+        bool GetCPURead() const { return (Value >> 1) & 1; }
+        bool GetGPUWrite() const { return (Value >> 2) & 1; }
+        bool GetGPURead() const { return (Value >> 3) & 1; }
+
+        void SetCPUWrite(bool b) { b ? Value |= (1 << 0) : Value &= ~(1 << 0); }
+        void SetCPURead(bool b) { b ? Value |= (1 << 1) : Value &= ~(1 << 1); }
+        void SetGPUWrite(bool b) { b ? Value |= (1 << 2) : Value &= ~(1 << 2); }
+        void SetGPURead(bool b) { b ? Value |= (1 << 3) : Value &= ~(1 << 3); }
+    };
+    
+    D3D12_HEAP_TYPE DXMemoryType(MemoryAccess access);
+    VkMemoryPropertyFlags VulkanMemoryType(MemoryAccess access);
 
     struct BufferDesc
     {
         uint64_t Size = 0;
-        uint32_t Usage = {};
-        uint32_t Access = {};
+        //BufferUsage Usage = {};
+        MemoryAccess Access = {};
         const void* InitialData = nullptr;
     };
 
     struct BufferAllocation
     {
-        void* CPUAddress = nullptr;  // For CPU-accessible buffers
-        uint64_t GPUAddress = 0;     // For GPU access
+        bool IsDeviceLocal = false;
+        void* Address = nullptr;
         uint64_t Size = 0;
-        uint32_t Usage = {};
-        uint32_t Access = {};
-        
-        // API-specific handles
-        void* D3D12Resource = nullptr;
-        void* VulkanBuffer = nullptr;
-        void* VulkanMemory = nullptr;
+        //BufferUsage Usage = {};
+        MemoryAccess Access = {};
+        void* Buffer  = nullptr;
     };
+    static UINT GetBufferDeviceAddress(const BufferAllocation& bufferAllocation);
+    static VulkanStructs::VulkanBufferData* VulkanBuffer(const BufferAllocation& bufferAllocation);
+    static ID3D12Resource* DXBuffer(const BufferAllocation& bufferAllocation);
 
     enum ImageUsage : uint32_t
     {

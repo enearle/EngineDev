@@ -3,12 +3,13 @@
 #include <fstream>
 #include <string>
 #include <filesystem>
-
+#include "../Vulkan/VulkanStructs.h"
 #include "../Vulkan/VulkanCore.h"
 #include "../GraphicsSettings.h"
 #include "../Windows/Win32ErrorHandler.h"
 
 using namespace Win32ErrorHandler;
+using namespace VulkanStructs;
 
 namespace RHIStructures
 {
@@ -498,16 +499,38 @@ namespace RHIStructures
         return D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
     }
 
+    D3D12_SHADER_VISIBILITY DXShaderStageFlags(ShaderStageMask stages)
+    {
+        // DirectX 12 does not support fine-grained shader visibility.
+        // Parameters are either visible to one stage or all stages...
+        int stageCount = 0;
+        if (stages.GetVertex()) stageCount++;
+        if (stages.GetFragment()) stageCount++;
+        if (stages.GetGeometry()) stageCount++;
+        if (stages.GetTessControl()) stageCount++;
+        if (stages.GetTessEval()) stageCount++;
+        if (stages.GetCompute()) stageCount++;
+    
+        if (stageCount > 1 || stages.GetCompute())
+            return D3D12_SHADER_VISIBILITY_ALL;
+    
+        if (stages.GetVertex())
+            return D3D12_SHADER_VISIBILITY_VERTEX;
+        if (stages.GetFragment())
+            return D3D12_SHADER_VISIBILITY_PIXEL;
+        if (stages.GetGeometry())
+            return D3D12_SHADER_VISIBILITY_GEOMETRY;
+        if (stages.GetTessControl())
+            return D3D12_SHADER_VISIBILITY_HULL;
+        if (stages.GetTessEval())
+            return D3D12_SHADER_VISIBILITY_DOMAIN;
+    
+        return D3D12_SHADER_VISIBILITY_ALL;
+    }
+
     VkShaderStageFlags VulkanShaderStageFlags(ShaderStageMask flags)
     {
-        VkShaderStageFlags result = 0;
-        if (flags.Vertex) result |= VK_SHADER_STAGE_VERTEX_BIT;
-        if (flags.Fragment) result |= VK_SHADER_STAGE_FRAGMENT_BIT;
-        if (flags.Geometry) result |= VK_SHADER_STAGE_GEOMETRY_BIT;
-        if (flags.TessControl) result |= VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT;
-        if (flags.TessEval) result |= VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT;
-        if (flags.Compute) result |= VK_SHADER_STAGE_COMPUTE_BIT;
-        return result;
+        return reinterpret_cast<VkShaderStageFlags&>(flags);
     }
 
     D3D12_RESOURCE_STATES ConvertLayoutToResourceState(ImageLayout layout)
@@ -587,6 +610,35 @@ namespace RHIStructures
         }
     }
 
+    VkBufferUsageFlags VulkanBufferUsage(BufferUsage usage)
+    {
+        return reinterpret_cast<VkBufferUsageFlags&>(usage);
+    }
+
+    D3D12_HEAP_TYPE DXMemoryType(MemoryAccess access)
+    {
+        return D3D12_HEAP_TYPE_DEFAULT;
+    }
+
+    VkMemoryPropertyFlags VulkanMemoryType(MemoryAccess access)
+    {
+        return VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+    }
+
+    UINT GetBufferDeviceAddress(const BufferAllocation& bufferAllocation)
+    {
+        return reinterpret_cast<UINT>(bufferAllocation.Address);
+    }
+
+    VulkanBufferData* VulkanBuffer(const BufferAllocation& bufferAllocation)
+    {
+        return static_cast<VulkanBufferData*>(bufferAllocation.Buffer);
+    }
+
+    ID3D12Resource* DXBuffer(const BufferAllocation& bufferAllocation)
+    {
+        return static_cast<ID3D12Resource*>(bufferAllocation.Buffer);
+    }
 }
 
 

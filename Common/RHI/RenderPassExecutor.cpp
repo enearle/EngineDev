@@ -345,7 +345,7 @@ VkCommandBuffer VulkanRenderPassExecutor::GetCommandBuffer()
 void VulkanRenderPassExecutor::InvalidateFramebuffers()
 {
     VkDevice device = VulkanCore::GetInstance().GetDevice();
-    for (auto framebuffer : Framebuffers)
+    for (VkFramebuffer framebuffer : Framebuffers)
     {
         if (framebuffer != VK_NULL_HANDLE)
             vkDestroyFramebuffer(device, framebuffer, nullptr);

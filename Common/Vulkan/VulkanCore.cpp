@@ -50,7 +50,9 @@ void VulkanCore::Cleanup()
         vkDestroySemaphore(Device, RenderFinishedSemaphores[i], nullptr);
         vkDestroyFence(Device, InFlightFences[i], nullptr);
     }
-    
+    vkDestroyFence(Device, TransferFence, nullptr);
+    vkFreeCommandBuffers(Device, CommandPool, static_cast<uint32_t>(CommandBuffers.size()), CommandBuffers.data());
+    vkFreeCommandBuffers(Device, CommandPool, 1, &TransferCommandBuffer);
     vkDestroyCommandPool(Device, CommandPool, nullptr);
     vkDestroySwapchainKHR(Device, Swapchain, nullptr);
     DestroySwapchainViews();
@@ -381,7 +383,7 @@ void VulkanCore::CreateSynchronizationPrimitives()
     
     VkFenceCreateInfo fenceInfo{};
     fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-    fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;  // Start signaled
+    fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
     
     for (uint32_t i = 0; i < SwapChainImageCount; i++)
     {
@@ -392,6 +394,11 @@ void VulkanCore::CreateSynchronizationPrimitives()
             throw std::runtime_error("Failed to create synchronization primitives.");
         }
     }
+
+    VkResult result = vkCreateFence(Device, &fenceInfo, nullptr, &TransferFence);
+    if (result != VK_SUCCESS)
+        throw std::runtime_error("Failed to create transfer fence.");
+
 }
 
 void VulkanCore::CreateCommandPool()
@@ -418,6 +425,17 @@ void VulkanCore::CreateCommandPool()
     result = vkAllocateCommandBuffers(Device, &allocInfo, CommandBuffers.data());
     if (result != VK_SUCCESS)
         throw std::runtime_error("Failed to allocate command buffers.");
+
+    VkCommandBufferAllocateInfo transferAllocInfo{};
+    transferAllocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    transferAllocInfo.commandPool = CommandPool;
+    transferAllocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    transferAllocInfo.commandBufferCount = 1;
+
+    result = vkAllocateCommandBuffers(Device, &transferAllocInfo, &TransferCommandBuffer);
+    if (result != VK_SUCCESS)
+        throw std::runtime_error("Failed to allocate transfer command buffer.");
+
 }
 
 //======================================================//

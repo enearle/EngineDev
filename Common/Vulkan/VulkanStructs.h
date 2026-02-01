@@ -32,4 +32,10 @@ namespace VulkanStructs
         }
     };
 
+    struct VulkanBufferData
+    {
+        VkBuffer Buffer = VK_NULL_HANDLE;
+        VkDeviceMemory Memory = VK_NULL_HANDLE;
+    };
+
 }

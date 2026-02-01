@@ -67,6 +67,8 @@ public:
     void BindPipeline(Pipeline* pipeline) override;
     void IssueMemoryBarrier(const RHIStructures::MemoryBarrier& barrier) override;
     void IssueImageMemoryBarrier(const ImageMemoryBarrier& barrier) override;
+
+public: // Vulkan specific cleanup
     void InvalidateFramebuffers();
 
 private:

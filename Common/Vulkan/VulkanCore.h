@@ -5,7 +5,7 @@
 #include <vector>
 #include <iostream>
 #include <set>
-#include "../Vulkan/Structs.h"
+#include "../Vulkan/VulkanStructs.h"
 
 using namespace VulkanStructs;
 
@@ -27,6 +27,7 @@ class VulkanCore
     std::vector<VkSemaphore> ImageAvailableSemaphores;
     std::vector<VkSemaphore> RenderFinishedSemaphores;
     std::vector<VkFence> InFlightFences;
+    VkFence TransferFence = VK_NULL_HANDLE;
 
     uint32_t SwapChainImageCount = 3;                                       // Maximum number of frames == swapchain size
     
@@ -44,7 +45,7 @@ class VulkanCore
     VkFormat SwapchainFormat;                                               // Colour data packing and colour space.
     std::vector<SwapchainImageData> SwapchainImages;                        // Images and their views used in the swapchain.
     std::vector<VkCommandBuffer> CommandBuffers;                            // Command buffer for each swapchain image.
-
+    VkCommandBuffer TransferCommandBuffer               = VK_NULL_HANDLE;
     
     // Debug
     const std::vector<const char*> DEVICE_EXTENSIONS = {
@@ -64,24 +65,29 @@ public:
     
     void InitVulkan(Window* window, struct CoreInitData data);
     void Cleanup();
+    void BeginFrame();
+    void EndFrame();
+    void WaitForGPU();
+
+    // Getters
     VkDevice GetDevice() const { return Device; }
     VkPhysicalDevice GetPhysicalDevice() const { return PhysicalDevice; }
     VkQueue GetGraphicsQueue() const { return GraphicsQueue; }
+    VkCommandPool GetCommandPool() const { return CommandPool; }
+    VkFence GetTransferFence() const { return TransferFence; }
     VkExtent2D GetExtent() const { return Extent2D; }
     VkFormat GetSwapchainFormat() const { return SwapchainFormat; }
+    VkCommandBuffer GetTransferCommandBuffer() const { return TransferCommandBuffer; }
     const std::vector<SwapchainImageData>& GetSwapchainImages() const { return SwapchainImages; }
     VkCommandBuffer GetCommandBuffer() const { return CommandBuffers[CurrentFrameIndex]; }
     const std::vector<VkSemaphore>& GetImageAvailableSemaphores() const { return ImageAvailableSemaphores; }
     const std::vector<VkSemaphore>& GetRenderFinishedSemaphores() const { return RenderFinishedSemaphores; }
     const std::vector<VkFence>& GetInFlightFences() const { return InFlightFences; }
     uint32_t GetSwapchainImageCount() const { return SwapChainImageCount; }
-    void BeginFrame();
-    void EndFrame();
     uint32_t GetCurrentFrameIndex() const { return CurrentFrameIndex; }
     uint32_t GetCurrentSwapchainImageIndex() const { return CurrentSwapchainImageIndex; }
     VkImageView GetCurrentSwapchainImageView() const { return SwapchainImages[CurrentSwapchainImageIndex].ImageView; }
     VkImage GetCurrentSwapchainImage() const {return SwapchainImages[CurrentSwapchainImageIndex].ImageHandle; }
-    void WaitForGPU();
     
 private:
     
@@ -95,8 +101,6 @@ private:
     void CreateCommandPool();
     void CreateSwapchain();
     
-
-
     // Debug Support
     VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo,
         const VkAllocationCallbacks* pAllocator, VkDebugUtilsMessengerEXT* pDebugMessenger);
@@ -106,7 +110,6 @@ private:
             VkDebugUtilsMessageTypeFlagsEXT messageType,
             const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
             void* pUserData);
-
     
     // Swapchain support
     SwapchainDetailsData GetSwapchainDetails();
@@ -121,14 +124,12 @@ private:
     bool CheckDeviceExtensionSupport(VkPhysicalDevice device);
     bool CheckDeviceSuitability(VkPhysicalDevice device);
     bool CheckValidationLayerSupport();
-    
+public:
+    QueueFamilyIndicesData FindQueueFamilies(VkPhysicalDevice device);  
 
+private:
     //Cleanup
     void DestroySwapchainViews();
     void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT debugMessenger, const VkAllocationCallbacks* pAllocator) ;
-    
-public:
-    // Check each device for required queue families.
-    QueueFamilyIndicesData FindQueueFamilies(VkPhysicalDevice device);
 
 };

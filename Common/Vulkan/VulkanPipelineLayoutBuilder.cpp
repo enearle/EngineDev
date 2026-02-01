@@ -1,11 +1,10 @@
-﻿#include "VulkanPipelineLayoutBuilder.h"
+﻿
+#include "VulkanPipelineLayoutBuilder.h"
 
 #include <map>
 #include <stdexcept>
 
-VkPipelineLayout VulkanPipelineLayoutBuilder::BuildPipelineLayout(
-    VkDevice device,
-    const ResourceLayout& layout)
+VkPipelineLayout VulkanPipelineLayoutBuilder::BuildPipelineLayout(VkDevice device, const ResourceLayout& layout)
 {
     if (!device)
         throw std::runtime_error("Vulkan device is null");
@@ -33,9 +32,9 @@ VkPipelineLayout VulkanPipelineLayoutBuilder::BuildPipelineLayout(
     std::map<uint32_t, std::vector<DescriptorSetLayoutBinding>> bindingsBySet;
     uint32_t bindingIndex = 0;
     
-    for (const auto& binding : layout.Bindings)
+    for (const DescriptorBinding& binding : layout.Bindings)
     {
-        auto setLayoutBinding = CreateDescriptorSetLayoutBinding(binding, bindingIndex);
+        DescriptorSetLayoutBinding setLayoutBinding = CreateDescriptorSetLayoutBinding(binding, layout.VisibleStages);
         bindingsBySet[binding.Set].push_back(setLayoutBinding);
         bindingIndex++;
     }
@@ -90,48 +89,16 @@ VkPipelineLayout VulkanPipelineLayoutBuilder::BuildPipelineLayout(
 }
 
 VulkanPipelineLayoutBuilder::DescriptorSetLayoutBinding 
-VulkanPipelineLayoutBuilder::CreateDescriptorSetLayoutBinding(
-    const DescriptorBinding& binding,
-    uint32_t& bindingIndex)
+VulkanPipelineLayoutBuilder::CreateDescriptorSetLayoutBinding(const DescriptorBinding& binding, const ShaderStageMask& visibleStages)
 {
     DescriptorSetLayoutBinding result{};
 
     result.binding.binding = binding.Slot;
-    result.binding.descriptorType = GetVulkanDescriptorType(binding.Type);
+    result.binding.descriptorType = VulkanDescriptorType(binding.Type);
     result.binding.descriptorCount = binding.Count > 0 ? binding.Count : 1;
-    result.binding.stageFlags = GetShaderStageFlags(binding.VisibleStages);
+    result.binding.stageFlags = VulkanShaderStageFlags(visibleStages);
     result.binding.pImmutableSamplers = nullptr;
 
     return result;
 }
 
-VkDescriptorType VulkanPipelineLayoutBuilder::GetVulkanDescriptorType(DescriptorType type)
-{
-    switch (type)
-    {
-    case DescriptorType::UniformBuffer:
-        return VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    case DescriptorType::StorageBuffer:
-        return VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    case DescriptorType::SampledImage:
-        return VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    case DescriptorType::StorageImage:
-        return VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-    default:
-        throw std::runtime_error("Unknown descriptor type");
-    }
-}
-
-VkShaderStageFlags VulkanPipelineLayoutBuilder::GetShaderStageFlags(const ShaderStageMask& stages)
-{
-    VkShaderStageFlags flags = 0;
-    
-    if (stages.Vertex)      flags |= VK_SHADER_STAGE_VERTEX_BIT;
-    if (stages.Fragment)    flags |= VK_SHADER_STAGE_FRAGMENT_BIT;
-    if (stages.Geometry)    flags |= VK_SHADER_STAGE_GEOMETRY_BIT;
-    if (stages.TessControl) flags |= VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT;
-    if (stages.TessEval)    flags |= VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT;
-    if (stages.Compute)     flags |= VK_SHADER_STAGE_COMPUTE_BIT;
-    
-    return flags;
-}
