@@ -74,8 +74,34 @@ namespace RHIStructures
         return DXGI_FORMAT_UNKNOWN;
     }
 
-    // Semantic names
+    VkImageAspectFlags VulkanAspects(Format format)
+    {
+        switch (format)
+        {
+        case Format::D16_UNORM:
+        case Format::D32_FLOAT:
+            return VK_IMAGE_ASPECT_DEPTH_BIT;
+        case Format::D24_UNORM_S8_UINT:
+        case Format::D32_FLOAT_S8X24_UINT:
+            return VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
+        case Format::R8G8B8A8_UNORM:
+        case Format::R8G8B8A8_UNORM_SRGB:
+        case Format::R16G16B16A16_FLOAT:
+        case Format::R32G32B32_FLOAT:
+        case Format::R32G32B32A32_FLOAT:
+        case Format::BC1_UNORM:
+        case Format::BC2_UNORM:
+        case Format::BC3_UNORM:
+        case Format::BC4_UNORM:
+        case Format::BC5_UNORM:
+        case Format::BC6H_UF16:
+        case Format::BC7_UNORM:
+        default:
+            return VK_IMAGE_ASPECT_COLOR_BIT;
+        }
+    }
 
+    // Semantic names
     constexpr std::array<std::string_view, 9> SEMANTIC_NAMES = {
         "POSITION",
         "NORMAL",
@@ -609,11 +635,31 @@ namespace RHIStructures
         default: return VK_IMAGE_LAYOUT_UNDEFINED;
         }
     }
-
+    
     VkBufferUsageFlags VulkanBufferUsage(BufferUsage usage)
     {
         return reinterpret_cast<VkBufferUsageFlags&>(usage);
     }
+
+    VkImageUsageFlags VulkanImageUsage(ImageUsage usage)
+    {
+        return reinterpret_cast<VkImageUsageFlags&>(usage)
+    }
+
+    D3D12_RESOURCE_FLAGS DXImageUsage(ImageUsage usage)
+    {
+        D3D12_RESOURCE_FLAGS flags = D3D12_RESOURCE_FLAG_NONE;
+        
+        if (usage.GetColorAttachment())
+            flags |= D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
+        if (usage.GetDepthAttachment())
+            flags |= D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
+        if (usage.GetStorageImage())
+            flags |= D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+        
+        return flags;
+    }
+
 
     D3D12_HEAP_TYPE DXMemoryType(MemoryAccess access)
     {
@@ -622,7 +668,24 @@ namespace RHIStructures
 
     VkMemoryPropertyFlags VulkanMemoryType(MemoryAccess access)
     {
-        return VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+        VkMemoryPropertyFlags flags = 0;
+
+        // If CPU visible
+        if (access.GetCPUWrite() || access.GetCPURead())
+        {
+            flags |= VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
+            
+            if (access.GetCPUWrite())
+                flags |= VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+        }
+
+        // If GPU visible
+        if ((access.GetGPUWrite() || access.GetGPURead()))
+        {
+            flags |= VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+        }
+    
+        return flags;
     }
 
     UINT GetBufferDeviceAddress(const BufferAllocation& bufferAllocation)
@@ -638,6 +701,16 @@ namespace RHIStructures
     ID3D12Resource* DXBuffer(const BufferAllocation& bufferAllocation)
     {
         return static_cast<ID3D12Resource*>(bufferAllocation.Buffer);
+    }
+
+    VkImageViewType VulkanImageViewType(ImageDesc desc)
+    {
+        VkImageViewType type = VK_IMAGE_VIEW_TYPE_2D;
+        if (desc.ArrayLayers > 1)
+            type = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
+        if (desc.Depth > 1)
+            type = VK_IMAGE_VIEW_TYPE_3D;
+        return type;
     }
 }
 

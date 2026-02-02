@@ -43,14 +43,15 @@ class VulkanCore
     VkSwapchainKHR Swapchain                            = VK_NULL_HANDLE;   // The images to be displayed, written to, and swapped.
     VkExtent2D Extent2D;                                                    // Window dimensions used in current swapchain.
     VkFormat SwapchainFormat;                                               // Colour data packing and colour space.
-    std::vector<SwapchainImageData> SwapchainImages;                        // Images and their views used in the swapchain.
+    std::vector<VulkanImageData> SwapchainImages;                        // Images and their views used in the swapchain.
     std::vector<VkCommandBuffer> CommandBuffers;                            // Command buffer for each swapchain image.
     VkCommandBuffer TransferCommandBuffer               = VK_NULL_HANDLE;
     
     // Debug
     const std::vector<const char*> DEVICE_EXTENSIONS = {
         VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-        VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME
+        VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME,
+        VK_EXT_DESCRIPTOR_BUFFER_EXTENSION_NAME
     };
     const std::vector<const char*> ValidationLayers = {
         "VK_LAYER_KHRONOS_validation"
@@ -78,7 +79,7 @@ public:
     VkExtent2D GetExtent() const { return Extent2D; }
     VkFormat GetSwapchainFormat() const { return SwapchainFormat; }
     VkCommandBuffer GetTransferCommandBuffer() const { return TransferCommandBuffer; }
-    const std::vector<SwapchainImageData>& GetSwapchainImages() const { return SwapchainImages; }
+    const std::vector<VulkanImageData>& GetSwapchainImages() const { return SwapchainImages; }
     VkCommandBuffer GetCommandBuffer() const { return CommandBuffers[CurrentFrameIndex]; }
     const std::vector<VkSemaphore>& GetImageAvailableSemaphores() const { return ImageAvailableSemaphores; }
     const std::vector<VkSemaphore>& GetRenderFinishedSemaphores() const { return RenderFinishedSemaphores; }

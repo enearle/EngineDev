@@ -15,10 +15,11 @@ namespace VulkanStructs
         }
     };
 
-    struct SwapchainImageData
+    struct VulkanImageData
     {
         VkImage ImageHandle =   VK_NULL_HANDLE;     // Handle to image.
         VkImageView ImageView = VK_NULL_HANDLE;     // ImageView is an interface for working with image.
+        VkDeviceMemory Memory = VK_NULL_HANDLE;    
     };
 
     struct QueueFamilyIndicesData
@@ -37,5 +38,4 @@ namespace VulkanStructs
         VkBuffer Buffer = VK_NULL_HANDLE;
         VkDeviceMemory Memory = VK_NULL_HANDLE;
     };
-
 }

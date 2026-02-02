@@ -144,6 +144,7 @@
   </ItemDefinitionGroup>
 
   <ItemGroup>
+    <ClCompile Include="..\..\Common\d3dUtil.cpp" />
     <ClCompile Include="..\..\Common\DirectX12\D3DCore.cpp" />
     <ClCompile Include="..\..\Common\DirectX12\D3DRootSignatureBuilder.cpp" />
     <Content Include="..\..\Common\DirectX12\Shaders\ps_rainbow.hlsl" />
@@ -173,9 +174,12 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\..\Common\Data\BitPool.h" />
     <ClInclude Include="..\..\Common\Data\Event.h" />
+    <ClInclude Include="..\..\Common\DirectX12\D3D12Structs.h" />
     <ClInclude Include="..\..\Common\DirectX12\D3DCore.h" />
     <ClInclude Include="..\..\Common\DirectX12\D3DRootSignatureBuilder.h" />
+    <ClInclude Include="..\..\Common\DirectX12\d3dx12.h" />
     <ClInclude Include="..\..\Common\GraphicsSettings.h" />
     <ClInclude Include="..\..\Common\Input\InputState.h" />
     <ClInclude Include="..\..\Common\MetaData.h" />

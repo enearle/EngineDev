@@ -1,9 +1,9 @@
 ﻿#pragma once
 #include <array>
-
 #include "../Windows/WindowsHeaders.h"
 #include <dxgi1_6.h>
 #include <d3d12.h>
+#include "d3dx12.h"
 
 #pragma comment(lib,"d3dcompiler.lib")
 #pragma comment(lib, "D3D12.lib")
@@ -23,7 +23,6 @@ class D3DCore
     
     ComPtr<IDXGIFactory6> Factory;
     ComPtr<ID3D12Device> Device;
-
 
     static const int SwapChainBufferCount = 3;
     int CurrentBackBuffer = 0;

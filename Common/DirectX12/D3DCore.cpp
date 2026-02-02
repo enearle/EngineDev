@@ -46,7 +46,6 @@ void D3DCore::WaitForGPU()
     {
         WaitForFrame(i);
     }
-
 }
 
 void D3DCore::Reset()

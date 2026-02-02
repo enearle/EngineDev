@@ -1,12 +1,14 @@
 ﻿#pragma once
 #include <cstdint>
 #include <array>
+#include <bit>
 #include <d3d12.h>
 #include <dxgiformat.h>
 #include <string>
 #include <vector>
 #include "../Windows/WindowsHeaders.h"
 #include <DirectXMath.h>
+#include <stdexcept>
 
 namespace VulkanStructs
 {
@@ -64,6 +66,8 @@ namespace RHIStructures
     };
     VkFormat VulkanFormat(Format format);
     DXGI_FORMAT DXFormat(Format format);
+    VkImageAspectFlags VulkanAspects(Format format);
+
     
     struct ShaderStage
     {
@@ -279,6 +283,7 @@ namespace RHIStructures
         Present = 8
     };
     D3D12_RESOURCE_STATES ConvertLayoutToResourceState(ImageLayout layout);
+    VkImageLayout VulkanImageLayout(ImageLayout layout);
 
     enum class AttachmentLoadOp : uint8_t
     {
@@ -424,7 +429,6 @@ namespace RHIStructures
         uint32_t ArrayLayerCount = 1;
     };
     VkPipelineStageFlags ConvertPipelineStage(PipelineStage stage);
-    VkImageLayout VulkanImageLayout(ImageLayout layout);
 
 
     //===================================//
@@ -470,6 +474,26 @@ namespace RHIStructures
     };
     VkBufferUsageFlags VulkanBufferUsage(BufferUsage usage);
 
+    class ImageUsage : public Mask
+    {
+    public:
+        bool GetTransferSrc() const { return (Value >> 0) & 1; }
+        bool GetTransferDst() const { return (Value >> 1) & 1; }
+        bool GetSampledImage() const { return (Value >> 2) & 1; }
+        bool GetStorageImage() const { return (Value >> 3) & 1; }
+        bool GetColorAttachment() const { return (Value >> 4) & 1; }
+        bool GetDepthAttachment() const { return (Value >> 5) & 1; }
+        
+        void SetTransferSrc(bool b) { b ? Value |= (1 << 0) : Value &= ~(1 << 0); }
+        void SetTransferDst(bool b) { b ? Value |= (1 << 1) : Value &= ~(1 << 1); }
+        void SetSampledImage(bool b) { b ? Value |= (1 << 2) : Value &= ~(1 << 2); }
+        void SetStorageImage(bool b) { b ? Value |= (1 << 3) : Value &= ~(1 << 3); }
+        void SetColorAttachmentImage(bool b) { b ? Value |= (1 << 4) : Value &= ~(1 << 4); }
+        void SetDepthAttachmentImage(bool b) { b ? Value |= (1 << 5) : Value &= ~(1 << 5); }
+    };
+    VkImageUsageFlags VulkanImageUsage(ImageUsage usage);
+    D3D12_RESOURCE_FLAGS DXImageUsage(ImageUsage usage);
+
     class MemoryAccess : public Mask
     {
     public:
@@ -483,83 +507,53 @@ namespace RHIStructures
         void SetGPUWrite(bool b) { b ? Value |= (1 << 2) : Value &= ~(1 << 2); }
         void SetGPURead(bool b) { b ? Value |= (1 << 3) : Value &= ~(1 << 3); }
     };
-    
     D3D12_HEAP_TYPE DXMemoryType(MemoryAccess access);
     VkMemoryPropertyFlags VulkanMemoryType(MemoryAccess access);
 
     struct BufferDesc
     {
         uint64_t Size = 0;
-        //BufferUsage Usage = {};
+        BufferUsage Usage = {};
         MemoryAccess Access = {};
         const void* InitialData = nullptr;
     };
 
     struct BufferAllocation
     {
-        bool IsDeviceLocal = false;
         void* Address = nullptr;
         uint64_t Size = 0;
-        //BufferUsage Usage = {};
+        BufferUsage Usage = {};
         MemoryAccess Access = {};
         void* Buffer  = nullptr;
+        bool IsMapped = false;
     };
-    static UINT GetBufferDeviceAddress(const BufferAllocation& bufferAllocation);
-    static VulkanStructs::VulkanBufferData* VulkanBuffer(const BufferAllocation& bufferAllocation);
-    static ID3D12Resource* DXBuffer(const BufferAllocation& bufferAllocation);
-
-    enum ImageUsage : uint32_t
-    {
-        ColorAttachmentImage = 1 << 0,
-        DepthAttachmentImage = 1 << 1,
-        SampledImage = 1 << 2,
-        StorageImage = 1 << 3,
-        TransferSrcImage = 1 << 4,
-        TransferDstImage = 1 << 5
-    };
+    UINT GetBufferDeviceAddress(const BufferAllocation& bufferAllocation);
+    VulkanStructs::VulkanBufferData* VulkanBuffer(const BufferAllocation& bufferAllocation);
+    ID3D12Resource* DXBuffer(const BufferAllocation& bufferAllocation);
 
     struct ImageDesc
     {
         uint32_t Width = 0;
         uint32_t Height = 0;
-        uint32_t Depth = 1;
-        Format Format = {};
-        uint32_t Usage = {};
+        uint32_t Depth = 1;         // 3D Textures (ie. volumetrics, lattices, voxels)
+        uint32_t ArrayLayers = 1;   // Number of elements in 2D Array (ie. atlases, cubemaps)
         uint32_t MipLevels = 1;
-        uint32_t ArrayLayers = 1;
+        uint32_t SampleCount = 1;
+        bool TilingLinear = false;
+        uint64_t Size = 0;
+        Format Format = {};
+        ImageUsage Usage = {};
+        MemoryAccess Access = {};
+        ImageLayout InitialLayout = ImageLayout::Undefined;
+        const void* InitialData = nullptr;
     };
-
+    VkImageViewType VulkanImageViewType(ImageDesc desc);
+    
     struct ImageAllocation
     {
-        uint32_t Width = 0;
-        uint32_t Height = 0;
-        uint32_t Depth = 1;
-        Format Format = {};
-        uint32_t Usage = {};
-        uint32_t MipLevels = 1;
-        uint32_t ArrayLayers = 1;
-        
-        // API-specific handles
-        void* D3D12Resource = nullptr;
-        void* VulkanImage = nullptr;
-        void* VulkanImageView = nullptr;
-        void* VulkanMemory = nullptr;
-        
-        // Descriptor handles for binding
-        // For D3D12: Store the CPU descriptor handle directly
-        D3D12_CPU_DESCRIPTOR_HANDLE D3D12CpuDescriptorHandle = {0};
-        // For Vulkan: Store the image view
-        void* VulkanImageViewHandle = nullptr;
-
-    };
-
-    struct ResourceBinding
-    {
-        uint32_t Slot = 0;
-        uint32_t Set = 0;  // Vulkan descriptor set, D3D root parameter
-        ResourceHandle Resource;
-        uint32_t Offset = 0;
-        uint32_t Size = 0;
+        void* Address = nullptr;
+        ImageDesc Desc = {};
+        void* Image = nullptr;
     };
 
 }

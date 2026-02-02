@@ -31,7 +31,6 @@ void VulkanCore::InitVulkan(Window* window, CoreInitData data)
         CreateCommandPool();
         CreateSwapchain();
         CreateSynchronizationPrimitives();
-
     }
     catch (const std::runtime_error& error)
     {
@@ -310,7 +309,7 @@ void VulkanCore::CreateSwapchain()
     // Store swapchain images and views
     for (uint32_t i = 0; i < swapchainImageCount; i++)
     {
-        SwapchainImageData newSwapchainImage = {};
+        VulkanImageData newSwapchainImage = {};
         newSwapchainImage.ImageHandle = swapchainImages[i];
 
         // TODO: Setup resource allocation system
