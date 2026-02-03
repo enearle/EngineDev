@@ -148,7 +148,7 @@ void D3DRenderPassExecutor::IssueMemoryBarrier(const RHIStructures::MemoryBarrie
 void D3DRenderPassExecutor::IssueImageMemoryBarrier(const ImageMemoryBarrier& barrier)
 {
     ID3D12GraphicsCommandList* cmdList = GetCommandList();
-    ID3D12Resource* resource = reinterpret_cast<ID3D12Resource*>(barrier.VkImage);
+    ID3D12Resource* resource = reinterpret_cast<ID3D12Resource*>(barrier.ImageResource);
     
     // Convert layout enums to D3D12 resource states
     D3D12_RESOURCE_STATES stateBefore = ConvertLayoutToResourceState(barrier.OldLayout);
@@ -308,7 +308,7 @@ void VulkanRenderPassExecutor::IssueImageMemoryBarrier(const ImageMemoryBarrier&
     vkBarrier.newLayout = VulkanImageLayout(barrier.NewLayout);  // Use conversion function
     vkBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     vkBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    vkBarrier.image = reinterpret_cast<VkImage>(barrier.VkImage);
+    vkBarrier.image = reinterpret_cast<VkImage>(barrier.ImageResource);
     vkBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
     vkBarrier.subresourceRange.baseMipLevel = barrier.BaseMipLevel;
     vkBarrier.subresourceRange.levelCount = barrier.MipLevelCount;

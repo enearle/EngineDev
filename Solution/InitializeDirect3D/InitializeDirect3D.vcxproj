@@ -144,9 +144,9 @@
   </ItemDefinitionGroup>
 
   <ItemGroup>
-    <ClCompile Include="..\..\Common\d3dUtil.cpp" />
     <ClCompile Include="..\..\Common\DirectX12\D3DCore.cpp" />
     <ClCompile Include="..\..\Common\DirectX12\D3DRootSignatureBuilder.cpp" />
+    <Content Include="..\..\Common\CodingStandard.txt" />
     <Content Include="..\..\Common\DirectX12\Shaders\ps_rainbow.hlsl" />
     <Content Include="..\..\Common\DirectX12\Shaders\vs_rainbow.hlsl" />
     <ClCompile Include="..\..\Common\Input\InputState.cpp" />
@@ -191,7 +191,6 @@
     <ClInclude Include="..\..\Common\RHI\RenderPassExecutor.h" />
     <ClInclude Include="..\..\Common\RHI\RHIConstants.h" />
     <ClInclude Include="..\..\Common\RHI\RHIStructures.h" />
-    <ClInclude Include="..\..\Common\UploadBuffer.h" />
     <ClInclude Include="..\..\Common\Vulkan\VulkanStructs.h" />
     <ClInclude Include="..\..\Common\Vulkan\VulkanCore.h" />
     <ClInclude Include="..\..\Common\Vulkan\VulkanPipelineLayoutBuilder.h" />

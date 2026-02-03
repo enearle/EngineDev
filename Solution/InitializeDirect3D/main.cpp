@@ -45,7 +45,7 @@ int main()
             preBarrier.DstAccessMask = static_cast<uint32_t>(RHIStructures::AccessFlag::ColorAttachmentWrite);
             preBarrier.OldLayout = RHIStructures::ImageLayout::Present;
             preBarrier.NewLayout = RHIStructures::ImageLayout::ColorAttachment;
-            preBarrier.VkImage = backBuffer;
+            preBarrier.ImageResource = backBuffer;
             Executor->IssueImageMemoryBarrier(preBarrier);
             
             Executor->BindPipeline(TrianglePipe);
@@ -72,7 +72,7 @@ int main()
             postBarrier.DstAccessMask = 0;
             postBarrier.OldLayout = RHIStructures::ImageLayout::ColorAttachment;
             postBarrier.NewLayout = RHIStructures::ImageLayout::Present;
-            postBarrier.VkImage = backBuffer;
+            postBarrier.ImageResource = backBuffer;
             Executor->IssueImageMemoryBarrier(postBarrier);
             
             Renderer::EndFrame();

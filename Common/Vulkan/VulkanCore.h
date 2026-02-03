@@ -43,7 +43,7 @@ class VulkanCore
     VkSwapchainKHR Swapchain                            = VK_NULL_HANDLE;   // The images to be displayed, written to, and swapped.
     VkExtent2D Extent2D;                                                    // Window dimensions used in current swapchain.
     VkFormat SwapchainFormat;                                               // Colour data packing and colour space.
-    std::vector<VulkanImageData> SwapchainImages;                        // Images and their views used in the swapchain.
+    std::vector<VulkanImageData> SwapchainImages;                           // Images and their views used in the swapchain.
     std::vector<VkCommandBuffer> CommandBuffers;                            // Command buffer for each swapchain image.
     VkCommandBuffer TransferCommandBuffer               = VK_NULL_HANDLE;
     

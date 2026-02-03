@@ -133,6 +133,7 @@ void D3DCore::CreateDevice()
 void D3DCore::CreateFence()
 {
     Device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&Fence)) >> ERROR_HANDLER;
+    Device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&TransferFence)) >> ERROR_HANDLER;
 }
 
 void D3DCore::CreateCommandObjects()
@@ -162,6 +163,27 @@ void D3DCore::CreateCommandObjects()
         
         FrameFences[i] = 0;
     }
+
+    D3D12_COMMAND_QUEUE_DESC transferQueueDesc = {};
+    transferQueueDesc.Type = D3D12_COMMAND_LIST_TYPE_COPY;
+    transferQueueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
+    Device->CreateCommandQueue(
+        &transferQueueDesc,
+        IID_PPV_ARGS(&TransferCommandQueue)) >> ERROR_HANDLER;
+
+    Device->CreateCommandAllocator(
+    D3D12_COMMAND_LIST_TYPE_DIRECT,
+    IID_PPV_ARGS(TransferCommandAllocator.GetAddressOf())) >> ERROR_HANDLER;
+
+    Device->CreateCommandList(
+        0,
+        D3D12_COMMAND_LIST_TYPE_DIRECT,
+        TransferCommandAllocator.Get(),
+        nullptr,
+        IID_PPV_ARGS(TransferCommandList.GetAddressOf())) >> ERROR_HANDLER;
+
+    TransferCommandList.Get()->Close();
+    
 
 }
 
@@ -223,7 +245,6 @@ void D3DCore::CreateSwapChainDescriptorHeaps()
 {
     RenderTargetDescriptorOffset = Device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
     DepthStencilDescriptorOffset = Device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
-    ShaderResourceDescriptorOffset = Device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
     D3D12_DESCRIPTOR_HEAP_DESC RenderTargetHeapDescription;
     RenderTargetHeapDescription.NumDescriptors = SwapChainBufferCount;

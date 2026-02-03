@@ -638,24 +638,71 @@ namespace RHIStructures
     
     VkBufferUsageFlags VulkanBufferUsage(BufferUsage usage)
     {
-        return reinterpret_cast<VkBufferUsageFlags&>(usage);
+        VkBufferUsageFlags flags = 0;
+        if (usage.TransferDestination) flags |= VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+        if (usage.TransferSource) flags |= VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+        switch (usage.Type)
+        {
+        case BufferType::Vertex:
+            flags |= VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+            break;
+        case BufferType::Index:
+            flags |= VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+            break;
+        case BufferType::Constant:
+            flags |= VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+            break;
+        case BufferType::ShaderStorage:
+            flags |= VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+            break;
+        }
+        
+        return flags;
     }
 
     VkImageUsageFlags VulkanImageUsage(ImageUsage usage)
     {
-        return reinterpret_cast<VkImageUsageFlags&>(usage)
+        VkImageUsageFlags flags = 0;
+        if (usage.TransferSource) flags |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+        if (usage.TransferDestination) flags |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+        switch (usage.Type)
+        {
+        case ImageType::Sampled:
+            flags |= VK_IMAGE_USAGE_SAMPLED_BIT;
+            break;
+        case ImageType::Storage:
+            flags |= VK_IMAGE_USAGE_STORAGE_BIT;
+            break;
+        case ImageType::RenderTarget:
+            flags |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+            break;
+        case ImageType::DepthStencil:
+            flags |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+            break;
+        }
+        
+        return flags;
     }
 
     D3D12_RESOURCE_FLAGS DXImageUsage(ImageUsage usage)
     {
         D3D12_RESOURCE_FLAGS flags = D3D12_RESOURCE_FLAG_NONE;
-        
-        if (usage.GetColorAttachment())
+        if (usage.TransferSource) flags |= D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+        if (usage.TransferDestination) flags |= D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+        switch (usage.Type)
+        {
+        case ImageType::RenderTarget:
             flags |= D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
-        if (usage.GetDepthAttachment())
+            break;
+        case ImageType::DepthStencil:
             flags |= D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
-        if (usage.GetStorageImage())
+            break;
+        case ImageType::Storage:
             flags |= D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+            break;
+        default:
+            break;
+        }
         
         return flags;
     }
@@ -703,6 +750,13 @@ namespace RHIStructures
         return static_cast<ID3D12Resource*>(bufferAllocation.Buffer);
     }
 
+    D3D12_CPU_DESCRIPTOR_HANDLE DXDescriptor(const BufferAllocation& bufferAllocation)
+    {
+        D3D12_CPU_DESCRIPTOR_HANDLE handle = {};
+        handle.ptr = bufferAllocation.Descriptor;
+        return handle;
+    }
+
     VkImageViewType VulkanImageViewType(ImageDesc desc)
     {
         VkImageViewType type = VK_IMAGE_VIEW_TYPE_2D;
@@ -711,6 +765,13 @@ namespace RHIStructures
         if (desc.Depth > 1)
             type = VK_IMAGE_VIEW_TYPE_3D;
         return type;
+    }
+
+    D3D12_CPU_DESCRIPTOR_HANDLE DXDescriptor(const ImageAllocation& imageAllocation)
+    {
+        D3D12_CPU_DESCRIPTOR_HANDLE handle = {};
+        handle.ptr = imageAllocation.Descriptor;
+        return handle;
     }
 }
 

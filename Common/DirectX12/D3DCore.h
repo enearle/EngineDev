@@ -37,6 +37,11 @@ class D3DCore
     std::array<ComPtr<ID3D12GraphicsCommandList>, SwapChainBufferCount> CommandLists;
     std::array<UINT64, SwapChainBufferCount> FrameFences;
     
+    ComPtr<ID3D12GraphicsCommandList> TransferCommandList;
+    ComPtr<ID3D12CommandAllocator> TransferCommandAllocator;
+    ComPtr<ID3D12CommandQueue> TransferCommandQueue;
+    ComPtr<ID3D12Fence> TransferFence;
+    
     ComPtr<ID3D12Resource> SwapChainBuffer[SwapChainBufferCount];
     ComPtr<ID3D12Resource> DepthStencilBuffer;
 
@@ -45,7 +50,6 @@ class D3DCore
 
     UINT RenderTargetDescriptorOffset = 0;
     UINT DepthStencilDescriptorOffset = 0;
-    UINT ShaderResourceDescriptorOffset = 0;
 
     DXGI_FORMAT RenderTargetFormat;
 
@@ -65,6 +69,7 @@ public:
     ComPtr<ID3D12Device> GetDevice() const { return Device; }
     ComPtr<ID3D12CommandQueue> GetCommandQueue() const { return CommandQueue; }
     ComPtr<ID3D12GraphicsCommandList> GetCommandList() const { return CommandLists[CurrentFrameIndex]; }
+    ComPtr<ID3D12GraphicsCommandList> GetTransferCommandList() const { return TransferCommandList; }
     uint32_t GetCurrentFrameIndex() const { return CurrentFrameIndex; }
     ComPtr<ID3D12DescriptorHeap> GetRenderTargetDescriptorHeap() const { return RenderTargetDescriptorHeap; }
     ComPtr<ID3D12DescriptorHeap> GetDepthStencilDescriptorHeap() const { return DepthStencilDescriptorHeap; }

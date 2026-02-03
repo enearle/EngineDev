@@ -76,7 +76,6 @@ VulkanBufferAllocator::VulkanBufferAllocator()
     currentOffset += UniformBufferPoolSize * UniformBufferStride;
     StorageBufferPool = new BitPool();
     StorageBufferPool->Initialize(currentOffset, StorageBufferStride, StorageBufferPoolSize);
-    
 }
 
 VkDeviceAddress VulkanBufferAllocator::AllocateDescriptor(VkDescriptorGetInfoEXT* descriptorInfo, DescriptorType type)
@@ -163,7 +162,7 @@ void VulkanBufferAllocator::FreeDescriptor(VkDeviceAddress address, DescriptorTy
     pool->Free(offset);
 }
 
-BufferAllocation VulkanBufferAllocator::CreateBuffer(BufferDesc bufferDesc)
+uint64_t VulkanBufferAllocator::CreateBuffer(BufferDesc bufferDesc)
 {
     VulkanBufferData* vulkanBufferData = new VulkanBufferData();
     VkBufferUsageFlags bufferFlags = VulkanBufferUsage(bufferDesc.Usage);
@@ -228,9 +227,55 @@ BufferAllocation VulkanBufferAllocator::CreateBuffer(BufferDesc bufferDesc)
     allocation.Usage = bufferDesc.Usage;
     allocation.Access = bufferDesc.Access;
     allocation.IsMapped = isHostVisible;
-
-    CacheBuffer(allocation);
-    return allocation;
+    
+    // Create descriptor for shader-accessible buffers
+    if (bufferDesc.Type == BufferType::Constant || bufferDesc.Type == BufferType::ShaderStorage)
+    {
+        DescriptorType descriptorType;
+        VkDescriptorType vkDescriptorType;
+        
+        if (bufferDesc.Type == BufferType::Constant)
+        {
+            descriptorType = DescriptorType::UniformBuffer;
+            vkDescriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        }
+        else
+        {
+            descriptorType = DescriptorType::StorageBuffer;
+            vkDescriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        }
+        
+        // Get device address for the buffer
+        VkBufferDeviceAddressInfo addressInfo{};
+        addressInfo.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
+        addressInfo.buffer = vulkanBufferData->Buffer;
+        
+        VkDeviceAddress bufferAddress = vkGetBufferDeviceAddress(device, &addressInfo);
+        
+        VkDescriptorAddressInfoEXT bufferInfo{};
+        bufferInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_ADDRESS_INFO_EXT;
+        bufferInfo.address = bufferAddress;
+        bufferInfo.range = bufferDesc.Size;
+        bufferInfo.format = VK_FORMAT_UNDEFINED;
+        
+        VkDescriptorGetInfoEXT descriptorInfo{};
+        descriptorInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_GET_INFO_EXT;
+        descriptorInfo.type = vkDescriptorType;
+        descriptorInfo.data.pUniformBuffer = &bufferInfo;
+        
+        VkDeviceAddress descriptorAddress = AllocateDescriptor(&descriptorInfo, descriptorType);
+        
+        allocation.Descriptor = descriptorAddress;
+        allocation.DescriptorType = static_cast<uint8_t>(descriptorType);
+    }
+    else
+    {
+        // Vertex/Index buffers don't use descriptors
+        allocation.Descriptor = 0;
+        allocation.DescriptorType = 0;
+    }
+    
+    return CacheBuffer(allocation);
 }
 
 void VulkanBufferAllocator::CopyToDeviceLocalBuffer(VkBuffer dstBuffer, const void* srcData, VkDeviceSize size)
@@ -306,7 +351,7 @@ void VulkanBufferAllocator::CopyToDeviceLocalBuffer(VkBuffer dstBuffer, const vo
     vkFreeMemory(device, stagingMemory, nullptr);
 }
 
-ImageAllocation VulkanBufferAllocator::CreateImage(ImageDesc imageDesc)
+uint64_t VulkanBufferAllocator::CreateImage(ImageDesc imageDesc)
 {
     VkDevice device = VulkanCore::GetInstance().GetDevice();
     VkPhysicalDevice physicalDevice = VulkanCore::GetInstance().GetPhysicalDevice();
@@ -363,10 +408,49 @@ ImageAllocation VulkanBufferAllocator::CreateImage(ImageDesc imageDesc)
     ImageAllocation allocation;
     allocation.Image = vulkanImageData;
     allocation.Desc = imageDesc;
-
-    CacheImage(allocation);
     
-    return allocation;
+    // Create descriptor for shader-accessible images
+    if (imageDesc.Type == ImageType::Sampled || imageDesc.Type == ImageType::Storage)
+    {
+        DescriptorType descriptorType;
+        VkDescriptorType vkDescriptorType;
+        
+        if (imageDesc.Type == ImageType::Sampled)
+        {
+            descriptorType = DescriptorType::SampledImage;
+            vkDescriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+        }
+        else
+        {
+            descriptorType = DescriptorType::StorageImage;
+            vkDescriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+        }
+        
+        VkDescriptorImageInfo imageInfo{};
+        imageInfo.imageView = vulkanImageData->ImageView;
+        imageInfo.imageLayout = (descriptorType == DescriptorType::SampledImage) 
+            ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL 
+            : VK_IMAGE_LAYOUT_GENERAL;
+        imageInfo.sampler = VK_NULL_HANDLE;
+        
+        VkDescriptorGetInfoEXT descriptorInfo{};
+        descriptorInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_GET_INFO_EXT;
+        descriptorInfo.type = vkDescriptorType;
+        descriptorInfo.data.pSampledImage = &imageInfo;
+        
+        VkDeviceAddress descriptorAddress = AllocateDescriptor(&descriptorInfo, descriptorType);
+        
+        allocation.Descriptor = descriptorAddress;
+        allocation.DescriptorType = static_cast<uint8_t>(descriptorType);
+    }
+    else
+    {
+        // RenderTarget and DepthStencil don't use descriptors
+        allocation.Descriptor = 0;
+        allocation.DescriptorType = 0;
+    }
+    
+    return CacheImage(allocation);
 }
 
 VulkanBufferAllocator::~VulkanBufferAllocator()
@@ -383,15 +467,6 @@ VulkanBufferAllocator::~VulkanBufferAllocator()
         vkDestroyBuffer(device, DescriptorBuffer, nullptr);
     if (DescriptorBufferMemory != VK_NULL_HANDLE)
         vkFreeMemory(device, DescriptorBufferMemory, nullptr);
-
-    // Keyword: auto - used to hide ugly iterator syntax
-    //
-    // for (std::unordered_map<uint64_t, BufferAllocation>::iterator it = AllocatedBuffers.begin(); 
-    //  it != AllocatedBuffers.end(); 
-    //  ++it)
-    // {
-    //     const uint64_t& handle = it->first;
-    //     BufferAllocation& allocation = it->second;
     
     for (auto& [handle, allocation] : AllocatedBuffers)
     {
@@ -419,6 +494,16 @@ VulkanBufferAllocator::~VulkanBufferAllocator()
     AllocatedImages.clear();
     
     vkUnmapMemory(device, DescriptorBufferMemory);
+}
+
+void VulkanBufferAllocator::FreeBuffer(uint64_t id)
+{
+    FreeDescriptor(AllocatedBuffers[id].Descriptor, static_cast<DescriptorType>(AllocatedBuffers[id].DescriptorType));
+}
+
+void VulkanBufferAllocator::FreeImage(uint64_t id)
+{
+    FreeDescriptor(AllocatedImages[id].Descriptor, static_cast<DescriptorType>(AllocatedImages[id].DescriptorType));
 }
 
 void VulkanBufferAllocator::CopyBufferToImage(VkBuffer stagingBuffer, VkImage dstImage, uint32_t width, uint32_t height)
@@ -638,14 +723,16 @@ uint32_t VulkanBufferAllocator::FindMemoryType(VkPhysicalDevice physicalDevice, 
 // DirectX 12                                     //
 //================================================//
 
-BufferAllocation DirectX12BufferAllocator::CreateBuffer(BufferDesc bufferDesc)
+uint64_t DirectX12BufferAllocator::CreateBuffer(BufferDesc bufferDesc)
 {
     ID3D12Device* device = D3DCore::GetInstance().GetDevice().Get();
-    ID3D12GraphicsCommandList* cmdList = D3DCore::GetInstance().GetCommandList().Get();
+    ID3D12GraphicsCommandList* cmdList = D3DCore::GetInstance().GetTransferCommandList().Get();
 
     ComPtr<ID3D12Resource> defaultBuffer;
     ComPtr<ID3D12Resource> uploadBuffer;
-
+    
+    BufferType finalType = bufferDesc.Type;
+    
     auto defaultHeapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
     auto bufferDesc_dx12 = CD3DX12_RESOURCE_DESC::Buffer(bufferDesc.Size);
     
@@ -668,44 +755,85 @@ BufferAllocation DirectX12BufferAllocator::CreateBuffer(BufferDesc bufferDesc)
         nullptr,
         IID_PPV_ARGS(uploadBuffer.GetAddressOf())) >> ERROR_HANDLER;
 
-    D3D12_SUBRESOURCE_DATA subResourceData = {};
-    subResourceData.pData = bufferDesc.InitialData;
-    subResourceData.RowPitch = bufferDesc.Size;
-    subResourceData.SlicePitch = bufferDesc.Size;
+    // Copy initial data if provided
+    if (bufferDesc.InitialData != nullptr)
+    {
+        void* mappedData = nullptr;
+        uploadBuffer->Map(0, nullptr, &mappedData);
+        memcpy(mappedData, bufferDesc.InitialData, bufferDesc.Size);
+        uploadBuffer->Unmap(0, nullptr);
 
-    auto transition1 = CD3DX12_RESOURCE_BARRIER::Transition(
-        defaultBuffer.Get(), 
-        D3D12_RESOURCE_STATE_COMMON, 
-        D3D12_RESOURCE_STATE_COPY_DEST);
-    cmdList->ResourceBarrier(1, &transition1);
+        D3D12_SUBRESOURCE_DATA subResourceData = {};
+        subResourceData.pData = bufferDesc.InitialData;
+        subResourceData.RowPitch = bufferDesc.Size;
+        subResourceData.SlicePitch = bufferDesc.Size;
 
-    UpdateSubresources<1>(cmdList, defaultBuffer.Get(), uploadBuffer.Get(), 0, 0, 1, &subResourceData);
+        auto transition1 = CD3DX12_RESOURCE_BARRIER::Transition(
+            defaultBuffer.Get(), 
+            D3D12_RESOURCE_STATE_COMMON, 
+            D3D12_RESOURCE_STATE_COPY_DEST);
+        cmdList->ResourceBarrier(1, &transition1);
 
-    auto transition2 = CD3DX12_RESOURCE_BARRIER::Transition(
-        defaultBuffer.Get(),
-        D3D12_RESOURCE_STATE_COPY_DEST, 
-        D3D12_RESOURCE_STATE_GENERIC_READ);
-    cmdList->ResourceBarrier(1, &transition2);
+        UpdateSubresources<1>(cmdList, defaultBuffer.Get(), uploadBuffer.Get(), 0, 0, 1, &subResourceData);
 
-    // TODO fix DX12BufferData
+        auto transition2 = CD3DX12_RESOURCE_BARRIER::Transition(
+            defaultBuffer.Get(),
+            D3D12_RESOURCE_STATE_COPY_DEST, 
+            D3D12_RESOURCE_STATE_GENERIC_READ);
+        cmdList->ResourceBarrier(1, &transition2);
+    }
+
+    D3D12_GPU_VIRTUAL_ADDRESS gpuAddress = defaultBuffer->GetGPUVirtualAddress();
+
     DX12BufferData* bufferData = new DX12BufferData();
     bufferData->Buffer = defaultBuffer.Get();
-    bufferData->GPUAddress = ///////////////////////////////////////////////
+    bufferData->GPUAddress = gpuAddress;
 
     BufferAllocation allocation;
     allocation.Buffer = bufferData;
     allocation.Size = bufferDesc.Size;
-    allocation.Address = ///////////////////////////////////////////////
+    allocation.Address = reinterpret_cast<void*>(gpuAddress);
+    allocation.Usage = bufferDesc.Usage;
+    allocation.Access = bufferDesc.Access;
+    allocation.Type = bufferDesc.Type;
+    allocation.IsMapped = false;
 
-    CacheBuffer(allocation);
-
-    return allocation;
+    // Only create descriptor if needed
+    if (bufferDesc.Type == BufferType::Constant)
+    {
+        D3D12_CPU_DESCRIPTOR_HANDLE cbvHandle = AllocateDescriptor(CBV);
+        
+        D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};
+        cbvDesc.BufferLocation = gpuAddress;
+        cbvDesc.SizeInBytes = static_cast<UINT>((bufferDesc.Size + 255) & ~255);  // Must be 256-byte aligned
+        
+        device->CreateConstantBufferView(&cbvDesc, cbvHandle);
+        allocation.Descriptor = *reinterpret_cast<uint64_t*>(&cbvHandle);
+    }
+    else if (bufferDesc.Type == BufferType::ShaderStorage)
+    {
+        D3D12_CPU_DESCRIPTOR_HANDLE srvHandle = AllocateDescriptor(SRV);
+        
+        D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+        srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        srvDesc.Format = DXGI_FORMAT_UNKNOWN;
+        srvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+        srvDesc.Buffer.FirstElement = 0;
+        srvDesc.Buffer.NumElements = static_cast<UINT>(bufferDesc.Size / 4);  // Assuming 4-byte elements
+        srvDesc.Buffer.StructureByteStride = 4;
+        
+        device->CreateShaderResourceView(defaultBuffer.Get(), &srvDesc, srvHandle);
+        allocation.Descriptor = *reinterpret_cast<uint64_t*>(&srvHandle);
+    }
+    // Vertex and Index buffers don't need descriptors
+    
+    return CacheBuffer(allocation);
 }
 
-ImageAllocation DirectX12BufferAllocator::CreateImage(ImageDesc imageDesc)
+uint64_t DirectX12BufferAllocator::CreateImage(ImageDesc imageDesc)
 {
     ID3D12Device* device = D3DCore::GetInstance().GetDevice().Get();
-    ID3D12GraphicsCommandList* cmdList = D3DCore::GetInstance().GetCommandList().Get();
+    ID3D12GraphicsCommandList* cmdList = D3DCore::GetInstance().GetTransferCommandList().Get();
 
     ComPtr<ID3D12Resource> imageResource;
 
@@ -738,9 +866,8 @@ ImageAllocation DirectX12BufferAllocator::CreateImage(ImageDesc imageDesc)
     srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
     srvDesc.Texture2D.MostDetailedMip = 0;
     srvDesc.Texture2D.MipLevels = imageDesc.MipLevels;
-
-    // TODO Create default descriptor heap
-    D3D12_CPU_DESCRIPTOR_HANDLE srvHandle = /////////////////////////////////////////////////////////
+    
+    D3D12_CPU_DESCRIPTOR_HANDLE srvHandle = AllocateDescriptor(SRV);
     device->CreateShaderResourceView(imageResource.Get(), &srvDesc, srvHandle);
     
     DX12ImageData* imageData = new DX12ImageData();
@@ -750,13 +877,162 @@ ImageAllocation DirectX12BufferAllocator::CreateImage(ImageDesc imageDesc)
     ImageAllocation allocation;
     allocation.Image = imageData;
     allocation.Desc = imageDesc;
+    allocation.Descriptor = *reinterpret_cast<uint64_t*>(&srvHandle);
 
-    CacheImage(allocation);
+    return CacheImage(allocation);
+}
 
-    return allocation;
+DirectX12BufferAllocator::DirectX12BufferAllocator()
+{
+    ID3D12Device* device = D3DCore::GetInstance().GetDevice().Get();
+    
+    ShaderResourceOffset = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    RenderTargetOffset = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+    DepthStencilOffset = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
+    
+    D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
+    srvHeapDesc.NumDescriptors = MaxSRVs + MaxCBVs + MaxUAVs;
+    srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+    srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+    srvHeapDesc.NodeMask = 0;
+    device->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(ShaderResourceHeap.GetAddressOf())) >> ERROR_HANDLER;
+    
+    D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc = {};
+    rtvHeapDesc.NumDescriptors = MaxRTVs;
+    rtvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
+    rtvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+    rtvHeapDesc.NodeMask = 0;
+    device->CreateDescriptorHeap(&rtvHeapDesc, IID_PPV_ARGS(RenderTargetHeap.GetAddressOf())) >> ERROR_HANDLER;
+    
+    D3D12_DESCRIPTOR_HEAP_DESC dsvHeapDesc = {};
+    dsvHeapDesc.NumDescriptors = MaxDSVs;
+    dsvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
+    dsvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+    dsvHeapDesc.NodeMask = 0;
+    device->CreateDescriptorHeap(&dsvHeapDesc, IID_PPV_ARGS(DepthStencilHeap.GetAddressOf())) >> ERROR_HANDLER;
+    
+    SRVAllocator = new BitPool();
+    SRVAllocator->Initialize(0, 1, MaxSRVs);
+    
+    CBVAllocator = new BitPool();
+    CBVAllocator->Initialize(MaxSRVs, 1, MaxCBVs);
+    
+    UAVAllocator = new BitPool();
+    UAVAllocator->Initialize(MaxSRVs + MaxCBVs, 1, MaxUAVs);
+    
+    RTVAllocator = new BitPool();
+    RTVAllocator->Initialize(0, 1, MaxRTVs);
+    
+    DSVAllocator = new BitPool();
+    DSVAllocator->Initialize(0, 1, MaxDSVs);
+}
+
+D3D12_CPU_DESCRIPTOR_HANDLE DirectX12BufferAllocator::AllocateDescriptor(DescriptorType type)
+{
+    size_t index = 0;
+    switch (type)
+    {
+    case SRV:
+        index = SRVAllocator->Allocate();
+        break;
+    case CBV:
+        index = CBVAllocator->Allocate();
+        break;
+    case UAV:
+        index = UAVAllocator->Allocate();
+        break;
+    case RTV:
+        index = RTVAllocator->Allocate();
+        break;
+    case DSV:
+        index = DSVAllocator->Allocate();
+        break;
+    }
+    
+    return GetHandle(index, type);
+}
+
+D3D12_CPU_DESCRIPTOR_HANDLE DirectX12BufferAllocator::GetHandle(size_t index, DescriptorType type)
+{
+    D3D12_CPU_DESCRIPTOR_HANDLE handle = {};
+    switch (type)
+    {
+    case SRV:
+        handle = ShaderResourceHeap->GetCPUDescriptorHandleForHeapStart();
+        handle.ptr += index * ShaderResourceOffset;
+        return handle;
+    case CBV:
+        handle = ShaderResourceHeap->GetCPUDescriptorHandleForHeapStart();
+        handle.ptr += (MaxSRVs + index) * ShaderResourceOffset;
+        return handle;
+    case UAV:
+        handle = ShaderResourceHeap->GetCPUDescriptorHandleForHeapStart();
+        handle.ptr += (MaxSRVs + MaxCBVs + index) * ShaderResourceOffset;
+        return handle;
+    case RTV:
+        handle = RenderTargetHeap->GetCPUDescriptorHandleForHeapStart();
+        handle.ptr += index * RenderTargetOffset;
+        return handle;
+    case DSV:
+        handle = DepthStencilHeap->GetCPUDescriptorHandleForHeapStart();
+        handle.ptr += index * DepthStencilOffset;
+        return handle;
+    }
+    return handle;
+}
+
+void DirectX12BufferAllocator::FreeDescriptor(D3D12_CPU_DESCRIPTOR_HANDLE handle, DescriptorType type)
+{
+    BitPool* pool = nullptr;
+    D3D12_CPU_DESCRIPTOR_HANDLE start = {};
+    switch (type)
+    {
+    case SRV:
+        start = ShaderResourceHeap->GetCPUDescriptorHandleForHeapStart();
+        pool = SRVAllocator;
+        break;
+    case CBV:
+        start = ShaderResourceHeap->GetCPUDescriptorHandleForHeapStart();
+        start.ptr += MaxSRVs * ShaderResourceOffset;
+        pool = CBVAllocator;
+        break;
+    case UAV:
+        start = ShaderResourceHeap->GetCPUDescriptorHandleForHeapStart();
+        start.ptr += (MaxSRVs + MaxCBVs) * ShaderResourceOffset;
+        pool = UAVAllocator;
+        break;
+    case RTV:
+        start = RenderTargetHeap->GetCPUDescriptorHandleForHeapStart();
+        pool = RTVAllocator;
+        break;
+    case DSV:
+        start = DepthStencilHeap->GetCPUDescriptorHandleForHeapStart();
+        pool = DSVAllocator;
+        break;
+    }
+
+    size_t offset = static_cast<size_t>(handle.ptr) - static_cast<size_t>(start.ptr);
+    
+    pool->Free(offset);
 }
 
 
 DirectX12BufferAllocator::~DirectX12BufferAllocator()
 {
+    delete SRVAllocator;
+    delete CBVAllocator;
+    delete UAVAllocator;
+    delete RTVAllocator;
+    delete DSVAllocator;
 }
+
+void DirectX12BufferAllocator::FreeBuffer(uint64_t id)
+{
+    FreeDescriptor(DXDescriptor(AllocatedBuffers[id]), static_cast<DescriptorType>(AllocatedBuffers[id].DescriptorType));
+}
+
+void DirectX12BufferAllocator::FreeImage(uint64_t id)
+{
+    FreeDescriptor(DXDescriptor(AllocatedImages[id]), static_cast<DescriptorType>(AllocatedImages[id].DescriptorType));
+}
+

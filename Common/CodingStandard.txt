@@ -1,0 +1,121 @@
+The Official Jesse McConnell Game Coding Standard 1.0 Febuary 3, 2026
+
+Objective:
+
+    The objective of this coding standard is to balance keeping code human-readable 
+    and intuitive with being concise and keeping as much logic onscreen as possible.
+    
+Priority:
+    
+    First, code should be computationally efficient. In no scenario does the standard
+    trump performance and optimization. FastCode > CleanCode
+    
+    Second, code should be as readable and maintainable as possible whilst maintaining 
+    performance.
+
+Style:
+ 
+    Case:
+    
+        GLOBAL_FUNCTIONS_OR_VARIABLES
+        StaticFunctionsAndVariables
+        MemberFunctionsAndVariables
+        localVariables
+        functionParameters
+        
+    Curly Braces:
+    
+        Curly braces *should* only be used on multiline scopes, including nested 
+        scopes such as loops and if/else statements. This should at minimum be a
+        refactor goal.
+        
+        (example)
+        
+        for (int i = 0; i < 10; i++)
+            for (int j = 0; j < 10; j++)
+                if (i == j)
+                    if (moreThanOneLine == true)
+                    {
+                        j = 0;
+                        DoStuff;
+                    }
+                    else
+                        break;
+                        
+    Comments:
+    
+        Comments should be only for explaining: 
+            - external frameworks/api usage
+            - extremely complex scenarios
+            
+        Over comments, prioritize verbosity and concision. Especially with 
+        non-predicate functions.
+        
+        (example)
+        
+            LongVerboseNamingConvention()
+                        
+    Spacing:
+    
+        Tab spacing should be 4 spaces.
+        
+        Lines in code *should* be broken up into some form of subjective grouping. 
+        
+        (example)   *** Comments here are to convey the principle of example and do not 
+                    adhere to the coding standard.
+        
+        Class::Class()
+        {
+            // initialization of locals
+            int someVar = 0;
+            char SomeOtherVar = 'X';
+            
+            // struct creation
+            MyStruct myStruct = {};
+            myStruct.A = 1;
+            myStruct.B = 2;
+            myStruct.C = 7;
+            
+            // transitioning to logic or function calls
+            DoStuff(myStruct.A, myStruct.B);
+            DoStuff(myStruct.C, someVar);
+            
+            // beginning of scopes
+            for (int i = 0; i < someVar; i++)
+            {
+                DoStuff(i + someVar);
+                DoStuff(myStruct.A + myStruct.B);
+            }
+               
+            // Etc.
+           
+    Type Inference:
+        
+        Avoid all type inference outside of handling unresolved objects (generics)
+        or an even worse syntax.
+            
+        (example)
+        
+        use:
+        
+        for (auto& [handle, allocation] : AllocatedBuffers)
+        {...
+        
+        instead of:
+        
+        for (std::unordered_map<uint64_t, BufferAllocation>::iterator it = AllocatedBuffers.begin(); it != AllocatedBuffers.end(); ++it)
+        {...
+         
+        but do not use:
+        
+        int[] ints = []{ 1, 2, 3, 4, 5 };
+        for (auto num : ints)
+        {...
+        
+        use:
+        
+        for (int num : ints)
+        {...
+            
+        
+           

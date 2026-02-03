@@ -422,74 +422,48 @@ namespace RHIStructures
         uint32_t DstAccessMask;
         ImageLayout OldLayout;
         ImageLayout NewLayout;
-        void* VkImage;                        // VkImage* or D3D12 resource*
+        void* ImageResource;   // VkImage* or D3D12 resource*
         uint32_t BaseMipLevel = 0;
         uint32_t MipLevelCount = 1;
         uint32_t BaseArrayLayer = 0;
         uint32_t ArrayLayerCount = 1;
     };
     VkPipelineStageFlags ConvertPipelineStage(PipelineStage stage);
-
-
+    
     //===================================//
     //  ---------  Resorces  ----------  //
     //===================================//
 
-    struct ResourceHandle
+    enum class BufferType : uint8_t
     {
-        uint64_t Handle = 0;
-        
-        bool IsValid() const { return Handle != 0; }
-        bool operator==(const ResourceHandle& other) const { return Handle == other.Handle; }
+        Vertex,
+        Index,
+        Constant,
+        ShaderStorage,
+        Upload
     };
 
-    enum ResourceType : uint8_t
+    struct BufferUsage
     {
-        Buffer,
-        Image,
-        DescriptorSet,
-        Sampler
-    };
-
-    class BufferUsage : public Mask
-    {
-    public:
-        bool GetTransferSrc() const { return (Value >> 0) & 1; }
-        bool GetTransferDst() const { return (Value >> 1) & 1; }
-        bool GetUniformTexel() const { return (Value >> 2) & 1; }
-        bool GetStorageTexel() const { return (Value >> 3) & 1; }
-        bool GetUniform() const { return (Value >> 4) & 1; }
-        bool GetStorage() const { return (Value >> 5) & 1; }
-        bool GetIndex() const { return (Value >> 6) & 1; }
-        bool GetVertex() const { return (Value >> 7) & 1; }
-
-        void SetTransferSrc(bool b) { b ? Value |= (1 << 0) : Value &= ~(1 << 0); }
-        void SetTransferDst(bool b) { b ? Value |= (1 << 1) : Value &= ~(1 << 1); }
-        void SetUniformTexel(bool b) { b ? Value |= (1 << 2) : Value &= ~(1 << 2); }
-        void SetStorageTexel(bool b) { b ? Value |= (1 << 3) : Value &= ~(1 << 3); }
-        void SetUniform(bool b) { b ? Value |= (1 << 4) : Value &= ~(1 << 4); }
-        void SetStorage(bool b) { b ? Value |= (1 << 5) : Value &= ~(1 << 5); }
-        void SetIndex(bool b) { b ? Value |= (1 << 6) : Value &= ~(1 << 6); }
-        void SetVertex(bool b) { b ? Value |= (1 << 7) : Value &= ~(1 << 7); }
+        bool TransferSource = false;
+        bool TransferDestination = false;
+        BufferType Type = BufferType::Constant;
     };
     VkBufferUsageFlags VulkanBufferUsage(BufferUsage usage);
 
-    class ImageUsage : public Mask
+    enum class ImageType : uint8_t
     {
-    public:
-        bool GetTransferSrc() const { return (Value >> 0) & 1; }
-        bool GetTransferDst() const { return (Value >> 1) & 1; }
-        bool GetSampledImage() const { return (Value >> 2) & 1; }
-        bool GetStorageImage() const { return (Value >> 3) & 1; }
-        bool GetColorAttachment() const { return (Value >> 4) & 1; }
-        bool GetDepthAttachment() const { return (Value >> 5) & 1; }
-        
-        void SetTransferSrc(bool b) { b ? Value |= (1 << 0) : Value &= ~(1 << 0); }
-        void SetTransferDst(bool b) { b ? Value |= (1 << 1) : Value &= ~(1 << 1); }
-        void SetSampledImage(bool b) { b ? Value |= (1 << 2) : Value &= ~(1 << 2); }
-        void SetStorageImage(bool b) { b ? Value |= (1 << 3) : Value &= ~(1 << 3); }
-        void SetColorAttachmentImage(bool b) { b ? Value |= (1 << 4) : Value &= ~(1 << 4); }
-        void SetDepthAttachmentImage(bool b) { b ? Value |= (1 << 5) : Value &= ~(1 << 5); }
+        Sampled,
+        Storage,
+        RenderTarget,
+        DepthStencil
+    };
+    
+    struct ImageUsage
+    {
+        bool TransferSource = false;
+        bool TransferDestination = false;
+        ImageType Type = ImageType::Sampled;
     };
     VkImageUsageFlags VulkanImageUsage(ImageUsage usage);
     D3D12_RESOURCE_FLAGS DXImageUsage(ImageUsage usage);
@@ -514,6 +488,7 @@ namespace RHIStructures
     {
         uint64_t Size = 0;
         BufferUsage Usage = {};
+        BufferType Type = BufferType::Constant;
         MemoryAccess Access = {};
         const void* InitialData = nullptr;
     };
@@ -524,12 +499,16 @@ namespace RHIStructures
         uint64_t Size = 0;
         BufferUsage Usage = {};
         MemoryAccess Access = {};
+        BufferType Type = BufferType::Constant;
         void* Buffer  = nullptr;
         bool IsMapped = false;
+        uint64_t Descriptor = 0;
+        uint8_t DescriptorType = 0;
     };
     UINT GetBufferDeviceAddress(const BufferAllocation& bufferAllocation);
     VulkanStructs::VulkanBufferData* VulkanBuffer(const BufferAllocation& bufferAllocation);
     ID3D12Resource* DXBuffer(const BufferAllocation& bufferAllocation);
+    D3D12_CPU_DESCRIPTOR_HANDLE DXDescriptor(const BufferAllocation& bufferAllocation);
 
     struct ImageDesc
     {
@@ -543,6 +522,7 @@ namespace RHIStructures
         uint64_t Size = 0;
         Format Format = {};
         ImageUsage Usage = {};
+        ImageType Type = ImageType::Sampled;
         MemoryAccess Access = {};
         ImageLayout InitialLayout = ImageLayout::Undefined;
         const void* InitialData = nullptr;
@@ -554,6 +534,9 @@ namespace RHIStructures
         void* Address = nullptr;
         ImageDesc Desc = {};
         void* Image = nullptr;
+        uint64_t Descriptor = 0;
+        uint8_t DescriptorType = 0;
     };
+    D3D12_CPU_DESCRIPTOR_HANDLE DXDescriptor(const ImageAllocation& imageAllocation);
 
 }
