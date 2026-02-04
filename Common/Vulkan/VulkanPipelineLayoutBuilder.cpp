@@ -4,6 +4,8 @@
 #include <map>
 #include <stdexcept>
 
+#include "VulkanCore.h"
+
 VkPipelineLayout VulkanPipelineLayoutBuilder::BuildPipelineLayout(VkDevice device, const ResourceLayout& layout)
 {
     if (!device)
@@ -56,6 +58,7 @@ VkPipelineLayout VulkanPipelineLayoutBuilder::BuildPipelineLayout(VkDevice devic
         layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
         layoutInfo.bindingCount = static_cast<uint32_t>(vkBindings.size());
         layoutInfo.pBindings = vkBindings.data();
+        layoutInfo.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_DESCRIPTOR_BUFFER_BIT_EXT;
 
         VkDescriptorSetLayout descriptorSetLayout = VK_NULL_HANDLE;
         VkResult result = vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &descriptorSetLayout);
@@ -97,7 +100,7 @@ VulkanPipelineLayoutBuilder::CreateDescriptorSetLayoutBinding(const DescriptorBi
     result.binding.descriptorType = VulkanDescriptorType(binding.Type);
     result.binding.descriptorCount = binding.Count > 0 ? binding.Count : 1;
     result.binding.stageFlags = VulkanShaderStageFlags(visibleStages);
-    result.binding.pImmutableSamplers = nullptr;
+    result.binding.pImmutableSamplers = VulkanCore::GetInstance().GetGenericSampler();
 
     return result;
 }

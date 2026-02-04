@@ -31,6 +31,7 @@ void VulkanCore::InitVulkan(Window* window, CoreInitData data)
         CreateCommandPool();
         CreateSwapchain();
         CreateSynchronizationPrimitives();
+        CreateSamplers();
     }
     catch (const std::runtime_error& error)
     {
@@ -43,6 +44,7 @@ void VulkanCore::Cleanup()
     vkQueueWaitIdle(GraphicsQueue);
     vkQueueWaitIdle(PresentQueue);
     
+    vkDestroySampler(Device, GenericSampler, nullptr);
     for (uint32_t i = 0; i < SwapChainImageCount; i++)
     {
         vkDestroySemaphore(Device, ImageAvailableSemaphores[i], nullptr);
@@ -142,6 +144,14 @@ void VulkanCore::CreateLogicalDevice()
         
         queueCreateInfos.push_back(queueInfo);
     }
+    VkPhysicalDeviceDescriptorBufferFeaturesEXT descriptorBufferFeatures = {};
+    descriptorBufferFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_BUFFER_FEATURES_EXT;
+    descriptorBufferFeatures.descriptorBuffer = VK_TRUE;
+    
+    VkPhysicalDeviceVulkan12Features deviceFeatures12 = {};
+    deviceFeatures12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
+    deviceFeatures12.bufferDeviceAddress = VK_TRUE;
+    deviceFeatures12.pNext = &descriptorBufferFeatures;
     
     // Creat device features
     VkPhysicalDeviceFeatures deviceFeatures = {};
@@ -153,6 +163,7 @@ void VulkanCore::CreateLogicalDevice()
     VkPhysicalDeviceDynamicRenderingFeatures dynamicRenderingFeature{};
     dynamicRenderingFeature.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES;
     dynamicRenderingFeature.dynamicRendering = VK_TRUE;
+    dynamicRenderingFeature.pNext = &deviceFeatures12;
 
     // Info used to create the device (logical) including required queues, features, and device extensions
     VkDeviceCreateInfo deviceInfo = {};
@@ -167,6 +178,22 @@ void VulkanCore::CreateLogicalDevice()
     VkResult result = vkCreateDevice(PhysicalDevice, &deviceInfo, nullptr, &Device);
     if (result != VK_SUCCESS)
         throw std::runtime_error("Failed to create logical device.");
+    
+    // Assign extension functions.
+    vkCmdBindDescriptorBuffersEXT_FnPtr =
+    reinterpret_cast<PFN_vkCmdBindDescriptorBuffersEXT>(
+        vkGetDeviceProcAddr(Device, "vkCmdBindDescriptorBuffersEXT"));
+
+    vkCmdSetDescriptorBufferOffsetsEXT_FnPtr =
+        reinterpret_cast<PFN_vkCmdSetDescriptorBufferOffsetsEXT>(
+            vkGetDeviceProcAddr(Device, "vkCmdSetDescriptorBufferOffsetsEXT"));
+
+    vkGetDescriptorEXT_FnPtr =
+        reinterpret_cast<PFN_vkGetDescriptorEXT>(
+            vkGetDeviceProcAddr(Device, "vkGetDescriptorEXT"));
+
+    if (!vkCmdBindDescriptorBuffersEXT_FnPtr || !vkCmdSetDescriptorBufferOffsetsEXT_FnPtr || !vkGetDescriptorEXT_FnPtr)
+        throw std::runtime_error("VK_EXT_descriptor_buffer functions not available (extension not enabled or unsupported).");
 
     // Assign queue handles
     vkGetDeviceQueue(Device, indices.GraphicsFamily, 0, &GraphicsQueue);
@@ -368,6 +395,35 @@ void VulkanCore::CreateSwapchain()
 
     vkQueueSubmit(GraphicsQueue, 1, &submitInfo, VK_NULL_HANDLE);
     vkQueueWaitIdle(GraphicsQueue);
+}
+
+void VulkanCore::CreateSamplers()
+{
+    VkSamplerCreateInfo samplerInfo{};
+    samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+    samplerInfo.magFilter = VK_FILTER_LINEAR;
+    samplerInfo.minFilter = VK_FILTER_LINEAR;
+    samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+
+    samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+
+    samplerInfo.mipLodBias = 0.0f;
+    samplerInfo.minLod = 0.0f;
+    samplerInfo.maxLod = VK_LOD_CLAMP_NONE; // or FLT_MAX
+
+    samplerInfo.anisotropyEnable = /* if supported */ VK_TRUE;
+    samplerInfo.maxAnisotropy = /* clamp to limits */ 16.0f;
+
+    samplerInfo.compareEnable = VK_FALSE;
+    samplerInfo.compareOp = VK_COMPARE_OP_ALWAYS;
+
+    samplerInfo.unnormalizedCoordinates = VK_FALSE;
+    
+    VkResult result = vkCreateSampler(Device, &samplerInfo, nullptr, &GenericSampler);
+    if (result != VK_SUCCESS)
+        throw std::runtime_error("Failed to create texture sampler.");
 }
 
 
@@ -676,6 +732,16 @@ void VulkanCore::SelectPhysicalDevice()
     // Set minimum alignment
     VkPhysicalDeviceProperties properties;
     vkGetPhysicalDeviceProperties(PhysicalDevice, &properties);
+    
+    VkPhysicalDeviceProperties2 props2{};
+    props2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+
+    DescriptorBufferProperties = {};
+    DescriptorBufferProperties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_BUFFER_PROPERTIES_EXT;
+    DescriptorBufferProperties.pNext = nullptr;
+
+    props2.pNext = &DescriptorBufferProperties;
+    vkGetPhysicalDeviceProperties2(PhysicalDevice, &props2);
 }
 
 QueueFamilyIndicesData VulkanCore::FindQueueFamilies(VkPhysicalDevice device)

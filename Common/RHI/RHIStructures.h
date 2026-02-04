@@ -524,7 +524,7 @@ namespace RHIStructures
         ImageUsage Usage = {};
         ImageType Type = ImageType::Sampled;
         MemoryAccess Access = {};
-        ImageLayout InitialLayout = ImageLayout::Undefined;
+        ImageLayout Layout = ImageLayout::Undefined;
         const void* InitialData = nullptr;
     };
     VkImageViewType VulkanImageViewType(ImageDesc desc);

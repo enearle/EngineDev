@@ -35,6 +35,7 @@ public:
     ~VulkanBufferAllocator() override;
     void FreeBuffer(uint64_t id) override;
     void FreeImage(uint64_t id) override;
+    VkDeviceAddress GetDescriptorBufferAddress() { return DescriptorBufferAddress; }
 
     enum DescriptorType : uint8_t { Sampler, SampledImage, StorageImage, UniformBuffer, StorageBuffer};
     
@@ -50,11 +51,11 @@ private:
     static constexpr uint16_t UniformBufferPoolSize = 2048;
     static constexpr uint16_t StorageBufferPoolSize = 1024;
     
-    static constexpr size_t SamplerStride = 16;
-    static constexpr size_t SampledImageStride = 32;
-    static constexpr size_t StorageImageStride = 32;
-    static constexpr size_t UniformBufferStride = 32;
-    static constexpr size_t StorageBufferStride = 32;
+    size_t SamplerStride;
+    size_t SampledImageStride;
+    size_t StorageImageStride;
+    size_t UniformBufferStride;
+    size_t StorageBufferStride;
     
     BitPool* SamplerPool;
     BitPool* SampledImagePool;
@@ -86,7 +87,7 @@ public:
     enum DescriptorType : uint8_t { SRV, CBV, UAV, RTV, DSV };
     
     D3D12_CPU_DESCRIPTOR_HANDLE AllocateDescriptor(DescriptorType type);
-    D3D12_CPU_DESCRIPTOR_HANDLE DirectX12BufferAllocator::GetHandle(size_t index, DescriptorType type);
+    D3D12_CPU_DESCRIPTOR_HANDLE GetHandle(size_t index, DescriptorType type);
     void FreeDescriptor(D3D12_CPU_DESCRIPTOR_HANDLE handle, DescriptorType type);
 
 

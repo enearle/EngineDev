@@ -172,6 +172,9 @@
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </ClCompile>
+    <Content Include="..\..\Common\Vulkan\Shaders\ps_quad.glsl" />
+    <Content Include="..\..\Common\Vulkan\Shaders\vs_quad.glsl" />
+    <Content Include="Textures\Texture.png" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\Common\Data\BitPool.h" />

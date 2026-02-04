@@ -8,6 +8,8 @@
 #include "../../Common/DirectX12/D3DCore.h"
 #include "../../Common/Vulkan/VulkanCore.h"
 #include "../../Common/GraphicsSettings.h"
+#include "../../Common/RHI/BufferAllocator.h"
+#include "../../Common/RHI/Image/ImageImport.h"
 
 using namespace RHIConstants;
 
@@ -24,8 +26,36 @@ int main()
         data.SwapchainMSAASamples = 1;
         
         Renderer::StartRender(window, data);
-        Pipeline* TrianglePipe = CreateRainbowTrianglePipeline();
+        //Pipeline* TrianglePipe = CreateRainbowTrianglePipeline();
+        Pipeline* TexturedQuadPipe = TexturedQuadPipeline();
         RenderPassExecutor* Executor = RenderPassExecutor::Create();
+        BufferAllocator* BufferAlloc = BufferAllocator::Create();
+        
+        ImageImport* texture = new ImageImport("Textures/texture");
+        
+        ImageUsage usage = 
+        {
+            .TransferSource = false,
+            .TransferDestination = true,
+            .Type = ImageType::Sampled
+        };
+        
+        MemoryAccess access;
+        access.SetGPURead(true);
+        
+        ImageDesc desc = 
+            {
+            .Width = texture->GetTextureData().Width,
+            .Height = texture->GetTextureData().Height,
+            .Size = texture->GetTextureData().TotalSize,
+            .Format = Format::R8G8B8A8_UNORM,
+            .Usage = usage,
+            .Type = ImageType::Sampled,
+            .Access = access,
+            .Layout = ImageLayout::General,
+            .InitialData = texture->GetTextureData().Pixels
+        };
+        uint64_t texture_id = BufferAlloc->CreateImage(desc);
         
         void* backBufferView;
         void* backBuffer;
@@ -37,41 +67,50 @@ int main()
             Renderer::BeginFrame();
             Renderer::GetSwapChainRenderTargets(backBufferView, backBuffer);
             
-            // TODO: declare these barriers as constants
-            RHIStructures::ImageMemoryBarrier preBarrier{};
-            preBarrier.SrcStage = RHIStructures::PipelineStage::TopOfPipe;
-            preBarrier.DstStage = RHIStructures::PipelineStage::ColorAttachmentOutput;
-            preBarrier.SrcAccessMask = 0;
-            preBarrier.DstAccessMask = static_cast<uint32_t>(RHIStructures::AccessFlag::ColorAttachmentWrite);
-            preBarrier.OldLayout = RHIStructures::ImageLayout::Present;
-            preBarrier.NewLayout = RHIStructures::ImageLayout::ColorAttachment;
+            ImageMemoryBarrier preBarrier = PRE_BARRIER;
             preBarrier.ImageResource = backBuffer;
             Executor->IssueImageMemoryBarrier(preBarrier);
             
-            Executor->BindPipeline(TrianglePipe);
-            Executor->Begin(TrianglePipe, {backBufferView}, nullptr, window->GetWidth(), window->GetHeight(), clearColors, 0);
+            //Executor->BindPipeline(TrianglePipe);
+            //Executor->Begin(TrianglePipe, {backBufferView}, nullptr, window->GetWidth(), window->GetHeight(), clearColors, 0);
+            Executor->BindPipeline(TexturedQuadPipe);
+            Executor->Begin(TexturedQuadPipe, {backBufferView}, nullptr, window->GetWidth(), window->GetHeight(), clearColors, 0);
 
             if (GRAPHICS_SETTINGS.APIToUse == DirectX12)
             {
                 ID3D12GraphicsCommandList* cmdList = D3DCore::GetInstance().GetCommandList().Get();
-                cmdList->DrawInstanced(3, 1, 0, 0);
+                cmdList->DrawInstanced(6, 1, 0, 0);
             }
             else if (GRAPHICS_SETTINGS.APIToUse == Vulkan)
             {
+                PFN_vkCmdBindDescriptorBuffersEXT vkCmdBindDescriptorBuffersEXT_FnPtr = VulkanCore::GetInstance().GetVkCmdBindDescriptorBuffersEXT();
+                PFN_vkCmdSetDescriptorBufferOffsetsEXT vkCmdSetDescriptorBufferOffsetsEXT_FnPtr = VulkanCore::GetInstance().GetVkCmdSetDescriptorBufferOffsetsEXT();
                 VkCommandBuffer cmdBuffer = VulkanCore::GetInstance().GetCommandBuffer();
-                vkCmdDraw(cmdBuffer, 3, 1, 0, 0);
+                // TODO look descbuffer embedded sampler
+                VkDeviceAddress address = static_cast<VulkanBufferAllocator*>(BufferAlloc)->GetDescriptorBufferAddress();
+                VkDeviceSize offset = BufferAlloc->GetImageAllocation(texture_id).Descriptor - address;
+                uint32_t bufferIndex = 0;
+                VkDescriptorBufferBindingInfoEXT info;
+                info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_BUFFER_BINDING_INFO_EXT;
+                info.address = address;
+                info.usage = VK_BUFFER_USAGE_RESOURCE_DESCRIPTOR_BUFFER_BIT_EXT |
+                                VK_BUFFER_USAGE_SAMPLER_DESCRIPTOR_BUFFER_BIT_EXT;
+                info.pNext = nullptr;
+                vkCmdBindDescriptorBuffersEXT_FnPtr(cmdBuffer, 1, &info);
+                vkCmdSetDescriptorBufferOffsetsEXT_FnPtr(
+                    cmdBuffer, 
+                    VK_PIPELINE_BIND_POINT_GRAPHICS, 
+                    static_cast<VulkanPipeline*>(TexturedQuadPipe)->GetPipelineLayout(), 
+                    0, 
+                    1, 
+                    &bufferIndex, 
+                    &offset);
+                vkCmdDraw(cmdBuffer, 6, 1, 0, 0);
             }
 
             Executor->End();
             
-            // Transition swapchain image back to PRESENT for presentation
-            RHIStructures::ImageMemoryBarrier postBarrier{};
-            postBarrier.SrcStage = RHIStructures::PipelineStage::ColorAttachmentOutput;
-            postBarrier.DstStage = RHIStructures::PipelineStage::BottomOfPipe;
-            postBarrier.SrcAccessMask = static_cast<uint32_t>(RHIStructures::AccessFlag::ColorAttachmentWrite);
-            postBarrier.DstAccessMask = 0;
-            postBarrier.OldLayout = RHIStructures::ImageLayout::ColorAttachment;
-            postBarrier.NewLayout = RHIStructures::ImageLayout::Present;
+            ImageMemoryBarrier postBarrier = POST_BARRIER;
             postBarrier.ImageResource = backBuffer;
             Executor->IssueImageMemoryBarrier(postBarrier);
             
@@ -79,8 +118,10 @@ int main()
         }
 
         Renderer::Wait();
+        delete BufferAlloc;
         delete Executor;        
-        delete TrianglePipe;
+        //delete TrianglePipe;
+        delete TexturedQuadPipe;
         Renderer::EndRender();
         delete window;
 

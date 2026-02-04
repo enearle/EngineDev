@@ -1,4 +1,5 @@
-﻿#include "ImageImport.h"
+﻿#define STB_IMAGE_IMPLEMENTATION
+#include "ImageImport.h"
 #include "stb_image.h"
 #include <stdexcept>
 

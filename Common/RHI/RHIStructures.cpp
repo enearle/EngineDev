@@ -554,9 +554,18 @@ namespace RHIStructures
         return D3D12_SHADER_VISIBILITY_ALL;
     }
 
-    VkShaderStageFlags VulkanShaderStageFlags(ShaderStageMask flags)
+    VkShaderStageFlags VulkanShaderStageFlags(const ShaderStageMask flags)
     {
-        return reinterpret_cast<VkShaderStageFlags&>(flags);
+        VkShaderStageFlags vk = 0;
+
+        if (flags.GetVertex())      vk |= VK_SHADER_STAGE_VERTEX_BIT;
+        if (flags.GetTessControl()) vk |= VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT;
+        if (flags.GetTessEval())    vk |= VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT;
+        if (flags.GetGeometry())    vk |= VK_SHADER_STAGE_GEOMETRY_BIT;
+        if (flags.GetFragment())    vk |= VK_SHADER_STAGE_FRAGMENT_BIT;
+        if (flags.GetCompute())     vk |= VK_SHADER_STAGE_COMPUTE_BIT;
+
+        return vk;
     }
 
     D3D12_RESOURCE_STATES ConvertLayoutToResourceState(ImageLayout layout)

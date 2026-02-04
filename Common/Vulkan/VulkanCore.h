@@ -5,7 +5,10 @@
 #include <vector>
 #include <iostream>
 #include <set>
+
+#include "VulkanPipelineLayoutBuilder.h"
 #include "../Vulkan/VulkanStructs.h"
+
 
 using namespace VulkanStructs;
 
@@ -47,6 +50,8 @@ class VulkanCore
     std::vector<VkCommandBuffer> CommandBuffers;                            // Command buffer for each swapchain image.
     VkCommandBuffer TransferCommandBuffer               = VK_NULL_HANDLE;
     
+    VkSampler GenericSampler                            = VK_NULL_HANDLE;
+    
     // Debug
     const std::vector<const char*> DEVICE_EXTENSIONS = {
         VK_KHR_SWAPCHAIN_EXTENSION_NAME,
@@ -59,7 +64,11 @@ class VulkanCore
 
     bool SwapChainMSAA = false;
     UINT SwapChainMSAASamples = 1;
-
+    
+    VkPhysicalDeviceDescriptorBufferPropertiesEXT DescriptorBufferProperties{};
+    PFN_vkCmdBindDescriptorBuffersEXT        vkCmdBindDescriptorBuffersEXT_FnPtr = nullptr;
+    PFN_vkCmdSetDescriptorBufferOffsetsEXT   vkCmdSetDescriptorBufferOffsetsEXT_FnPtr = nullptr;
+    PFN_vkGetDescriptorEXT vkGetDescriptorEXT_FnPtr = nullptr;
 public:
 
     static VulkanCore& GetInstance();
@@ -89,6 +98,11 @@ public:
     uint32_t GetCurrentSwapchainImageIndex() const { return CurrentSwapchainImageIndex; }
     VkImageView GetCurrentSwapchainImageView() const { return SwapchainImages[CurrentSwapchainImageIndex].ImageView; }
     VkImage GetCurrentSwapchainImage() const {return SwapchainImages[CurrentSwapchainImageIndex].ImageHandle; }
+    PFN_vkGetDescriptorEXT GetVkGetDescriptorEXT() const { return vkGetDescriptorEXT_FnPtr; }
+    PFN_vkCmdBindDescriptorBuffersEXT GetVkCmdBindDescriptorBuffersEXT() const { return vkCmdBindDescriptorBuffersEXT_FnPtr; }
+    PFN_vkCmdSetDescriptorBufferOffsetsEXT GetVkCmdSetDescriptorBufferOffsetsEXT() const { return vkCmdSetDescriptorBufferOffsetsEXT_FnPtr; }
+    const VkPhysicalDeviceDescriptorBufferPropertiesEXT& GetDescriptorBufferProperties() const{ return DescriptorBufferProperties; }
+    const VkSampler* GetGenericSampler() const { return &GenericSampler; }
     
 private:
     
@@ -101,6 +115,7 @@ private:
     void CreateSynchronizationPrimitives();
     void CreateCommandPool();
     void CreateSwapchain();
+    void CreateSamplers();
     
     // Debug Support
     VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo,

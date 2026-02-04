@@ -33,7 +33,8 @@ VulkanBufferAllocator::VulkanBufferAllocator()
     bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     bufferInfo.size = 64 * 1024 * 1024; // 128MB for descriptors
     bufferInfo.usage = VK_BUFFER_USAGE_RESOURCE_DESCRIPTOR_BUFFER_BIT_EXT |
-                      VK_BUFFER_USAGE_SAMPLER_DESCRIPTOR_BUFFER_BIT_EXT;
+                      VK_BUFFER_USAGE_SAMPLER_DESCRIPTOR_BUFFER_BIT_EXT |
+                        VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
     bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
         
     vkCreateBuffer(device, &bufferInfo, nullptr, &DescriptorBuffer);
@@ -41,14 +42,20 @@ VulkanBufferAllocator::VulkanBufferAllocator()
     VkMemoryRequirements memReqs;
     vkGetBufferMemoryRequirements(device, DescriptorBuffer, &memReqs);
     
+    VkMemoryAllocateFlagsInfo allocFlags = {};
+    allocFlags.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO;
+    allocFlags.flags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT;
+    
     VkMemoryAllocateInfo allocInfo = {};
     allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     allocInfo.allocationSize = memReqs.size;
     allocInfo.memoryTypeIndex = FindMemoryType(
         physicalDevice,
         memReqs.memoryTypeBits,
-        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | 
+        VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT
     );
+    allocInfo.pNext = &allocFlags;
     
     vkAllocateMemory(device, &allocInfo, nullptr, &DescriptorBufferMemory);
     
@@ -60,6 +67,12 @@ VulkanBufferAllocator::VulkanBufferAllocator()
     addressInfo.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
     addressInfo.buffer = DescriptorBuffer;
     DescriptorBufferAddress = vkGetBufferDeviceAddress(device, &addressInfo);
+    
+    SamplerStride = VulkanCore::GetInstance().GetDescriptorBufferProperties().samplerDescriptorSize;
+    SampledImageStride = VulkanCore::GetInstance().GetDescriptorBufferProperties().sampledImageDescriptorSize;
+    StorageImageStride = VulkanCore::GetInstance().GetDescriptorBufferProperties().storageImageDescriptorSize;
+    UniformBufferStride = VulkanCore::GetInstance().GetDescriptorBufferProperties().uniformBufferDescriptorSize;
+    StorageBufferStride = VulkanCore::GetInstance().GetDescriptorBufferProperties().storageBufferDescriptorSize;
 
     uint32_t currentOffset = 0;
     SamplerPool = new BitPool();
@@ -81,7 +94,7 @@ VulkanBufferAllocator::VulkanBufferAllocator()
 VkDeviceAddress VulkanBufferAllocator::AllocateDescriptor(VkDescriptorGetInfoEXT* descriptorInfo, DescriptorType type)
 {
     VkDevice device = VulkanCore::GetInstance().GetDevice();
-    
+    PFN_vkGetDescriptorEXT vkGetDescriptorEXT_Fn = VulkanCore::GetInstance().GetVkGetDescriptorEXT();
     size_t stride = 0;
     BitPool* pool = nullptr;
     
@@ -117,7 +130,7 @@ VkDeviceAddress VulkanBufferAllocator::AllocateDescriptor(VkDescriptorGetInfoEXT
     size_t offset = pool->Allocate();
     
     uint8_t* descriptorLocation = (uint8_t*)DescriptorBufferMapped + offset;
-    vkGetDescriptorEXT(device, descriptorInfo, stride, descriptorLocation);
+    vkGetDescriptorEXT_Fn(device, descriptorInfo, stride, descriptorLocation);
     
     VkDeviceAddress descriptorAddress = DescriptorBufferAddress + offset;
     return descriptorAddress;
@@ -418,7 +431,7 @@ uint64_t VulkanBufferAllocator::CreateImage(ImageDesc imageDesc)
         if (imageDesc.Type == ImageType::Sampled)
         {
             descriptorType = DescriptorType::SampledImage;
-            vkDescriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+            vkDescriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         }
         else
         {
@@ -431,7 +444,15 @@ uint64_t VulkanBufferAllocator::CreateImage(ImageDesc imageDesc)
         imageInfo.imageLayout = (descriptorType == DescriptorType::SampledImage) 
             ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL 
             : VK_IMAGE_LAYOUT_GENERAL;
-        imageInfo.sampler = VK_NULL_HANDLE;
+        
+        if (vkDescriptorType == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER)
+        {
+            imageInfo.sampler = *VulkanCore::GetInstance().GetGenericSampler();
+        }
+        else
+        {
+            imageInfo.sampler = VK_NULL_HANDLE;
+        }
         
         VkDescriptorGetInfoEXT descriptorInfo{};
         descriptorInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_GET_INFO_EXT;
@@ -492,8 +513,6 @@ VulkanBufferAllocator::~VulkanBufferAllocator()
         }
     }
     AllocatedImages.clear();
-    
-    vkUnmapMemory(device, DescriptorBufferMemory);
 }
 
 void VulkanBufferAllocator::FreeBuffer(uint64_t id)
@@ -513,7 +532,18 @@ void VulkanBufferAllocator::CopyBufferToImage(VkBuffer stagingBuffer, VkImage ds
     VkQueue transferQueue = VulkanCore::GetInstance().GetGraphicsQueue();
     VkFence transferFence = VulkanCore::GetInstance().GetTransferFence();
     
-    vkWaitForFences(device, 1, &transferFence, VK_TRUE, UINT64_MAX);
+    VkResult fenceStatus = vkGetFenceStatus(device, transferFence);
+    if (fenceStatus == VK_NOT_READY)
+    {
+        VkResult waitRes = vkWaitForFences(device, 1, &transferFence, VK_TRUE, UINT64_MAX);
+        if (waitRes != VK_SUCCESS)
+            throw std::runtime_error("vkWaitForFences failed in CopyBufferToImage().");
+    }
+    else if (fenceStatus != VK_SUCCESS)
+    {
+        throw std::runtime_error("vkGetFenceStatus returned an error in CopyBufferToImage().");
+    }
+    
     vkResetFences(device, 1, &transferFence);
     vkResetCommandBuffer(commandBuffer, 0);
     
@@ -544,11 +574,13 @@ void VulkanBufferAllocator::CopyBufferToImage(VkBuffer stagingBuffer, VkImage ds
     submitInfo.commandBufferCount = 1;
     submitInfo.pCommandBuffers = &commandBuffer;
 
-    vkQueueSubmit(transferQueue, 1, &submitInfo, transferFence);
-    
-    vkWaitForFences(device, 1, &transferFence, VK_TRUE, UINT64_MAX);
-    vkResetFences(device, 1, &transferFence);
-    vkResetCommandBuffer(commandBuffer, 0);
+    VkResult submitRes = vkQueueSubmit(transferQueue, 1, &submitInfo, transferFence);
+    if (submitRes != VK_SUCCESS)
+        throw std::runtime_error("vkQueueSubmit failed in CopyBufferToImage().");
+
+    VkResult waitRes = vkWaitForFences(device, 1, &transferFence, VK_TRUE, UINT64_MAX);
+    if (waitRes != VK_SUCCESS)
+        throw std::runtime_error("vkWaitForFences failed after submit in CopyBufferToImage().");
 }
 
 void VulkanBufferAllocator::TransitionImageLayout(VkImage image, VkImageLayout oldLayout, VkImageLayout newLayout)
@@ -562,7 +594,18 @@ void VulkanBufferAllocator::TransitionImageLayout(VkImage image, VkImageLayout o
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 
-    vkWaitForFences(device, 1, &transferFence, VK_TRUE, UINT64_MAX);
+    VkResult fenceStatus = vkGetFenceStatus(device, transferFence);
+    if (fenceStatus == VK_NOT_READY)
+    {
+        VkResult waitRes = vkWaitForFences(device, 1, &transferFence, VK_TRUE, UINT64_MAX);
+        if (waitRes != VK_SUCCESS)
+            throw std::runtime_error("vkWaitForFences failed in CopyBufferToImage().");
+    }
+    else if (fenceStatus != VK_SUCCESS)
+    {
+        throw std::runtime_error("vkGetFenceStatus returned an error in CopyBufferToImage().");
+    }
+    
     vkResetFences(device, 1, &transferFence);
     vkResetCommandBuffer(commandBuffer, 0);
     
@@ -620,13 +663,13 @@ void VulkanBufferAllocator::TransitionImageLayout(VkImage image, VkImageLayout o
     submitInfo.commandBufferCount = 1;
     submitInfo.pCommandBuffers = &commandBuffer;
 
-    result = vkQueueSubmit(commandQueue, 1, &submitInfo, transferFence);
-    if (result != VK_SUCCESS)
-        throw std::runtime_error("Failed to submit transfer command buffer to queue.");
+    VkResult submitRes = vkQueueSubmit(commandQueue, 1, &submitInfo, transferFence);
+    if (submitRes != VK_SUCCESS)
+        throw std::runtime_error("vkQueueSubmit failed in CopyBufferToImage().");
 
-    vkWaitForFences(device, 1, &transferFence, VK_TRUE, UINT64_MAX);
-    vkResetFences(device, 1, &transferFence);
-    vkResetCommandBuffer(commandBuffer, 0);
+    VkResult waitRes = vkWaitForFences(device, 1, &transferFence, VK_TRUE, UINT64_MAX);
+    if (waitRes != VK_SUCCESS)
+        throw std::runtime_error("vkWaitForFences failed after submit in CopyBufferToImage().");
 }
 
 VkImage VulkanBufferAllocator::CreateVulkanImage(ImageDesc imageDesc, VkDeviceMemory* imageMemory)
