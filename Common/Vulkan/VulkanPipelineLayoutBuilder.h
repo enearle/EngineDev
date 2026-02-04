@@ -10,7 +10,8 @@ class VulkanPipelineLayoutBuilder
 public:
     static VkPipelineLayout BuildPipelineLayout(
         VkDevice device,
-        const ResourceLayout& layout
+        const ResourceLayout& layout,
+        std::vector<VkDescriptorSetLayout>& descriptorSetLayouts
     );
 
 private:

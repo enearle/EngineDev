@@ -6,7 +6,7 @@
 
 #include "VulkanCore.h"
 
-VkPipelineLayout VulkanPipelineLayoutBuilder::BuildPipelineLayout(VkDevice device, const ResourceLayout& layout)
+VkPipelineLayout VulkanPipelineLayoutBuilder::BuildPipelineLayout(VkDevice device, const ResourceLayout& layout, std::vector<VkDescriptorSetLayout>& descriptorSetLayouts)
 {
     if (!device)
         throw std::runtime_error("Vulkan device is null");
@@ -41,7 +41,6 @@ VkPipelineLayout VulkanPipelineLayoutBuilder::BuildPipelineLayout(VkDevice devic
         bindingIndex++;
     }
     
-    std::vector<VkDescriptorSetLayout> descriptorSetLayouts;
     descriptorSetLayouts.reserve(bindingsBySet.size());
     
     for (const auto& [setIndex, bindings] : bindingsBySet)
@@ -79,11 +78,6 @@ VkPipelineLayout VulkanPipelineLayoutBuilder::BuildPipelineLayout(VkDevice devic
 
     VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
     VkResult result = vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &pipelineLayout);
-    
-    for (VkDescriptorSetLayout layout : descriptorSetLayouts)
-    {
-        vkDestroyDescriptorSetLayout(device, layout, nullptr);
-    }
 
     if (result != VK_SUCCESS)
         throw std::runtime_error("Failed to create pipeline layout");

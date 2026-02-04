@@ -40,6 +40,7 @@ private:
     std::vector<VkShaderModule> ShaderModules;
     VkPipeline Pipeline = VK_NULL_HANDLE;
     VkPipelineLayout PipelineLayout = VK_NULL_HANDLE;
+    std::vector<VkDescriptorSetLayout> SetLayouts;
     VkPipelineCache PipelineCache = VK_NULL_HANDLE;
     VkRenderPass RenderPass = VK_NULL_HANDLE;
 };

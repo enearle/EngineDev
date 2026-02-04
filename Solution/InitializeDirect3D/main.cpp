@@ -97,10 +97,13 @@ int main()
                                 VK_BUFFER_USAGE_SAMPLER_DESCRIPTOR_BUFFER_BIT_EXT;
                 info.pNext = nullptr;
                 vkCmdBindDescriptorBuffersEXT_FnPtr(cmdBuffer, 1, &info);
+                
+                auto layout = static_cast<VulkanPipeline*>(TexturedQuadPipe)->GetPipelineLayout();
+                
                 vkCmdSetDescriptorBufferOffsetsEXT_FnPtr(
                     cmdBuffer, 
                     VK_PIPELINE_BIND_POINT_GRAPHICS, 
-                    static_cast<VulkanPipeline*>(TexturedQuadPipe)->GetPipelineLayout(), 
+                    layout, 
                     0, 
                     1, 
                     &bufferIndex, 

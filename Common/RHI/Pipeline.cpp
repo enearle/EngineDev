@@ -390,7 +390,7 @@ VulkanPipeline::VulkanPipeline(const PipelineDesc& desc)
         cacheInfo.pInitialData = desc.CachedPipelineData;
     }
 
-    PipelineLayout = VulkanPipelineLayoutBuilder::BuildPipelineLayout(VulkanCore::GetInstance().GetDevice(), desc.ResourceLayout);
+    PipelineLayout = VulkanPipelineLayoutBuilder::BuildPipelineLayout(VulkanCore::GetInstance().GetDevice(), desc.ResourceLayout, SetLayouts);
     
     VkGraphicsPipelineCreateInfo pipelineCreateInfo{};
     pipelineCreateInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
@@ -530,6 +530,9 @@ void VulkanPipeline::CreateRenderPass(const PipelineDesc& desc)
 VulkanPipeline::~VulkanPipeline()
 {
     VkDevice device = VulkanCore::GetInstance().GetDevice();
+    
+    for (VkDescriptorSetLayout setLayout : SetLayouts)
+        vkDestroyDescriptorSetLayout(device, setLayout, nullptr);
     
     if (Pipeline != VK_NULL_HANDLE)
         vkDestroyPipeline(device, Pipeline, nullptr);
