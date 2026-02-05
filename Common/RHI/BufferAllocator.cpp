@@ -776,8 +776,8 @@ uint64_t DirectX12BufferAllocator::CreateBuffer(BufferDesc bufferDesc)
     
     BufferType finalType = bufferDesc.Type;
     
-    auto defaultHeapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
-    auto bufferDesc_dx12 = CD3DX12_RESOURCE_DESC::Buffer(bufferDesc.Size);
+    CD3DX12_HEAP_PROPERTIES defaultHeapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
+    CD3DX12_RESOURCE_DESC bufferDesc_dx12 = CD3DX12_RESOURCE_DESC::Buffer(bufferDesc.Size);
     
     device->CreateCommittedResource(
         &defaultHeapProperties,
@@ -787,8 +787,8 @@ uint64_t DirectX12BufferAllocator::CreateBuffer(BufferDesc bufferDesc)
         nullptr,
         IID_PPV_ARGS(defaultBuffer.GetAddressOf())) >> ERROR_HANDLER;
 
-    auto uploadHeapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
-    auto uploadBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(bufferDesc.Size);
+    CD3DX12_HEAP_PROPERTIES uploadHeapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
+    CD3DX12_RESOURCE_DESC uploadBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(bufferDesc.Size);
     
     device->CreateCommittedResource(
         &uploadHeapProperties,
@@ -797,6 +797,8 @@ uint64_t DirectX12BufferAllocator::CreateBuffer(BufferDesc bufferDesc)
         D3D12_RESOURCE_STATE_GENERIC_READ,
         nullptr,
         IID_PPV_ARGS(uploadBuffer.GetAddressOf())) >> ERROR_HANDLER;
+    
+    D3DCore::GetInstance().DeferUploadBufferRelease(uploadBuffer);
 
     // Copy initial data if provided
     if (bufferDesc.InitialData != nullptr)
@@ -811,7 +813,7 @@ uint64_t DirectX12BufferAllocator::CreateBuffer(BufferDesc bufferDesc)
         subResourceData.RowPitch = bufferDesc.Size;
         subResourceData.SlicePitch = bufferDesc.Size;
 
-        auto transition1 = CD3DX12_RESOURCE_BARRIER::Transition(
+        CD3DX12_RESOURCE_BARRIER transition1 = CD3DX12_RESOURCE_BARRIER::Transition(
             defaultBuffer.Get(), 
             D3D12_RESOURCE_STATE_COMMON, 
             D3D12_RESOURCE_STATE_COPY_DEST);
@@ -819,7 +821,7 @@ uint64_t DirectX12BufferAllocator::CreateBuffer(BufferDesc bufferDesc)
 
         UpdateSubresources<1>(cmdList, defaultBuffer.Get(), uploadBuffer.Get(), 0, 0, 1, &subResourceData);
 
-        auto transition2 = CD3DX12_RESOURCE_BARRIER::Transition(
+        CD3DX12_RESOURCE_BARRIER transition2 = CD3DX12_RESOURCE_BARRIER::Transition(
             defaultBuffer.Get(),
             D3D12_RESOURCE_STATE_COPY_DEST, 
             D3D12_RESOURCE_STATE_GENERIC_READ);
@@ -878,6 +880,12 @@ uint64_t DirectX12BufferAllocator::CreateImage(ImageDesc imageDesc)
     ID3D12Device* device = D3DCore::GetInstance().GetDevice().Get();
     ID3D12GraphicsCommandList* cmdList = D3DCore::GetInstance().GetTransferCommandList().Get();
 
+    if (imageDesc.ArrayLayers != 1 || imageDesc.MipLevels != 1)
+        throw std::runtime_error("DirectX12BufferAllocator::CreateImage currently supports only 1 layer and 1 mip (match Vulkan path later).");
+
+    if (imageDesc.InitialData == nullptr || imageDesc.Size == 0)
+        throw std::runtime_error("DirectX12BufferAllocator::CreateImage requires InitialData + Size (like Vulkan staging upload).");
+
     ComPtr<ID3D12Resource> imageResource;
 
     D3D12_RESOURCE_DESC textureDesc = {};
@@ -885,42 +893,93 @@ uint64_t DirectX12BufferAllocator::CreateImage(ImageDesc imageDesc)
     textureDesc.Alignment = 0;
     textureDesc.Width = imageDesc.Width;
     textureDesc.Height = imageDesc.Height;
-    textureDesc.DepthOrArraySize = imageDesc.ArrayLayers;
-    textureDesc.MipLevels = imageDesc.MipLevels;
+    textureDesc.DepthOrArraySize = static_cast<UINT16>(imageDesc.ArrayLayers);
+    textureDesc.MipLevels = static_cast<UINT16>(imageDesc.MipLevels);
     textureDesc.Format = DXFormat(imageDesc.Format);
     textureDesc.SampleDesc.Count = 1;
     textureDesc.SampleDesc.Quality = 0;
     textureDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
     textureDesc.Flags = DXImageUsage(imageDesc.Usage);
 
-    D3D12_HEAP_PROPERTIES heapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
+    auto defaultHeapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
     
     device->CreateCommittedResource(
-        &heapProperties,
+        &defaultHeapProperties,
         D3D12_HEAP_FLAG_NONE,
         &textureDesc,
-        D3D12_RESOURCE_STATE_COMMON,
+        D3D12_RESOURCE_STATE_COPY_DEST,
         nullptr,
         IID_PPV_ARGS(imageResource.GetAddressOf())) >> ERROR_HANDLER;
+    
+    ComPtr<ID3D12Resource> uploadBuffer;
 
+    const UINT firstSubresource = 0;
+    const UINT numSubresources = 1;
+    const UINT64 uploadBufferSize = GetRequiredIntermediateSize(imageResource.Get(), firstSubresource, numSubresources);
+
+    auto uploadHeapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
+    auto uploadDesc = CD3DX12_RESOURCE_DESC::Buffer(uploadBufferSize);
+
+    device->CreateCommittedResource(
+        &uploadHeapProperties,
+        D3D12_HEAP_FLAG_NONE,
+        &uploadDesc,
+        D3D12_RESOURCE_STATE_GENERIC_READ,
+        nullptr,
+        IID_PPV_ARGS(uploadBuffer.GetAddressOf())) >> ERROR_HANDLER;
+    
+    D3DCore::GetInstance().DeferUploadBufferRelease(uploadBuffer);
+    
+    const uint32_t bytesPerPixel =
+        (imageDesc.Format == Format::R8G8B8A8_UNORM || imageDesc.Format == Format::R8G8B8A8_UNORM_SRGB) ? 4u : 0u;
+
+    if (bytesPerPixel == 0)
+        throw std::runtime_error("CreateImage upload currently only implemented for R8G8B8A8(_SRGB). Add proper bpp/rowPitch handling for other formats.");
+
+    const UINT64 expectedSize = static_cast<UINT64>(imageDesc.Width) * static_cast<UINT64>(imageDesc.Height) * bytesPerPixel;
+    if (imageDesc.Size < expectedSize)
+        throw std::runtime_error("ImageDesc::Size is smaller than expected for the provided Width/Height/Format.");
+
+    D3D12_SUBRESOURCE_DATA subresource = {};
+    subresource.pData = imageDesc.InitialData;
+    subresource.RowPitch = static_cast<LONG_PTR>(imageDesc.Width) * bytesPerPixel;
+    subresource.SlicePitch = subresource.RowPitch * imageDesc.Height;
+
+    UpdateSubresources(cmdList, imageResource.Get(), uploadBuffer.Get(), 0, firstSubresource, numSubresources, &subresource);
+
+    CD3DX12_RESOURCE_BARRIER toShaderRead = CD3DX12_RESOURCE_BARRIER::Transition(
+        imageResource.Get(),
+        D3D12_RESOURCE_STATE_COPY_DEST,
+        D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+    cmdList->ResourceBarrier(1, &toShaderRead);
+    
     D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
     srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
     srvDesc.Format = DXFormat(imageDesc.Format);
     srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
     srvDesc.Texture2D.MostDetailedMip = 0;
-    srvDesc.Texture2D.MipLevels = imageDesc.MipLevels;
-    
+    srvDesc.Texture2D.MipLevels = 1;
+    srvDesc.Texture2D.PlaneSlice = 0;
+    srvDesc.Texture2D.ResourceMinLODClamp = 0.0f;
+
     D3D12_CPU_DESCRIPTOR_HANDLE srvHandle = AllocateDescriptor(SRV);
     device->CreateShaderResourceView(imageResource.Get(), &srvDesc, srvHandle);
-    
+
+    const D3D12_CPU_DESCRIPTOR_HANDLE heapCpuStart = ShaderResourceHeap->GetCPUDescriptorHandleForHeapStart();
+    const D3D12_GPU_DESCRIPTOR_HANDLE heapGpuStart = ShaderResourceHeap->GetGPUDescriptorHandleForHeapStart();
+
+    const UINT64 byteOffset = srvHandle.ptr - heapCpuStart.ptr;
+    D3D12_GPU_DESCRIPTOR_HANDLE srvGpuHandle{};
+    srvGpuHandle.ptr = heapGpuStart.ptr + byteOffset;
+
     DX12ImageData* imageData = new DX12ImageData();
-    imageData->Image = imageResource.Get();
+    imageData->Image = imageResource;
     imageData->Descriptor = srvHandle;
 
     ImageAllocation allocation;
     allocation.Image = imageData;
     allocation.Desc = imageDesc;
-    allocation.Descriptor = *reinterpret_cast<uint64_t*>(&srvHandle);
+    allocation.Descriptor = srvGpuHandle.ptr;
 
     return CacheImage(allocation);
 }

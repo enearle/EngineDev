@@ -36,8 +36,8 @@ void Win32ErrorHandler::ErrorMessageW(const std::wstring& msg)
     ErrorMessageW(msg.c_str());
 }
 
-Win32ErrorHandler::HResultGrabber::HResultGrabber(unsigned int hr, std::source_location) noexcept
-    : HResult(hr), Location(std::source_location::current()) {}
+Win32ErrorHandler::HResultGrabber::HResultGrabber(unsigned int hr, std::source_location location) noexcept
+    : HResult(hr), Location(location) {}
 
 void Win32ErrorHandler::operator>>(HResultGrabber grabber, ErrorHandler)
 {

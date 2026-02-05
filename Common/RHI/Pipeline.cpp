@@ -135,6 +135,7 @@ D3DPipeline::D3DPipeline(const PipelineDesc& desc)
     
         inputElements.push_back(element);
     }
+    
     if (!inputElements.empty())
     {
         inputLayoutDesc.pInputElementDescs = inputElements.data();
@@ -177,17 +178,15 @@ D3DPipeline::D3DPipeline(const PipelineDesc& desc)
     pipelineStateDesc.IBStripCutValue = D3D12_INDEX_BUFFER_STRIP_CUT_VALUE_DISABLED; // Splits up geometry in a single draw call (rarely useful and can be done by other explicit means)
     pipelineStateDesc.PrimitiveTopologyType = DXPrimitiveTopologyType(desc.PrimitiveTopology);
     pipelineStateDesc.NumRenderTargets = static_cast<UINT>(desc.RenderTargetFormats.size());
+    
     // Initialize RTVFormats array to UNKNOWN first
     for (int i = 0; i < 8; i++)
-    {
         pipelineStateDesc.RTVFormats[i] = DXGI_FORMAT_UNKNOWN;
-    }
 
     // Then fill in the actual formats
     for (size_t i = 0; i < desc.RenderTargetFormats.size() && i < 8; i++)
-    {
         pipelineStateDesc.RTVFormats[i] = DXFormat(desc.RenderTargetFormats[i]);
-    }
+    
 
     pipelineStateDesc.DSVFormat = DXFormat(desc.DepthStencilFormat);
     pipelineStateDesc.SampleDesc = sampleDesc;
@@ -199,9 +198,8 @@ D3DPipeline::D3DPipeline(const PipelineDesc& desc)
         pipelineStateDesc.CachedPSO.CachedBlobSizeInBytes = desc.CachedPipelineDataSize;
     }
     else
-    {
         pipelineStateDesc.CachedPSO = {};
-    }
+    
     D3D12_PIPELINE_STATE_FLAGS flags = D3D12_PIPELINE_STATE_FLAG_NONE;
     pipelineStateDesc.Flags = flags;
 
@@ -405,6 +403,7 @@ VulkanPipeline::VulkanPipeline(const PipelineDesc& desc)
     pipelineCreateInfo.pMultisampleState = &multisampling;
     pipelineCreateInfo.pDepthStencilState = &depthStencilState;
     pipelineCreateInfo.pColorBlendState = &colorBlendState;
+    pipelineCreateInfo.flags = VK_PIPELINE_CREATE_DESCRIPTOR_BUFFER_BIT_EXT;
     pipelineCreateInfo.renderPass = RenderPass;
     pipelineCreateInfo.layout = PipelineLayout;
     

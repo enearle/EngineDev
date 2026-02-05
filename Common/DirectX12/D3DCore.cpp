@@ -6,7 +6,9 @@
 #include <stdexcept>
 #include "../GraphicsSettings.h"
 #include "../RHI/Renderer.h"
+
 using namespace Win32ErrorHandler;
+
 
 D3DCore& D3DCore::GetInstance()
 {
@@ -72,15 +74,18 @@ void D3DCore::Reset()
 void D3DCore::BeginFrame()
 {
     WaitForFrame(CurrentFrameIndex);
+    DeferredUploadReleases[CurrentFrameIndex].clear();
     CommandAllocators[CurrentFrameIndex]->Reset();
     CommandLists[CurrentFrameIndex]->Reset(CommandAllocators[CurrentFrameIndex].Get(), nullptr);
+    TransferCommandList->Reset(TransferCommandAllocator.Get(), nullptr);
 }
 
 void D3DCore::EndFrame()
 {
     CommandLists[CurrentFrameIndex]->Close() >> ERROR_HANDLER;
+    TransferCommandList->Close() >> ERROR_HANDLER;
     
-    ID3D12CommandList* ppCommandLists[] = { CommandLists[CurrentFrameIndex].Get() };
+    ID3D12CommandList* ppCommandLists[] = { TransferCommandList.Get(), CommandLists[CurrentFrameIndex].Get() };
     CommandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
     
     CurrentFence++;
@@ -88,6 +93,15 @@ void D3DCore::EndFrame()
     CommandQueue->Signal(Fence.Get(), CurrentFence) >> ERROR_HANDLER;
     SwapChain->Present(1, 0) >> ERROR_HANDLER;
     CurrentFrameIndex = (CurrentFrameIndex + 1) % SwapChainBufferCount;
+    
+}
+
+void D3DCore::DeferUploadBufferRelease(ComPtr<ID3D12Resource> resource)
+{
+    if (!resource)
+        return;
+    
+    DeferredUploadReleases[CurrentFrameIndex].emplace_back(resource);
 }
 
 void D3DCore::InitDebugLayer()

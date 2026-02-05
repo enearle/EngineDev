@@ -22,6 +22,7 @@ public:
     virtual ~BufferAllocator() = default;
     virtual void FreeBuffer(uint64_t id) = 0;
     virtual void FreeImage(uint64_t id) = 0;
+    
     ImageAllocation GetImageAllocation(uint64_t id) const { return AllocatedImages.at(id); }
     BufferAllocation GetBufferAllocation(uint64_t id) const { return AllocatedBuffers.at(id); }
 };
@@ -35,7 +36,7 @@ public:
     ~VulkanBufferAllocator() override;
     void FreeBuffer(uint64_t id) override;
     void FreeImage(uint64_t id) override;
-    VkDeviceAddress GetDescriptorBufferAddress() { return DescriptorBufferAddress; }
+    uint64_t GetDescriptorBufferAddress() { return DescriptorBufferAddress; }
 
     enum DescriptorType : uint8_t { Sampler, SampledImage, StorageImage, UniformBuffer, StorageBuffer};
     
@@ -90,8 +91,8 @@ public:
     D3D12_CPU_DESCRIPTOR_HANDLE GetHandle(size_t index, DescriptorType type);
     void FreeDescriptor(D3D12_CPU_DESCRIPTOR_HANDLE handle, DescriptorType type);
 
-
-    ID3D12DescriptorHeap* GetShaderResourceHeap() const { return ShaderResourceHeap.Get(); }
+    
+    ComPtr<ID3D12DescriptorHeap> GetShaderResourceHeap() const { return ShaderResourceHeap; }
 
 private:
     ComPtr<ID3D12DescriptorHeap> ShaderResourceHeap;

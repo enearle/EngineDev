@@ -27,9 +27,9 @@ int main()
         
         Renderer::StartRender(window, data);
         //Pipeline* TrianglePipe = CreateRainbowTrianglePipeline();
-        Pipeline* TexturedQuadPipe = TexturedQuadPipeline();
-        RenderPassExecutor* Executor = RenderPassExecutor::Create();
-        BufferAllocator* BufferAlloc = BufferAllocator::Create();
+        Pipeline* texturedQuadPipe = TexturedQuadPipeline();
+        RenderPassExecutor* executor = RenderPassExecutor::Create();
+        BufferAllocator* bufferAlloc = BufferAllocator::Create();
         
         ImageImport* texture = new ImageImport("Textures/texture");
         
@@ -55,40 +55,55 @@ int main()
             .Layout = ImageLayout::General,
             .InitialData = texture->GetTextureData().Pixels
         };
-        uint64_t texture_id = BufferAlloc->CreateImage(desc);
+        uint64_t texture_id;
         
         void* backBufferView;
         void* backBuffer;
 
         std::vector<DirectX::XMFLOAT4> clearColors {{0,0,0,1}};
+        bool uploaded = false;
 
         while (!window->PeekMessages())
         {
             Renderer::BeginFrame();
+            
+            if (!uploaded)
+            {
+                texture_id = bufferAlloc->CreateImage(desc);
+                uploaded = true;
+            }
+            
             Renderer::GetSwapChainRenderTargets(backBufferView, backBuffer);
             
             ImageMemoryBarrier preBarrier = PRE_BARRIER;
             preBarrier.ImageResource = backBuffer;
-            Executor->IssueImageMemoryBarrier(preBarrier);
+            executor->IssueImageMemoryBarrier(preBarrier);
             
-            //Executor->BindPipeline(TrianglePipe);
-            //Executor->Begin(TrianglePipe, {backBufferView}, nullptr, window->GetWidth(), window->GetHeight(), clearColors, 0);
-            Executor->BindPipeline(TexturedQuadPipe);
-            Executor->Begin(TexturedQuadPipe, {backBufferView}, nullptr, window->GetWidth(), window->GetHeight(), clearColors, 0);
-
+            //executor->BindPipeline(TrianglePipe);
+            //executor->Begin(TrianglePipe, {backBufferView}, nullptr, window->GetWidth(), window->GetHeight(), clearColors, 0);
+            executor->BindPipeline(texturedQuadPipe);
+            executor->Begin(texturedQuadPipe, {backBufferView}, nullptr, window->GetWidth(), window->GetHeight(), clearColors, 0);
+            
             if (GRAPHICS_SETTINGS.APIToUse == DirectX12)
             {
+                DirectX12BufferAllocator* alloc = static_cast<DirectX12BufferAllocator*>(bufferAlloc);
                 ID3D12GraphicsCommandList* cmdList = D3DCore::GetInstance().GetCommandList().Get();
+                cmdList->SetDescriptorHeaps(1, alloc->GetShaderResourceHeap().GetAddressOf());
+                D3D12_GPU_DESCRIPTOR_HANDLE handle {};
+                handle.ptr = alloc->GetImageAllocation(texture_id).Descriptor;
+                cmdList->SetGraphicsRootDescriptorTable(0, handle);
                 cmdList->DrawInstanced(6, 1, 0, 0);
             }
             else if (GRAPHICS_SETTINGS.APIToUse == Vulkan)
             {
+                VulkanBufferAllocator* alloc = static_cast<VulkanBufferAllocator*>(bufferAlloc);
+                VulkanPipeline* pipeline = static_cast<VulkanPipeline*>(texturedQuadPipe);
                 PFN_vkCmdBindDescriptorBuffersEXT vkCmdBindDescriptorBuffersEXT_FnPtr = VulkanCore::GetInstance().GetVkCmdBindDescriptorBuffersEXT();
                 PFN_vkCmdSetDescriptorBufferOffsetsEXT vkCmdSetDescriptorBufferOffsetsEXT_FnPtr = VulkanCore::GetInstance().GetVkCmdSetDescriptorBufferOffsetsEXT();
                 VkCommandBuffer cmdBuffer = VulkanCore::GetInstance().GetCommandBuffer();
                 // TODO look descbuffer embedded sampler
-                VkDeviceAddress address = static_cast<VulkanBufferAllocator*>(BufferAlloc)->GetDescriptorBufferAddress();
-                VkDeviceSize offset = BufferAlloc->GetImageAllocation(texture_id).Descriptor - address;
+                VkDeviceAddress address = alloc->GetDescriptorBufferAddress();
+                VkDeviceSize offset = bufferAlloc->GetImageAllocation(texture_id).Descriptor - address;
                 uint32_t bufferIndex = 0;
                 VkDescriptorBufferBindingInfoEXT info;
                 info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_BUFFER_BINDING_INFO_EXT;
@@ -98,7 +113,7 @@ int main()
                 info.pNext = nullptr;
                 vkCmdBindDescriptorBuffersEXT_FnPtr(cmdBuffer, 1, &info);
                 
-                auto layout = static_cast<VulkanPipeline*>(TexturedQuadPipe)->GetPipelineLayout();
+                auto layout = static_cast<VulkanPipeline*>(texturedQuadPipe)->GetPipelineLayout();
                 
                 vkCmdSetDescriptorBufferOffsetsEXT_FnPtr(
                     cmdBuffer, 
@@ -111,20 +126,20 @@ int main()
                 vkCmdDraw(cmdBuffer, 6, 1, 0, 0);
             }
 
-            Executor->End();
+            executor->End();
             
             ImageMemoryBarrier postBarrier = POST_BARRIER;
             postBarrier.ImageResource = backBuffer;
-            Executor->IssueImageMemoryBarrier(postBarrier);
+            executor->IssueImageMemoryBarrier(postBarrier);
             
             Renderer::EndFrame();
         }
 
         Renderer::Wait();
-        delete BufferAlloc;
-        delete Executor;        
+        delete bufferAlloc;
+        delete executor;        
         //delete TrianglePipe;
-        delete TexturedQuadPipe;
+        delete texturedQuadPipe;
         Renderer::EndRender();
         delete window;
 

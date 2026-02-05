@@ -6,6 +6,7 @@
 #include "../Vulkan/VulkanStructs.h"
 #include "../Vulkan/VulkanCore.h"
 #include "../GraphicsSettings.h"
+#include "../DirectX12/D3D12Structs.h"
 #include "../Windows/Win32ErrorHandler.h"
 
 using namespace Win32ErrorHandler;
@@ -778,9 +779,7 @@ namespace RHIStructures
 
     D3D12_CPU_DESCRIPTOR_HANDLE DXDescriptor(const ImageAllocation& imageAllocation)
     {
-        D3D12_CPU_DESCRIPTOR_HANDLE handle = {};
-        handle.ptr = imageAllocation.Descriptor;
-        return handle;
+        return static_cast<D3D12Structs::DX12ImageData*>(imageAllocation.Image)->Descriptor;
     }
 }
 

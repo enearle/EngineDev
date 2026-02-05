@@ -3,6 +3,8 @@
 #include "../Windows/WindowsHeaders.h"
 #include <dxgi1_6.h>
 #include <d3d12.h>
+#include <vector>
+
 #include "d3dx12.h"
 
 #pragma comment(lib,"d3dcompiler.lib")
@@ -66,6 +68,7 @@ public:
     void BeginFrame();
     void EndFrame();
 
+    void DeferUploadBufferRelease(ComPtr<ID3D12Resource> resource);
     ComPtr<ID3D12Device> GetDevice() const { return Device; }
     ComPtr<ID3D12CommandQueue> GetCommandQueue() const { return CommandQueue; }
     ComPtr<ID3D12GraphicsCommandList> GetCommandList() const { return CommandLists[CurrentFrameIndex]; }
@@ -87,5 +90,11 @@ private:
     void CreateSwapChain();
     void CreateSwapChainDescriptorHeaps();
     void WaitForFrame(uint32_t frameIndex);
+    
+public:
+
+    
+private:
+    std::vector<ComPtr<ID3D12Resource>> DeferredUploadReleases[SwapChainBufferCount]; 
     
 };
