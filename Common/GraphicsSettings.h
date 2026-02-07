@@ -6,7 +6,6 @@ enum API
     Vulkan
 };
 
-
 inline struct GraphicsSettings
 {
     API APIToUse = Vulkan;
