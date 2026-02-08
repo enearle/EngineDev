@@ -218,6 +218,9 @@ ImageData* ImageImport::LoadImageSideBySide(const std::vector<std::string>& file
         if (loadedFromStbi[i] && loadedFiles[i])
             stbi_image_free(loadedFiles[i]);
     }
+    
+    if (totalChannels == 3)
+        totalChannels = 4;
 
     result->Width = static_cast<uint32_t>(baseWidth);
     result->Height = static_cast<uint32_t>(baseHeight);

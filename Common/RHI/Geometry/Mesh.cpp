@@ -10,7 +10,7 @@ Mesh::Mesh()
     LocalMaterialIndex = 0;
 }
 
-Mesh::Mesh(std::vector<Vertex>* vertices, std::vector<uint32_t>* indices, uint32_t LocalMaterialIndex) :
+Mesh::Mesh(std::vector<RHIStructures::Vertex>* vertices, std::vector<uint32_t>* indices, uint32_t LocalMaterialIndex) :
     LocalMaterialIndex(LocalMaterialIndex)
 {
     VertexCount = vertices->size();

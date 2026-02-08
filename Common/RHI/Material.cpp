@@ -142,13 +142,22 @@ uint32_t Material::GetTextureHandle(TextureType textureType)
     }
 }
 
-void Material::LoadMaterial(BufferAllocator* bufferAllocator)
+uint64_t Material::LoadMaterial(uint32_t pipelineIndex)
 {
-    for (PreBufferCache* texture : CachedTextures)
+    BufferAllocator* bufferAllocator = BufferAllocator::GetInstance();
+    std::vector<DescriptorSetBinding> bindings;
+    bindings.reserve(CachedTextures.size());   
+    for (uint32_t i = 0; i < CachedTextures.size(); ++i)
     {
-        bufferAllocator->CreateImage(*texture->Desc);
-        delete texture;
+        bindings.emplace_back(DescriptorSetBinding {
+            .Binding = i,
+            .ResourceID = bufferAllocator->CreateImage(*CachedTextures[i]->Desc)
+        });
+        
+        delete CachedTextures[i];
     }
-    CachedTextures.clear();   
+    CachedTextures.clear();
+    
+    return bufferAllocator->AllocateDescriptorSet(pipelineIndex, bindings);
 }
 

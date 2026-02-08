@@ -2,17 +2,6 @@
 #include "Mesh.h"
 #include "../RenderPassExecutor.h"
 
-
-struct Vertex
-{
-    DirectX::XMFLOAT3 Position = {0,0,0};
-    DirectX::XMFLOAT3 Normal = {0,0,0};
-    DirectX::XMFLOAT3 Tangent = {0,0,0};
-    DirectX::XMFLOAT3 Bitangent = {0,0,0};
-    DirectX::XMFLOAT2 TexCoord = {0,0};
-};
-
-
 class GeometryImport
 {
 public:

@@ -120,7 +120,7 @@
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalLibraryDirectories>$(VULKAN_SDK)\Lib;%(AdditionalLibraryDirectories);$(SolutionDir)..\External\assimp\lib;</AdditionalLibraryDirectories>
-      <AdditionalDependencies>vulkan-1.lib;%(AdditionalDependencies); $(SolutionDir)..\External\assimp\lib\assimp-vc143-mt.lib</AdditionalDependencies>
+      <AdditionalDependencies>vulkan-1.lib;%(AdditionalDependencies); $(SolutionDir)..\External\assimp\lib\Release\assimp-vc143-mt.lib</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -152,8 +152,8 @@
     <Content Include="..\..\Common\DirectX12\Shaders\vs_rainbow.hlsl" />
     <Content Include="..\..\Common\DirectX12\Shaders\ps_quad.hlsl" />
     <Content Include="..\..\Common\DirectX12\Shaders\vs_quad.hlsl" />
-    <ClCompile Include="..\..\Common\DirectX12\Shaders\ps_pbr.hlsl" />
-    <ClCompile Include="..\..\Common\DirectX12\Shaders\vs_pbr.hlsl" />
+    <Content Include="..\..\Common\DirectX12\Shaders\ps_pbr.hlsl" />
+    <Content Include="..\..\Common\DirectX12\Shaders\vs_pbr.hlsl" />
     <ClCompile Include="..\..\Common\Input\InputState.cpp" />
     <ClCompile Include="..\..\Common\MetaData.cpp" />
     <ClCompile Include="..\..\Common\RHI\BufferAllocator.cpp" />

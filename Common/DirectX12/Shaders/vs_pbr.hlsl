@@ -28,7 +28,7 @@ cbuffer ObjectCB : register(b1)
     float4x4 gModel;
 };
 
-VSOutput VSMain(VSInput input)
+VSOutput main(VSInput input)
 {
     VSOutput o;
 

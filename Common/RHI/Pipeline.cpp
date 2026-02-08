@@ -2,6 +2,7 @@
 
 #include <stdexcept>
 
+#include "BufferAllocator.h"
 #include "../GraphicsSettings.h"
 #include "../DirectX12/D3DCore.h"
 #include "../DirectX12/D3DRootSignatureBuilder.h"
@@ -13,6 +14,8 @@ using namespace Win32ErrorHandler;
 
 Pipeline* Pipeline::Create(const PipelineDesc& desc)
 {
+    BufferAllocator::GetInstance()->RegisterDescriptorSetLayout(desc.ResourceLayout);
+    
     if (GRAPHICS_SETTINGS.APIToUse == Vulkan)
     {
         return new VulkanPipeline(desc);

@@ -49,6 +49,6 @@ public:
     
     Material(std::string name, MaterialFormat materialFormat);
     uint32_t GetTextureHandle(TextureType textureType);
-    void LoadMaterial(BufferAllocator* bufferAllocator);
+    uint64_t LoadMaterial(uint32_t pipelineIndex);
     
 };

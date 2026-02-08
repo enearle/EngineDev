@@ -28,15 +28,15 @@ int main()
         data.SwapchainMSAASamples = 1;
         
         Renderer::StartRender(window, data);
-        Pipeline* PBR = PBRPipeline();
         RenderPassExecutor* executor = RenderPassExecutor::Create();
-        BufferAllocator* bufferAlloc = BufferAllocator::Create();
+        BufferAllocator* bufferAlloc = BufferAllocator::GetInstance();
+        Pipeline* PBR = PBRPipeline();
         
         std::vector<Material> materials;
         materials.push_back(Material("shells_0", Material::PBR));
         materials.push_back(Material("shells_1", Material::PBR));
         
-        RootNode meshRoot = GeometryImport::CreateMeshGroup("Meshes/Shells.fbx", "Shells", DirectX::XMMatrixIdentity());
+        RootNode meshRoot = GeometryImport::CreateMeshGroup("Shells.fbx", "Shells", DirectX::XMMatrixIdentity());
         
         void* backBufferView;
         void* backBuffer;
@@ -50,8 +50,8 @@ int main()
             
             if (!uploaded)
             {
-                materials[0].LoadMaterial(bufferAlloc);
-                materials[1].LoadMaterial(bufferAlloc);
+                materials[0].LoadMaterial(0);
+                materials[1].LoadMaterial(0);
                 uploaded = true;
             }
             
@@ -61,47 +61,47 @@ int main()
             preBarrier.ImageResource = backBuffer;
             executor->IssueImageMemoryBarrier(preBarrier);
             
-            if (GRAPHICS_SETTINGS.APIToUse == DirectX12)
-            {
-                DirectX12BufferAllocator* alloc = static_cast<DirectX12BufferAllocator*>(bufferAlloc);
-                ID3D12GraphicsCommandList* cmdList = D3DCore::GetInstance().GetCommandList().Get();
-                cmdList->SetDescriptorHeaps(1, alloc->GetShaderResourceHeap().GetAddressOf());
-                D3D12_GPU_DESCRIPTOR_HANDLE handle {};
-                handle.ptr = alloc->GetImageAllocation(texture_id).Descriptor;
-                cmdList->SetGraphicsRootDescriptorTable(0, handle);
-                cmdList->DrawInstanced(6, 1, 0, 0);
-            }
-            else if (GRAPHICS_SETTINGS.APIToUse == Vulkan)
-            {
-                VulkanBufferAllocator* alloc = static_cast<VulkanBufferAllocator*>(bufferAlloc);
-                VulkanPipeline* pipeline = static_cast<VulkanPipeline*>(texturedQuadPipe);
-                PFN_vkCmdBindDescriptorBuffersEXT vkCmdBindDescriptorBuffersEXT_FnPtr = VulkanCore::GetInstance().GetVkCmdBindDescriptorBuffersEXT();
-                PFN_vkCmdSetDescriptorBufferOffsetsEXT vkCmdSetDescriptorBufferOffsetsEXT_FnPtr = VulkanCore::GetInstance().GetVkCmdSetDescriptorBufferOffsetsEXT();
-                VkCommandBuffer cmdBuffer = VulkanCore::GetInstance().GetCommandBuffer();
-                // TODO look descbuffer embedded sampler
-                VkDeviceAddress address = alloc->GetDescriptorBufferAddress();
-                VkDeviceSize offset = bufferAlloc->GetImageAllocation(texture_id).Descriptor - address;
-                uint32_t bufferIndex = 0;
-                VkDescriptorBufferBindingInfoEXT info;
-                info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_BUFFER_BINDING_INFO_EXT;
-                info.address = address;
-                info.usage = VK_BUFFER_USAGE_RESOURCE_DESCRIPTOR_BUFFER_BIT_EXT |
-                                VK_BUFFER_USAGE_SAMPLER_DESCRIPTOR_BUFFER_BIT_EXT;
-                info.pNext = nullptr;
-                vkCmdBindDescriptorBuffersEXT_FnPtr(cmdBuffer, 1, &info);
-                
-                auto layout = static_cast<VulkanPipeline*>(texturedQuadPipe)->GetPipelineLayout();
-                
-                vkCmdSetDescriptorBufferOffsetsEXT_FnPtr(
-                    cmdBuffer, 
-                    VK_PIPELINE_BIND_POINT_GRAPHICS, 
-                    layout, 
-                    0, 
-                    1, 
-                    &bufferIndex, 
-                    &offset);
-                vkCmdDraw(cmdBuffer, 6, 1, 0, 0);
-            }
+            //if (GRAPHICS_SETTINGS.APIToUse == DirectX12)
+            //{
+            //    DirectX12BufferAllocator* alloc = static_cast<DirectX12BufferAllocator*>(bufferAlloc);
+            //    ID3D12GraphicsCommandList* cmdList = D3DCore::GetInstance().GetCommandList().Get();
+            //    cmdList->SetDescriptorHeaps(1, alloc->GetShaderResourceHeap().GetAddressOf());
+            //    D3D12_GPU_DESCRIPTOR_HANDLE handle {};
+            //    handle.ptr = alloc->GetImageAllocation(texture_id).Descriptor;
+            //    cmdList->SetGraphicsRootDescriptorTable(0, handle);
+            //    cmdList->DrawInstanced(6, 1, 0, 0);
+            //}
+            //else if (GRAPHICS_SETTINGS.APIToUse == Vulkan)
+            //{
+            //    VulkanBufferAllocator* alloc = static_cast<VulkanBufferAllocator*>(bufferAlloc);
+            //    VulkanPipeline* pipeline = static_cast<VulkanPipeline*>(texturedQuadPipe);
+            //    PFN_vkCmdBindDescriptorBuffersEXT vkCmdBindDescriptorBuffersEXT_FnPtr = VulkanCore::GetInstance().GetVkCmdBindDescriptorBuffersEXT();
+            //    PFN_vkCmdSetDescriptorBufferOffsetsEXT vkCmdSetDescriptorBufferOffsetsEXT_FnPtr = VulkanCore::GetInstance().GetVkCmdSetDescriptorBufferOffsetsEXT();
+            //    VkCommandBuffer cmdBuffer = VulkanCore::GetInstance().GetCommandBuffer();
+            //    // TODO look descbuffer embedded sampler
+            //    VkDeviceAddress address = alloc->GetDescriptorBufferAddress();
+            //    VkDeviceSize offset = bufferAlloc->GetImageAllocation(texture_id).Descriptor - address;
+            //    uint32_t bufferIndex = 0;
+            //    VkDescriptorBufferBindingInfoEXT info;
+            //    info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_BUFFER_BINDING_INFO_EXT;
+            //    info.address = address;
+            //    info.usage = VK_BUFFER_USAGE_RESOURCE_DESCRIPTOR_BUFFER_BIT_EXT |
+            //                    VK_BUFFER_USAGE_SAMPLER_DESCRIPTOR_BUFFER_BIT_EXT;
+            //    info.pNext = nullptr;
+            //    vkCmdBindDescriptorBuffersEXT_FnPtr(cmdBuffer, 1, &info);
+            //    
+            //    auto layout = static_cast<VulkanPipeline*>(texturedQuadPipe)->GetPipelineLayout();
+            //    
+            //    vkCmdSetDescriptorBufferOffsetsEXT_FnPtr(
+            //        cmdBuffer, 
+            //        VK_PIPELINE_BIND_POINT_GRAPHICS, 
+            //        layout, 
+            //        0, 
+            //        1, 
+            //        &bufferIndex, 
+            //        &offset);
+            //    vkCmdDraw(cmdBuffer, 6, 1, 0, 0);
+            //}
 
             executor->End();
             

@@ -6,17 +6,17 @@
 #include <string>
 #include <vector>
 #include <assimp/scene.h>
+#include "../RHIStructures.h"
 
 struct aiScene;
 struct DirectX::XMMATRIX;
-struct Vertex;
 
 class Mesh
 {
 public:
     
     Mesh();
-    Mesh(std::vector<Vertex>* vertices, std::vector<uint32_t>* indices, uint32_t LocalMaterialIndex);
+    Mesh(std::vector<RHIStructures::Vertex>* vertices, std::vector<uint32_t>* indices, uint32_t LocalMaterialIndex);
     ~Mesh();
 
     uint32_t GetVertexCount() const                     { return VertexCount; }

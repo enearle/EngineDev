@@ -7,6 +7,7 @@
 #include <vector>
 #include "Mesh.h"
 #include "DirectXMath.h"
+#include "../RHIStructures.h"
 
 using namespace DirectX;
 
@@ -29,7 +30,7 @@ SceneNode GeometryImport::LoadNode(aiNode* node, const aiScene* scene, const XMM
 
 Mesh GeometryImport::LoadMesh(aiMesh* mesh, const XMMATRIX& transform)
 {
-    std::vector<Vertex> vertices;
+    std::vector<RHIStructures::Vertex> vertices;
     std::vector<uint32_t> indices;
     
     vertices.resize(mesh->mNumVertices);
@@ -70,12 +71,10 @@ Mesh GeometryImport::LoadMesh(aiMesh* mesh, const XMMATRIX& transform)
     return Mesh(&vertices, &indices, mesh->mMaterialIndex);
 }
 
-
-
 RootNode GeometryImport::CreateMeshGroup(std::string filePath, const std::string& name, const XMMATRIX& transform)
 {
     Assimp::Importer importer;
-    const aiScene* scene = importer.ReadFile("Models/" + filePath, 
+    const aiScene* scene = importer.ReadFile("Meshes/" + filePath, 
         aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_JoinIdenticalVertices | 
         aiProcess_CalcTangentSpace | aiProcess_GenSmoothNormals);
     if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode)

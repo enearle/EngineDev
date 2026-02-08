@@ -9,18 +9,18 @@ using namespace RHIStructures;
 namespace RHIConstants
 {
     inline constexpr BlendAttachmentState DisabledBlendAttachmentState {
-        .BlendEnable = false,
+        .ColorBlendOp = BlendOp::Add,
         .SrcColorBlendFactor = BlendFactor::SrcAlpha,
         .DestColorBlendFactor = BlendFactor::InvSrcAlpha,
-        .ColorBlendOp = BlendOp::Add,
+        .AlphaBlendOp = BlendOp::Add,
         .SrcAlphaBlendFactor = BlendFactor::One,
         .DestAlphaBlendFactor = BlendFactor::Zero,
-        .AlphaBlendOp = BlendOp::Add
+        .BlendEnable = false
     };
     
     static Pipeline* CreateRainbowTrianglePipeline()
     {
-        PipelineDesc rainbowTrianglePipeline;
+        PipelineDesc rainbowTrianglePipeline = {};
 
         // 1. Shader stages
         rainbowTrianglePipeline.VertexShader = ImportShader("vs_rainbow", "main");
@@ -92,7 +92,10 @@ namespace RHIConstants
         };
 
         // 10. No resource bindings needed for simple triangle
-        rainbowTrianglePipeline.ResourceLayout = {};
+        ResourceLayout resourceLayout = {};
+        rainbowTrianglePipeline.ResourceLayout = resourceLayout;
+        
+        ShaderStageMask visibleStages = ShaderStageMask(0);
 
         // 11. Attachment load/store operations
         rainbowTrianglePipeline.ColorLoadOps = {AttachmentLoadOp::Clear};
@@ -105,7 +108,7 @@ namespace RHIConstants
     
     static Pipeline* TexturedQuadPipeline()
     {
-        PipelineDesc TexturedQuadDesc;
+        PipelineDesc TexturedQuadDesc = {};
 
         // 1. Shader stages
         TexturedQuadDesc.VertexShader = ImportShader("vs_quad", "main");
@@ -186,7 +189,7 @@ namespace RHIConstants
                 }
         };
         
-        ShaderStageMask visibleStages;
+        ShaderStageMask visibleStages = ShaderStageMask(0);
         visibleStages.SetFragment(true);
         
         TexturedQuadDesc.ResourceLayout = {
@@ -205,7 +208,7 @@ namespace RHIConstants
     
     static Pipeline* PBRPipeline()
     {
-        PipelineDesc PBRDesc;
+        PipelineDesc PBRDesc = {};
 
         // 1. Shader stages
         PBRDesc.VertexShader = ImportShader("vs_pbr", "main");
@@ -216,30 +219,22 @@ namespace RHIConstants
         if (!PBRDesc.FragmentShader.ByteCode || PBRDesc.FragmentShader.ByteCodeSize == 0)
             throw std::runtime_error("Failed to load fragment shader!");
         
-        struct VertexPBR
-        {
-            float Position[3];
-            float Normal[3];
-            float Tangent[3];
-            float Bitangent[3];
-            float UV[2];
-        };
-        
+
         // 2. Vertex input layout
         PBRDesc.VertexBindings = {
             VertexBinding{
                 .Binding   = 0,
-                .Stride    = sizeof(VertexPBR),
+                .Stride    = sizeof(Vertex),
                 .Instanced = false
             }
         };
         
         PBRDesc.VertexAttributes = {
-            VertexAttribute{ .SemanticName = SemanticName::Position, .Location = 0, .Binding = 0, .Format = Format::R32G32B32_FLOAT, .Offset = 0  },
-            VertexAttribute{ .SemanticName = SemanticName::Normal,   .Location = 1, .Binding = 0, .Format = Format::R32G32B32_FLOAT, .Offset = 12 },
-            VertexAttribute{ .SemanticName = SemanticName::Tangent,  .Location = 2, .Binding = 0, .Format = Format::R32G32B32_FLOAT, .Offset = 24 },
-            VertexAttribute{ .SemanticName = SemanticName::Binormal, .Location = 2, .Binding = 0, .Format = Format::R32G32B32_FLOAT, .Offset = 36 },
-            VertexAttribute{ .SemanticName = SemanticName::TexCoord, .Location = 4, .Binding = 0, .Format = Format::R32G32_FLOAT,    .Offset = 48 }
+            VertexAttribute{.Binding = 0, .Location = 0, .Format = Format::R32G32B32_FLOAT, .Offset = 0,   .SemanticName = SemanticName::Position   },
+            VertexAttribute{.Binding = 0, .Location = 1, .Format = Format::R32G32B32_FLOAT, .Offset = 12,  .SemanticName = SemanticName::Normal     },
+            VertexAttribute{.Binding = 0, .Location = 2, .Format = Format::R32G32B32_FLOAT, .Offset = 24,  .SemanticName = SemanticName::Tangent    },
+            VertexAttribute{.Binding = 0, .Location = 3, .Format = Format::R32G32B32_FLOAT, .Offset = 36,  .SemanticName = SemanticName::Binormal   },
+            VertexAttribute{.Binding = 0, .Location = 4, .Format = Format::R32G32_FLOAT,    .Offset = 48,  .SemanticName = SemanticName::TexCoord   }
         };
 
         // 3. Primitive topology
@@ -258,8 +253,8 @@ namespace RHIConstants
 
         // 5. Depth/stencil state
         PBRDesc.DepthStencilState = {
-            false,                                  // Depth test disabled
-            false,                                  // Depth write disabled
+            true,
+            true,
             CompareOp::Less,                        // Comparison op
             false,                                  // No depth bounds test
             0.0f,                                   // Min depth
@@ -299,13 +294,14 @@ namespace RHIConstants
         { .Type = DescriptorType::UniformBuffer, .Slot = 0, .Set = 0, .Count = 1 }, // Camera/VP
         { .Type = DescriptorType::UniformBuffer, .Slot = 1, .Set = 0, .Count = 1 }, // Model
             
-        { .Type = DescriptorType::SampledImage,  .Slot = 0, .Set = 0, .Count = 1 }, // Albedo
-        { .Type = DescriptorType::SampledImage,  .Slot = 1, .Set = 0, .Count = 1 }, // Normal
-        { .Type = DescriptorType::SampledImage,  .Slot = 2, .Set = 0, .Count = 1 }, // MetallicRoughness
+        { .Type = DescriptorType::SampledImage,  .Slot = 2, .Set = 0, .Count = 1 }, // Albedo
+        { .Type = DescriptorType::SampledImage,  .Slot = 3, .Set = 0, .Count = 1 }, // Normal
+        { .Type = DescriptorType::SampledImage,  .Slot = 4, .Set = 0, .Count = 1 }, // MetallicRoughness
         };
         
-        ShaderStageMask visibleStages;
+        ShaderStageMask visibleStages = ShaderStageMask(0);
         visibleStages.SetFragment(true);
+        visibleStages.SetVertex(true);
         
         PBRDesc.ResourceLayout = {
             .Bindings = bindings,
@@ -313,11 +309,11 @@ namespace RHIConstants
         };
 
         // 11. Attachment load/store operations
-        PBRDesc.ColorLoadOps = {AttachmentLoadOp::Clear};
-        PBRDesc.ColorStoreOps = {AttachmentStoreOp::Store};
-        PBRDesc.DepthLoadOp = AttachmentLoadOp::Load;
+        PBRDesc.ColorLoadOps = {AttachmentLoadOp::Clear, AttachmentLoadOp::Clear, AttachmentLoadOp::Clear};
+        PBRDesc.ColorStoreOps = {AttachmentStoreOp::Store, AttachmentStoreOp::Store, AttachmentStoreOp::Store};
+        PBRDesc.DepthLoadOp = AttachmentLoadOp::Clear;  // Changed from Load
         PBRDesc.DepthStoreOp = AttachmentStoreOp::Store;
-
+        
         return Pipeline::Create(PBRDesc);
     }
     
@@ -339,7 +335,7 @@ namespace RHIConstants
         .NewLayout     = ImageLayout::Present,
     };
     
-    inline constexpr std::vector<std::vector<uint8_t>> DefaultMetalnessRoughnessOcclusion = 
+    static const std::vector<std::vector<uint8_t>> DefaultMetalnessRoughnessOcclusion = 
     {
         { 255 },
         { 255 },
@@ -361,7 +357,7 @@ namespace RHIConstants
         .Format = Format::R8G8B8A8_UNORM,
         .Usage = DefaultUploadImageUsage,
         .Type = ImageType::Sampled,
-        .Access = MemoryAccess(2),
+        .Access = MemoryAccess(8),
         .Layout = ImageLayout::General,
         .InitialData = nullptr
     };

@@ -39,7 +39,7 @@ static float3 NormToUNorm(float3 n)
     return n * 0.5f + 0.5f;
 }
 
-PSOutput PSMain(VSOutput i)
+PSOutput main(VSOutput i)
 {
     PSOutput o;
 

@@ -12,12 +12,16 @@ fxc /T vs_5_1 /Fo "%DX_OUTPUT_DIR%\vs_rainbow.cso" DirectX12\Shaders\vs_rainbow.
 fxc /T ps_5_1 /Fo "%DX_OUTPUT_DIR%\ps_rainbow.cso" DirectX12\Shaders\ps_rainbow.hlsl
 fxc /T vs_5_1 /Fo "%DX_OUTPUT_DIR%\vs_quad.cso" DirectX12\Shaders\vs_quad.hlsl
 fxc /T ps_5_1 /Fo "%DX_OUTPUT_DIR%\ps_quad.cso" DirectX12\Shaders\ps_quad.hlsl
+fxc /T vs_5_1 /Fo "%DX_OUTPUT_DIR%\vs_pbr.cso" DirectX12\Shaders\vs_pbr.hlsl
+fxc /T ps_5_1 /Fo "%DX_OUTPUT_DIR%\ps_pbr.cso" DirectX12\Shaders\ps_pbr.hlsl
 
 echo Compiling for Vulkan...
 glslangValidator -V -S vert -e main -o "%VULKAN_OUTPUT_DIR%\vs_rainbow.spv" Vulkan\Shaders\vs_rainbow.glsl
 glslangValidator -V -S frag -e main -o "%VULKAN_OUTPUT_DIR%\ps_rainbow.spv" Vulkan\Shaders\ps_rainbow.glsl
 glslangValidator -V -S vert -e main -o "%VULKAN_OUTPUT_DIR%\vs_quad.spv" Vulkan\Shaders\vs_quad.glsl
 glslangValidator -V -S frag -e main -o "%VULKAN_OUTPUT_DIR%\ps_quad.spv" Vulkan\Shaders\ps_quad.glsl
+glslangValidator -V -S vert -e main -o "%VULKAN_OUTPUT_DIR%\vs_pbr.spv" Vulkan\Shaders\vs_pbr.glsl
+glslangValidator -V -S frag -e main -o "%VULKAN_OUTPUT_DIR%\ps_pbr.spv" Vulkan\Shaders\ps_pbr.glsl
 
 echo Done!
 pause

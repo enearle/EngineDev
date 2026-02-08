@@ -21,6 +21,15 @@ namespace RHIStructures
     //=====================================//
     //  ----------  Universal  ----------  //
     //=====================================//
+    
+    struct Vertex
+    {
+        DirectX::XMFLOAT3 Position = {0,0,0};
+        DirectX::XMFLOAT3 Normal = {0,0,0};
+        DirectX::XMFLOAT3 Tangent = {0,0,0};
+        DirectX::XMFLOAT3 Bitangent = {0,0,0};
+        DirectX::XMFLOAT2 TexCoord = {0,0};
+    };
 
     class Mask
     {
@@ -29,7 +38,7 @@ namespace RHIStructures
     public:
 
         Mask() = default;
-        explicit constexpr Mask(uint32_t value = 0) : Value(value) {}
+        constexpr Mask(uint32_t value = 0) : Value(value) {}
         virtual ~Mask() = default;
         
         uint32_t Get() const { return Value; }
@@ -241,6 +250,8 @@ namespace RHIStructures
     class ShaderStageMask : public Mask
     {
     public:
+        ShaderStageMask() : Mask(0) {}
+        constexpr ShaderStageMask(uint32_t value) : Mask(value) {}
         bool GetVertex() const { return (Value >> 0) & 1; }
         bool GetTessControl() const { return (Value >> 1) & 1; }
         bool GetTessEval() const { return (Value >> 2) & 1; }
@@ -474,8 +485,7 @@ namespace RHIStructures
     class MemoryAccess : public Mask
     {
     public:
-        MemoryAccess() = default;
-        explicit constexpr MemoryAccess(uint32_t value) : Mask(value) {}
+        constexpr MemoryAccess(uint32_t value) : Mask(value) {}
         
         bool GetCPUWrite() const { return (Value >> 0) & 1; }
         bool GetCPURead() const { return (Value >> 1) & 1; }
@@ -495,7 +505,7 @@ namespace RHIStructures
         uint64_t Size = 0;
         BufferUsage Usage = {};
         BufferType Type = BufferType::Constant;
-        MemoryAccess Access = {};
+        MemoryAccess Access = MemoryAccess(0);
         const void* InitialData = nullptr;
     };
 
@@ -504,7 +514,7 @@ namespace RHIStructures
         void* Address = nullptr;
         uint64_t Size = 0;
         BufferUsage Usage = {};
-        MemoryAccess Access = {};
+        MemoryAccess Access = MemoryAccess(0);
         BufferType Type = BufferType::Constant;
         void* Buffer  = nullptr;
         bool IsMapped = false;
@@ -529,19 +539,16 @@ namespace RHIStructures
         Format Format = {};
         ImageUsage Usage = {};
         ImageType Type = ImageType::Sampled;
-        MemoryAccess Access = {};
+        MemoryAccess Access = MemoryAccess(0);
         ImageLayout Layout = ImageLayout::Undefined;
         const void* InitialData = nullptr;
-        
-        ImageDesc() = default;
-        ImageDesc(const ImageDesc& other) = default;
     };
     VkImageViewType VulkanImageViewType(ImageDesc desc);
     
     struct ImageAllocation
     {
         void* Address = nullptr;
-        ImageDesc Desc = {};
+        ImageDesc Desc;
         void* Image = nullptr;
         uint64_t Descriptor = 0;
         uint8_t DescriptorType = 0;
