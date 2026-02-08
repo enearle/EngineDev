@@ -8,13 +8,16 @@ using Microsoft::WRL::ComPtr;
 class BufferAllocator
 {
 protected:
+    
     std::unordered_map<uint64_t, ImageAllocation> AllocatedImages;
     std::unordered_map<uint64_t, BufferAllocation> AllocatedBuffers;
     uint64_t NextBufferID = 0;
     uint64_t NextImageID = 0;
     uint64_t CacheImage(ImageAllocation imageAllocation) {AllocatedImages[NextImageID] = imageAllocation; return NextImageID++;}
     uint64_t CacheBuffer(BufferAllocation bufferAllocation) {AllocatedBuffers[NextBufferID] = bufferAllocation; return NextBufferID++;}
+    
 public:
+    
     static BufferAllocator* Create();
     virtual uint64_t CreateBuffer(BufferDesc bufferDesc) = 0;
     virtual uint64_t CreateImage(ImageDesc imageDesc) = 0;
@@ -25,11 +28,19 @@ public:
     
     ImageAllocation GetImageAllocation(uint64_t id) const { return AllocatedImages.at(id); }
     BufferAllocation GetBufferAllocation(uint64_t id) const { return AllocatedBuffers.at(id); }
+    DescriptorSetAllocation GetDescriptorSet(uint64_t id) const { return AllocatedDescriptorSets.at(id); }
+
+protected:
+    
+    std::unordered_map<uint64_t, DescriptorSetAllocation> AllocatedDescriptorSets;
+    uint64_t NextDescriptorSetID = 0;
+    uint64_t CacheDescriptorSet(DescriptorSetAllocation setAllocation) { AllocatedDescriptorSets[NextDescriptorSetID] = setAllocation; return NextDescriptorSetID++; }
 };
 
 class VulkanBufferAllocator : public BufferAllocator
 {
 public:
+    
     uint64_t CreateBuffer(BufferDesc bufferDesc) override;
     uint64_t CreateImage(ImageDesc imageDesc) override;
     VulkanBufferAllocator();
@@ -38,27 +49,25 @@ public:
     void FreeImage(uint64_t id) override;
     uint64_t GetDescriptorBufferAddress() { return DescriptorBufferAddress; }
 
-    enum DescriptorType : uint8_t { Sampler, SampledImage, StorageImage, UniformBuffer, StorageBuffer};
-    
+    enum DescriptorType : uint8_t { SampledImage, StorageImage, UniformBuffer, StorageBuffer};
+
 private:
+    
     VkBuffer DescriptorBuffer;
     VkDeviceMemory DescriptorBufferMemory;
     void* DescriptorBufferMapped;
     VkDeviceAddress DescriptorBufferAddress = 0;
     
-    static constexpr uint16_t SamplerPoolSize = 4096;
     static constexpr uint16_t SampledImagePoolSize = 4096;
     static constexpr uint16_t StorageImagePoolSize = 1024;
     static constexpr uint16_t UniformBufferPoolSize = 2048;
     static constexpr uint16_t StorageBufferPoolSize = 1024;
     
-    size_t SamplerStride;
     size_t SampledImageStride;
     size_t StorageImageStride;
     size_t UniformBufferStride;
     size_t StorageBufferStride;
     
-    BitPool* SamplerPool;
     BitPool* SampledImagePool;
     BitPool* StorageImagePool;
     BitPool* UniformBufferPool;
@@ -78,6 +87,7 @@ private:
 class DirectX12BufferAllocator : public BufferAllocator
 {
 public:
+    
     uint64_t CreateBuffer(BufferDesc bufferDesc) override;
     uint64_t CreateImage(ImageDesc imageDesc) override;
     DirectX12BufferAllocator();
@@ -90,11 +100,9 @@ public:
     D3D12_CPU_DESCRIPTOR_HANDLE AllocateDescriptor(DescriptorType type);
     D3D12_CPU_DESCRIPTOR_HANDLE GetHandle(size_t index, DescriptorType type);
     void FreeDescriptor(D3D12_CPU_DESCRIPTOR_HANDLE handle, DescriptorType type);
-
     
     ComPtr<ID3D12DescriptorHeap> GetShaderResourceHeap() const { return ShaderResourceHeap; }
-
-private:
+    
     ComPtr<ID3D12DescriptorHeap> ShaderResourceHeap;
     ComPtr<ID3D12DescriptorHeap> RenderTargetHeap;
     ComPtr<ID3D12DescriptorHeap> DepthStencilHeap;

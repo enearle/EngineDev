@@ -1,4 +1,7 @@
 #include "BufferAllocator.h"
+
+#include <map>
+
 #include "../GraphicsSettings.h"
 #include "../DirectX12/D3DCore.h"
 #include "../Vulkan/VulkanCore.h"
@@ -68,16 +71,12 @@ VulkanBufferAllocator::VulkanBufferAllocator()
     addressInfo.buffer = DescriptorBuffer;
     DescriptorBufferAddress = vkGetBufferDeviceAddress(device, &addressInfo);
     
-    SamplerStride = VulkanCore::GetInstance().GetDescriptorBufferProperties().samplerDescriptorSize;
     SampledImageStride = VulkanCore::GetInstance().GetDescriptorBufferProperties().sampledImageDescriptorSize;
     StorageImageStride = VulkanCore::GetInstance().GetDescriptorBufferProperties().storageImageDescriptorSize;
     UniformBufferStride = VulkanCore::GetInstance().GetDescriptorBufferProperties().uniformBufferDescriptorSize;
     StorageBufferStride = VulkanCore::GetInstance().GetDescriptorBufferProperties().storageBufferDescriptorSize;
 
     uint32_t currentOffset = 0;
-    SamplerPool = new BitPool();
-    SamplerPool->Initialize(currentOffset, SamplerStride, SamplerPoolSize);
-    currentOffset += SamplerPoolSize * SamplerStride;
     SampledImagePool = new BitPool();
     SampledImagePool->Initialize(currentOffset, SampledImageStride, SampledImagePoolSize);
     currentOffset += SampledImagePoolSize * SampledImageStride;
@@ -89,6 +88,8 @@ VulkanBufferAllocator::VulkanBufferAllocator()
     currentOffset += UniformBufferPoolSize * UniformBufferStride;
     StorageBufferPool = new BitPool();
     StorageBufferPool->Initialize(currentOffset, StorageBufferStride, StorageBufferPoolSize);
+    currentOffset += StorageBufferPoolSize * StorageBufferStride;
+
 }
 
 VkDeviceAddress VulkanBufferAllocator::AllocateDescriptor(VkDescriptorGetInfoEXT* descriptorInfo, DescriptorType type)
@@ -100,10 +101,6 @@ VkDeviceAddress VulkanBufferAllocator::AllocateDescriptor(VkDescriptorGetInfoEXT
     
     switch (type)
     {
-    case Sampler:
-        pool = SamplerPool;
-        stride = SamplerStride;
-        break;
     case SampledImage:
         pool = SampledImagePool;
         stride = SampledImageStride;
@@ -150,9 +147,6 @@ void VulkanBufferAllocator::FreeDescriptor(VkDeviceAddress address, DescriptorTy
     
     switch (type)
     {
-    case Sampler:
-        pool = SamplerPool;
-        break;
     case SampledImage:
         pool = SampledImagePool;
         break;
@@ -478,7 +472,6 @@ VulkanBufferAllocator::~VulkanBufferAllocator()
 {
     VkDevice device = VulkanCore::GetInstance().GetDevice();
     
-    delete SamplerPool;
     delete SampledImagePool;
     delete StorageImagePool;
     delete UniformBufferPool;
@@ -1117,7 +1110,6 @@ void DirectX12BufferAllocator::FreeDescriptor(D3D12_CPU_DESCRIPTOR_HANDLE handle
     
     pool->Free(offset);
 }
-
 
 DirectX12BufferAllocator::~DirectX12BufferAllocator()
 {

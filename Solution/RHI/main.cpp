@@ -9,7 +9,9 @@
 #include "../../Common/Vulkan/VulkanCore.h"
 #include "../../Common/GraphicsSettings.h"
 #include "../../Common/RHI/BufferAllocator.h"
-#include "../../Common/RHI/Image/ImageImport.h"
+#include "../../Common/RHI/Material.h"
+#include "../../Common/RHI/Geometry/Mesh.h"
+#include "../../Common/RHI/Geometry/GeometryImport.h"
 
 using namespace RHIConstants;
 
@@ -26,36 +28,15 @@ int main()
         data.SwapchainMSAASamples = 1;
         
         Renderer::StartRender(window, data);
-        //Pipeline* TrianglePipe = CreateRainbowTrianglePipeline();
-        Pipeline* texturedQuadPipe = TexturedQuadPipeline();
+        Pipeline* PBR = PBRPipeline();
         RenderPassExecutor* executor = RenderPassExecutor::Create();
         BufferAllocator* bufferAlloc = BufferAllocator::Create();
         
-        ImageImport* texture = new ImageImport("Textures/texture");
+        std::vector<Material> materials;
+        materials.push_back(Material("shells_0", Material::PBR));
+        materials.push_back(Material("shells_1", Material::PBR));
         
-        ImageUsage usage = 
-        {
-            .TransferSource = false,
-            .TransferDestination = true,
-            .Type = ImageType::Sampled
-        };
-        
-        MemoryAccess access;
-        access.SetGPURead(true);
-        
-        ImageDesc desc = 
-            {
-            .Width = texture->GetTextureData().Width,
-            .Height = texture->GetTextureData().Height,
-            .Size = texture->GetTextureData().TotalSize,
-            .Format = Format::R8G8B8A8_UNORM,
-            .Usage = usage,
-            .Type = ImageType::Sampled,
-            .Access = access,
-            .Layout = ImageLayout::General,
-            .InitialData = texture->GetTextureData().Pixels
-        };
-        uint64_t texture_id;
+        RootNode meshRoot = GeometryImport::CreateMeshGroup("Meshes/Shells.fbx", "Shells", DirectX::XMMatrixIdentity());
         
         void* backBufferView;
         void* backBuffer;
@@ -69,7 +50,8 @@ int main()
             
             if (!uploaded)
             {
-                texture_id = bufferAlloc->CreateImage(desc);
+                materials[0].LoadMaterial(bufferAlloc);
+                materials[1].LoadMaterial(bufferAlloc);
                 uploaded = true;
             }
             
@@ -78,11 +60,6 @@ int main()
             ImageMemoryBarrier preBarrier = PRE_BARRIER;
             preBarrier.ImageResource = backBuffer;
             executor->IssueImageMemoryBarrier(preBarrier);
-            
-            //executor->BindPipeline(TrianglePipe);
-            //executor->Begin(TrianglePipe, {backBufferView}, nullptr, window->GetWidth(), window->GetHeight(), clearColors, 0);
-            executor->BindPipeline(texturedQuadPipe);
-            executor->Begin(texturedQuadPipe, {backBufferView}, nullptr, window->GetWidth(), window->GetHeight(), clearColors, 0);
             
             if (GRAPHICS_SETTINGS.APIToUse == DirectX12)
             {
@@ -139,7 +116,7 @@ int main()
         delete bufferAlloc;
         delete executor;        
         //delete TrianglePipe;
-        delete texturedQuadPipe;
+        //delete texturedQuadPipe;
         Renderer::EndRender();
         delete window;
 

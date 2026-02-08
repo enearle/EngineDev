@@ -16,22 +16,17 @@ struct ImageData {
 
 class ImageImport
 {
-    ImageData Data;
+    ImageData* Data;
 
 public:
-    ImageImport(const std::string& fileName, bool is16Bit = false);
-    ImageImport(const std::vector<std::string>& fileNames, bool forceNotEmpty = true);
+    ImageImport(const std::string& fileName, bool is16Bit = false, bool forceNotEmpty = true);
+    ImageImport(const std::vector<std::string>& fileNames, std::vector<std::vector<uint8_t>> imagecChannelDefaults = std::vector<std::vector<uint8_t>>(4, std::vector<uint8_t>(4, 0)));
 
     ~ImageImport();
 
-    const ImageData& GetTextureData()       const { return Data; }
-    const uint32_t GetWidth()               const { return Data.Width; }
-    const uint32_t GetHeight()              const { return Data.Height; }
-    const uint8_t GetChannels()             const { return Data.Channels; }
-    const VkDeviceSize GetTotalSize()       const { return Data.TotalSize; }
-    const void GetPixels(void*& outPixels, bool& outIs16Bit) const { outPixels = Data.Pixels; outIs16Bit = Data.Is16Bit; }
+    const ImageData* GetData()       const { return Data; }
     
-    static ImageData LoadImage(const std::string& imagePath);
-    static ImageData LoadImage_16Bit(const std::string& imagePath);
-    static ImageData LoadImageSideBySide(const std::vector<std::string>& fileNames, bool forceNotEmpty = true);
+    static ImageData* LoadImage_8Bit(const std::string& imagePath, bool forceNotEmpty);
+    static ImageData* LoadImage_16Bit(const std::string& imagePath, bool forceNotEmpty);
+    static ImageData* LoadImageSideBySide(const std::vector<std::string>& fileNames, std::vector<std::vector<uint8_t>> imagecChannelDefaults);
 };

@@ -28,8 +28,10 @@ namespace RHIStructures
         uint32_t Value = 0;
     public:
 
+        Mask() = default;
+        explicit constexpr Mask(uint32_t value = 0) : Value(value) {}
         virtual ~Mask() = default;
-
+        
         uint32_t Get() const { return Value; }
         void Set(uint32_t value) { Value = value; }
 
@@ -50,19 +52,20 @@ namespace RHIStructures
         R8G8B8A8_UNORM = 1,
         R8G8B8A8_UNORM_SRGB = 2,
         R16G16B16A16_FLOAT = 3,
-        R32G32B32_FLOAT = 4,
-        R32G32B32A32_FLOAT = 5,
-        D16_UNORM = 6,
-        D24_UNORM_S8_UINT = 7,
-        D32_FLOAT = 8,
-        D32_FLOAT_S8X24_UINT = 9,
-        BC1_UNORM = 10,
-        BC2_UNORM = 11,
-        BC3_UNORM = 12,
-        BC4_UNORM = 13,
-        BC5_UNORM = 14,
-        BC6H_UF16 = 15,
-        BC7_UNORM = 16
+        R32G32_FLOAT = 4,
+        R32G32B32_FLOAT = 5,
+        R32G32B32A32_FLOAT = 6,
+        D16_UNORM = 7,
+        D24_UNORM_S8_UINT = 8,
+        D32_FLOAT = 9,
+        D32_FLOAT_S8X24_UINT = 10,
+        BC1_UNORM = 11,
+        BC2_UNORM = 12,
+        BC3_UNORM = 13,
+        BC4_UNORM = 14,
+        BC5_UNORM = 15,
+        BC6H_UF16 = 16,
+        BC7_UNORM = 17
     };
     VkFormat VulkanFormat(Format format);
     DXGI_FORMAT DXFormat(Format format);
@@ -471,6 +474,9 @@ namespace RHIStructures
     class MemoryAccess : public Mask
     {
     public:
+        MemoryAccess() = default;
+        explicit constexpr MemoryAccess(uint32_t value) : Mask(value) {}
+        
         bool GetCPUWrite() const { return (Value >> 0) & 1; }
         bool GetCPURead() const { return (Value >> 1) & 1; }
         bool GetGPUWrite() const { return (Value >> 2) & 1; }
@@ -526,6 +532,9 @@ namespace RHIStructures
         MemoryAccess Access = {};
         ImageLayout Layout = ImageLayout::Undefined;
         const void* InitialData = nullptr;
+        
+        ImageDesc() = default;
+        ImageDesc(const ImageDesc& other) = default;
     };
     VkImageViewType VulkanImageViewType(ImageDesc desc);
     
@@ -538,5 +547,22 @@ namespace RHIStructures
         uint8_t DescriptorType = 0;
     };
     D3D12_CPU_DESCRIPTOR_HANDLE DXDescriptor(const ImageAllocation& imageAllocation);
+    
+    //===================================//
+    //  ----  Descriptor Sets  --------  //
+    //===================================//
+
+    struct DescriptorSetBinding
+    {
+        uint32_t Binding;
+        uint64_t ResourceID;  // Handle returned from CreateBuffer or CreateImage
+    };
+
+    struct DescriptorSetAllocation
+    {
+        uint64_t DescriptorAddress = 0;     // VkDeviceAddress for Vulkan, GPU descriptor handle for DX12
+        uint32_t SetIndex = 0;               // Which descriptor set this is (matches ResourceLayout set indices)
+        void* PlatformData = nullptr;        // Platform-specific data if needed
+    };
 
 }

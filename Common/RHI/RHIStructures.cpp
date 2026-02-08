@@ -19,44 +19,46 @@ namespace RHIStructures
     //====================================//
     
     // Format Mappings
-    constexpr std::array<VkFormat, 17> VULKAN_FORMATS = {
-        VK_FORMAT_UNDEFINED,                // Unknown = 0
-        VK_FORMAT_R8G8B8A8_UNORM,           // R8G8B8A8_UNORM = 1
-        VK_FORMAT_R8G8B8A8_SRGB,            // R8G8B8A8_UNORM_SRGB = 2
-        VK_FORMAT_R16G16B16A16_SFLOAT,      // R16G16B16A16_FLOAT = 3
-        VK_FORMAT_R32G32B32_SFLOAT,         // R32G32B32_FLOAT = 4
-        VK_FORMAT_R32G32B32A32_SFLOAT,      // R32G32B32A32_FLOAT = 5
-        VK_FORMAT_D16_UNORM,                // D16_UNORM = 6
-        VK_FORMAT_D24_UNORM_S8_UINT,        // D24_UNORM_S8_UINT = 7
-        VK_FORMAT_D32_SFLOAT,               // D32_FLOAT = 8
-        VK_FORMAT_D32_SFLOAT_S8_UINT,       // D32_FLOAT_S8X24_UINT = 9
-        VK_FORMAT_BC1_RGB_UNORM_BLOCK,      // BC1_UNORM = 10
-        VK_FORMAT_BC2_UNORM_BLOCK,          // BC2_UNORM = 11
-        VK_FORMAT_BC3_UNORM_BLOCK,          // BC3_UNORM = 12
-        VK_FORMAT_BC4_UNORM_BLOCK,          // BC4_UNORM = 13
-        VK_FORMAT_BC5_UNORM_BLOCK,          // BC5_UNORM = 14
-        VK_FORMAT_BC6H_UFLOAT_BLOCK,        // BC6H_UF16 = 15
-        VK_FORMAT_BC7_UNORM_BLOCK           // BC7_UNORM = 16
+    constexpr std::array<VkFormat, 18> VULKAN_FORMATS = {
+        VK_FORMAT_UNDEFINED,
+        VK_FORMAT_R8G8B8A8_UNORM,
+        VK_FORMAT_R8G8B8A8_SRGB,
+        VK_FORMAT_R16G16B16A16_SFLOAT,
+        VK_FORMAT_R32G32_SFLOAT,
+        VK_FORMAT_R32G32B32_SFLOAT,
+        VK_FORMAT_R32G32B32A32_SFLOAT,
+        VK_FORMAT_D16_UNORM,
+        VK_FORMAT_D24_UNORM_S8_UINT,
+        VK_FORMAT_D32_SFLOAT,
+        VK_FORMAT_D32_SFLOAT_S8_UINT,
+        VK_FORMAT_BC1_RGB_UNORM_BLOCK,
+        VK_FORMAT_BC2_UNORM_BLOCK,
+        VK_FORMAT_BC3_UNORM_BLOCK,
+        VK_FORMAT_BC4_UNORM_BLOCK,
+        VK_FORMAT_BC5_UNORM_BLOCK,
+        VK_FORMAT_BC6H_UFLOAT_BLOCK,
+        VK_FORMAT_BC7_UNORM_BLOCK
     };
 
-    constexpr std::array<DXGI_FORMAT, 17> DX_FORMATS = {
-        DXGI_FORMAT_UNKNOWN,                // Unknown = 0
-        DXGI_FORMAT_R8G8B8A8_UNORM,         // R8G8B8A8_UNORM = 1
-        DXGI_FORMAT_R8G8B8A8_UNORM_SRGB,    // R8G8B8A8_UNORM_SRGB = 2
-        DXGI_FORMAT_R16G16B16A16_FLOAT,     // R16G16B16A16_FLOAT = 3
-        DXGI_FORMAT_R32G32B32_FLOAT,        // R32G32B32_FLOAT = 4
-        DXGI_FORMAT_R32G32B32A32_FLOAT,     // R32G32B32A32_FLOAT = 5
-        DXGI_FORMAT_D16_UNORM,              // D16_UNORM = 6
-        DXGI_FORMAT_D24_UNORM_S8_UINT,      // D24_UNORM_S8_UINT = 7
-        DXGI_FORMAT_D32_FLOAT,              // D32_FLOAT = 8
-        DXGI_FORMAT_D32_FLOAT_S8X24_UINT,   // D32_FLOAT_S8X24_UINT = 9
-        DXGI_FORMAT_BC1_UNORM,              // BC1_UNORM = 10
-        DXGI_FORMAT_BC2_UNORM,              // BC2_UNORM = 11
-        DXGI_FORMAT_BC3_UNORM,              // BC3_UNORM = 12
-        DXGI_FORMAT_BC4_UNORM,              // BC4_UNORM = 13
-        DXGI_FORMAT_BC5_UNORM,              // BC5_UNORM = 14
-        DXGI_FORMAT_BC6H_UF16,              // BC6H_UF16 = 15
-        DXGI_FORMAT_BC7_UNORM               // BC7_UNORM = 16
+    constexpr std::array<DXGI_FORMAT, 18> DX_FORMATS = {
+        DXGI_FORMAT_UNKNOWN,
+        DXGI_FORMAT_R8G8B8A8_UNORM,
+        DXGI_FORMAT_R8G8B8A8_UNORM_SRGB,
+        DXGI_FORMAT_R16G16B16A16_FLOAT,
+        DXGI_FORMAT_R32G32_FLOAT,
+        DXGI_FORMAT_R32G32B32_FLOAT,
+        DXGI_FORMAT_R32G32B32A32_FLOAT,
+        DXGI_FORMAT_D16_UNORM, 
+        DXGI_FORMAT_D24_UNORM_S8_UINT,
+        DXGI_FORMAT_D32_FLOAT,
+        DXGI_FORMAT_D32_FLOAT_S8X24_UINT,
+        DXGI_FORMAT_BC1_UNORM,
+        DXGI_FORMAT_BC2_UNORM,
+        DXGI_FORMAT_BC3_UNORM,
+        DXGI_FORMAT_BC4_UNORM,
+        DXGI_FORMAT_BC5_UNORM,
+        DXGI_FORMAT_BC6H_UF16,
+        DXGI_FORMAT_BC7_UNORM
     };
 
     VkFormat VulkanFormat(Format format)
@@ -101,20 +103,6 @@ namespace RHIStructures
             return VK_IMAGE_ASPECT_COLOR_BIT;
         }
     }
-
-    // Semantic names
-    constexpr std::array<std::string_view, 9> SEMANTIC_NAMES = {
-        "POSITION",
-        "NORMAL",
-        "TEXCOORD",
-        "TANGENT",
-        "BINORMAL",
-        "COLOR",
-        "BLENDWEIGHT",
-        "BLENDINDICES",
-        "PSIZE"
-        
-    };
 
     ShaderStage ImportShader(const std::string& filename, const char* entryPoint)
     {
@@ -186,7 +174,20 @@ namespace RHIStructures
         bytecode.BytecodeLength = shaderStage.ByteCodeSize;
         return bytecode;
     }
-
+    
+    // Semantic names
+    constexpr std::array<std::string_view, 9> SEMANTIC_NAMES = {
+        "POSITION",
+        "NORMAL",
+        "TEXCOORD",
+        "TANGENT",
+        "BINORMAL",
+        "COLOR",
+        "BLENDWEIGHT",
+        "BLENDINDICES",
+        "PSIZE"
+        
+    };
     const char* SemanticNameString(SemanticName semanticName)
     {
         const auto index = static_cast<uint8_t>(semanticName);

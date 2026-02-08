@@ -152,12 +152,15 @@
     <Content Include="..\..\Common\DirectX12\Shaders\vs_rainbow.hlsl" />
     <Content Include="..\..\Common\DirectX12\Shaders\ps_quad.hlsl" />
     <Content Include="..\..\Common\DirectX12\Shaders\vs_quad.hlsl" />
+    <ClCompile Include="..\..\Common\DirectX12\Shaders\ps_pbr.hlsl" />
+    <ClCompile Include="..\..\Common\DirectX12\Shaders\vs_pbr.hlsl" />
     <ClCompile Include="..\..\Common\Input\InputState.cpp" />
     <ClCompile Include="..\..\Common\MetaData.cpp" />
     <ClCompile Include="..\..\Common\RHI\BufferAllocator.cpp" />
     <ClCompile Include="..\..\Common\RHI\Geometry\GeometryImport.cpp" />
     <ClCompile Include="..\..\Common\RHI\Geometry\Mesh.cpp" />
     <ClCompile Include="..\..\Common\RHI\Image\ImageImport.cpp" />
+    <ClCompile Include="..\..\Common\RHI\Material.cpp" />
     <ClCompile Include="..\..\Common\RHI\Pipeline.cpp" />
     <ClCompile Include="..\..\Common\RHI\Renderer.cpp" />
     <ClCompile Include="..\..\Common\RHI\RenderPassExecutor.cpp" />
@@ -177,9 +180,21 @@
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </ClCompile>
+    <Content Include="..\..\Common\Vulkan\Shaders\ps_pbr.glsl" />
     <Content Include="..\..\Common\Vulkan\Shaders\ps_quad.glsl" />
+    <Content Include="..\..\Common\Vulkan\Shaders\vs_pbr.glsl" />
     <Content Include="..\..\Common\Vulkan\Shaders\vs_quad.glsl" />
+    <Content Include="Meshes\shells.fbx" />
     <Content Include="Meshes\Test.fbx" />
+    <Content Include="Textures\shells_0_ao.png" />
+    <Content Include="Textures\shells_0_diff.png" />
+    <Content Include="Textures\shells_0_metal.png" />
+    <Content Include="Textures\shells_0_norm.png" />
+    <Content Include="Textures\shells_0_rough.png" />
+    <Content Include="Textures\shells_1_ao.png" />
+    <Content Include="Textures\shells_1_diff.png" />
+    <Content Include="Textures\shells_1_norm.png" />
+    <Content Include="Textures\shells_1_rough.png" />
     <Content Include="Textures\Texture.png" />
   </ItemGroup>
   <ItemGroup>
@@ -197,6 +212,7 @@
     <ClInclude Include="..\..\Common\RHI\Geometry\Mesh.h" />
     <ClInclude Include="..\..\Common\RHI\Image\stb_image.h" />
     <ClInclude Include="..\..\Common\RHI\Image\ImageImport.h" />
+    <ClInclude Include="..\..\Common\RHI\Material.h" />
     <ClInclude Include="..\..\Common\RHI\Pipeline.h" />
     <ClInclude Include="..\..\Common\RHI\Renderer.h" />
     <ClInclude Include="..\..\Common\RHI\RenderPassExecutor.h" />
