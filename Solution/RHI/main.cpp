@@ -6,8 +6,6 @@
 #include <DirectXMath.h>
 #include <iostream>
 #include "../../Common/DirectX12/D3DCore.h"
-#include "../../Common/Vulkan/VulkanCore.h"
-#include "../../Common/GraphicsSettings.h"
 #include "../../Common/RHI/BufferAllocator.h"
 #include "../../Common/RHI/Material.h"
 #include "../../Common/RHI/Geometry/Mesh.h"
@@ -32,6 +30,22 @@ int main()
         BufferAllocator* bufferAlloc = BufferAllocator::GetInstance();
         Pipeline* PBR = PBRPipeline();
         
+        CameraUBO cameraData;
+        DirectX::XMStoreFloat4x4(&cameraData.ViewProjection, DirectX::XMMatrixIdentity()); // Set your actual VP matrix
+        
+        BufferDesc cameraBufferDesc = DefaultConstantBufferDesc;
+        cameraBufferDesc.Size = sizeof(CameraUBO);
+        cameraBufferDesc.InitialData = &cameraData;
+        
+        ModelUBO modelData;
+        DirectX::XMStoreFloat4x4(&modelData.Model, DirectX::XMMatrixIdentity()); // Set your actual model matrix
+        
+        BufferDesc modelBufferDesc = DefaultConstantBufferDesc;
+        modelBufferDesc.Size = sizeof(ModelUBO);
+        modelBufferDesc.InitialData = &modelData;
+        
+        std::vector<uint64_t> pbrUniformBuffers {};
+        
         std::vector<Material> materials;
         materials.push_back(Material("shells_0", Material::PBR));
         materials.push_back(Material("shells_1", Material::PBR));
@@ -43,15 +57,21 @@ int main()
 
         std::vector<DirectX::XMFLOAT4> clearColors {{0,0,0,1}};
         bool uploaded = false;
-
+        
+        std::vector<uint64_t> materialDescriptorSets;
+        
         while (!window->PeekMessages())
         {
             Renderer::BeginFrame();
             
             if (!uploaded)
             {
-                materials[0].LoadMaterial(0);
-                materials[1].LoadMaterial(0);
+                // After flush
+                pbrUniformBuffers.push_back(bufferAlloc->CreateBuffer(cameraBufferDesc));
+                pbrUniformBuffers.push_back(bufferAlloc->CreateBuffer(modelBufferDesc));
+                materialDescriptorSets.push_back(materials[0].LoadMaterial(0, pbrUniformBuffers));
+                materialDescriptorSets.push_back(materials[1].LoadMaterial(0, pbrUniformBuffers));
+
                 uploaded = true;
             }
             

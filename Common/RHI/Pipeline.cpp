@@ -324,7 +324,7 @@ VulkanPipeline::VulkanPipeline(const PipelineDesc& desc)
     rasterizer.depthClampEnable = !desc.RasterizerState.DepthClipEnable;  // Inverted. Clip and Clamp are opposite behaviours.
     rasterizer.depthBiasClamp = desc.RasterizerState.DepthBiasClamp;
     rasterizer.cullMode = VulkanCullMode(desc.RasterizerState.CullMode);
-    rasterizer.frontFace = desc.RasterizerState.FrontCounterClockwise ? VK_FRONT_FACE_COUNTER_CLOCKWISE : VK_FRONT_FACE_CLOCKWISE;
+    rasterizer.frontFace = !desc.RasterizerState.FrontCounterClockwise ? VK_FRONT_FACE_COUNTER_CLOCKWISE : VK_FRONT_FACE_CLOCKWISE; // Inverting because of negative viewport height
     rasterizer.depthBiasEnable = desc.RasterizerState.DepthBias != 0.0f;
     rasterizer.depthBiasConstantFactor = desc.RasterizerState.DepthBias;
     rasterizer.depthBiasSlopeFactor = desc.RasterizerState.SlopeScaledDepthBias;

@@ -362,6 +362,20 @@ namespace RHIConstants
         .InitialData = nullptr
     };
     
+    inline constexpr BufferUsage DefaultUniformBufferUsage
+    {
+        .TransferSource = true,
+        .TransferDestination = false,
+        .Type = BufferType::Constant,
+    };
     
+    inline constexpr BufferDesc DefaultConstantBufferDesc
+    {
+        .Size = 0,
+        .Usage = DefaultUniformBufferUsage,
+        .Type = BufferType::Constant,
+        .Access = MemoryAccess(9),
+        .InitialData = nullptr
+    };
     
 };

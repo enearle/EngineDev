@@ -571,5 +571,17 @@ namespace RHIStructures
         uint32_t SetIndex = 0;               // Which descriptor set this is (matches ResourceLayout set indices)
         void* PlatformData = nullptr;        // Platform-specific data if needed
     };
+    
+    //===================================//
+    //  ------  Uniform Buffers  ------  //
+    //===================================//
+    
+    struct CameraUBO {
+        DirectX::XMFLOAT4X4 ViewProjection;
+    };
+
+    struct ModelUBO {
+        DirectX::XMFLOAT4X4 Model;
+    };
 
 }

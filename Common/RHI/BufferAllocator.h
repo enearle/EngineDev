@@ -40,7 +40,8 @@ public:
     virtual void FreeDescriptorSet(uint64_t setID) = 0;
     
     ImageAllocation GetImageAllocation(uint64_t id) const { return AllocatedImages.at(id); }
-    BufferAllocation GetBufferAllocation(uint64_t id) const { return AllocatedBuffers.at(id); }
+    BufferAllocation GetBufferAllocation(uint64_t id) const { 
+        return AllocatedBuffers.at(id); }
     DescriptorSetAllocation GetDescriptorSet(uint64_t id) const { return AllocatedDescriptorSets.at(id); }
 };
 

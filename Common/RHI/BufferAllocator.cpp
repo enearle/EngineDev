@@ -182,6 +182,12 @@ uint64_t VulkanBufferAllocator::CreateBuffer(BufferDesc bufferDesc, bool createD
     VkMemoryPropertyFlags memoryFlags = VulkanMemoryType(bufferDesc.Access);
     VkDevice device = VulkanCore::GetInstance().GetDevice();
     VkPhysicalDevice physicalDevice = VulkanCore::GetInstance().GetPhysicalDevice();
+    
+    bool needsDeviceAddress = (bufferDesc.Type == BufferType::Constant || bufferDesc.Type == BufferType::ShaderStorage);
+    if (needsDeviceAddress)
+    {
+        bufferFlags |= VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+    }
 
     VkBufferCreateInfo bufferInfo = {};
     bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -199,10 +205,15 @@ uint64_t VulkanBufferAllocator::CreateBuffer(BufferDesc bufferDesc, bool createD
     VkPhysicalDeviceMemoryProperties memoryProperties;
     vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memoryProperties);
     
+    VkMemoryAllocateFlagsInfo allocFlags = {};
+    allocFlags.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO;
+    allocFlags.flags = needsDeviceAddress ? VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT : 0;
+    
     VkMemoryAllocateInfo allocInfo = {};
     allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     allocInfo.allocationSize = memoryRequirements.size;
     allocInfo.memoryTypeIndex = FindMemoryType(physicalDevice, memoryRequirements.memoryTypeBits, memoryFlags);
+    allocInfo.pNext = needsDeviceAddress ? &allocFlags : nullptr;
     
     result = vkAllocateMemory(device, &allocInfo, nullptr, &vulkanBufferData->Memory);
     if (result != VK_SUCCESS)
@@ -240,6 +251,7 @@ uint64_t VulkanBufferAllocator::CreateBuffer(BufferDesc bufferDesc, bool createD
     allocation.Usage = bufferDesc.Usage;
     allocation.Access = bufferDesc.Access;
     allocation.IsMapped = isHostVisible;
+    allocation.Type = bufferDesc.Type;
     
     // Create descriptor for shader-accessible buffers if requested
     if (createDescriptor && (bufferDesc.Type == BufferType::Constant || bufferDesc.Type == BufferType::ShaderStorage))
@@ -568,6 +580,10 @@ uint64_t VulkanBufferAllocator::AllocateDescriptorSet(uint32_t pipelineIndex, co
     std::vector<VkDescriptorImageInfo> imageInfos;
     std::vector<VkDescriptorBufferInfo> bufferInfos;
     
+    writes.reserve(layoutInfo.Bindings.size());
+    imageInfos.reserve(layoutInfo.Bindings.size());
+    bufferInfos.reserve(layoutInfo.Bindings.size());
+    
     for (const DescriptorBinding& layoutBinding : layoutInfo.Bindings)
     {
         auto bindingIt = std::find_if(bindings.begin(), bindings.end(),
@@ -583,6 +599,9 @@ uint64_t VulkanBufferAllocator::AllocateDescriptorSet(uint32_t pipelineIndex, co
         write.dstArrayElement = 0;
         write.descriptorCount = 1;
         write.descriptorType = VulkanDescriptorType(layoutBinding.Type);
+        write.pImageInfo = nullptr;        // Initialize to null
+        write.pBufferInfo = nullptr;       // Initialize to null
+        write.pTexelBufferView = nullptr;  // Initialize to null
         
         if (layoutBinding.Type == RHIStructures::DescriptorType::SampledImage)
         {
