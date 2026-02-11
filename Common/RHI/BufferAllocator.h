@@ -63,6 +63,8 @@ public:
 
     enum DescriptorType : uint8_t { SampledImage, StorageImage, UniformBuffer, StorageBuffer};
     
+    static uint32_t FindMemoryType(uint32_t allowdTypes, VkMemoryPropertyFlags flags);
+    
 private:
     // Descriptor buffer for individual descriptors
     VkBuffer DescriptorBuffer;
@@ -99,7 +101,7 @@ private:
     
     static VkImage CreateVulkanImage(ImageDesc imageDesc, VkDeviceMemory* imageMemory);
     static VkImageView CreateVulkanImageView(VkImage image, ImageDesc imageDesc);
-    static uint32_t FindMemoryType(VkPhysicalDevice physicalDevice, uint32_t allowdTypes, VkMemoryPropertyFlags flags);
+   
     static void TransitionImageLayout(VkImage image, VkImageLayout oldLayout, VkImageLayout newLayout);
     static void CopyToDeviceLocalBuffer(VkBuffer dstBuffer, const void* srcData, VkDeviceSize size);
     static void CopyBufferToImage(VkBuffer stagingBuffer, VkImage dstImage, uint32_t width, uint32_t height);

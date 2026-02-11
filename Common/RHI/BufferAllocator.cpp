@@ -59,7 +59,6 @@ VulkanBufferAllocator::VulkanBufferAllocator()
     allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     allocInfo.allocationSize = memReqs.size;
     allocInfo.memoryTypeIndex = FindMemoryType(
-        physicalDevice,
         memReqs.memoryTypeBits,
         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | 
         VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT
@@ -212,7 +211,7 @@ uint64_t VulkanBufferAllocator::CreateBuffer(BufferDesc bufferDesc, bool createD
     VkMemoryAllocateInfo allocInfo = {};
     allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     allocInfo.allocationSize = memoryRequirements.size;
-    allocInfo.memoryTypeIndex = FindMemoryType(physicalDevice, memoryRequirements.memoryTypeBits, memoryFlags);
+    allocInfo.memoryTypeIndex = FindMemoryType(memoryRequirements.memoryTypeBits, memoryFlags);
     allocInfo.pNext = needsDeviceAddress ? &allocFlags : nullptr;
     
     result = vkAllocateMemory(device, &allocInfo, nullptr, &vulkanBufferData->Memory);
@@ -330,7 +329,7 @@ void VulkanBufferAllocator::CopyToDeviceLocalBuffer(VkBuffer dstBuffer, const vo
     VkMemoryAllocateInfo stagingAllocInfo = {};
     stagingAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     stagingAllocInfo.allocationSize = stagingMemoryReqs.size;
-    stagingAllocInfo.memoryTypeIndex = FindMemoryType(physicalDevice, stagingMemoryReqs.memoryTypeBits, stagingFlags);
+    stagingAllocInfo.memoryTypeIndex = FindMemoryType(stagingMemoryReqs.memoryTypeBits, stagingFlags);
 
     VkDeviceMemory stagingMemory;
     result = vkAllocateMemory(device, &stagingAllocInfo, nullptr, &stagingMemory);
@@ -400,7 +399,7 @@ uint64_t VulkanBufferAllocator::CreateImage(ImageDesc imageDesc, bool createDesc
     VkMemoryAllocateInfo stagingAllocInfo = {};
     stagingAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     stagingAllocInfo.allocationSize = stagingMemoryReqs.size;
-    stagingAllocInfo.memoryTypeIndex = FindMemoryType(physicalDevice, stagingMemoryReqs.memoryTypeBits, stagingFlags);
+    stagingAllocInfo.memoryTypeIndex = FindMemoryType(stagingMemoryReqs.memoryTypeBits, stagingFlags);
 
     VkDeviceMemory stagingMemory;
     result = vkAllocateMemory(device, &stagingAllocInfo, nullptr, &stagingMemory);
@@ -892,7 +891,7 @@ VkImage VulkanBufferAllocator::CreateVulkanImage(ImageDesc imageDesc, VkDeviceMe
     VkMemoryAllocateInfo allocInfo = {};
     allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     allocInfo.allocationSize = memoryRequirements.size;
-    allocInfo.memoryTypeIndex = FindMemoryType(physicalDevice, memoryRequirements.memoryTypeBits, memoryFlags);
+    allocInfo.memoryTypeIndex = FindMemoryType(memoryRequirements.memoryTypeBits, memoryFlags);
 
     result = vkAllocateMemory(device, &allocInfo, nullptr, imageMemory);
     if (result != VK_SUCCESS)
@@ -932,11 +931,11 @@ VkImageView VulkanBufferAllocator::CreateVulkanImageView(VkImage image, ImageDes
     return imageView;
 }
 
-uint32_t VulkanBufferAllocator::FindMemoryType(VkPhysicalDevice physicalDevice, uint32_t allowdTypes, VkMemoryPropertyFlags flags)
+uint32_t VulkanBufferAllocator::FindMemoryType(uint32_t allowdTypes, VkMemoryPropertyFlags flags)
 {
     // Get properties of physical device memory
     VkPhysicalDeviceMemoryProperties memoryProperties;
-    vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memoryProperties);
+    vkGetPhysicalDeviceMemoryProperties(VulkanCore::GetInstance().GetPhysicalDevice(), &memoryProperties);
 
     // Iterate through memory types to find one that matches the required properties
     for (uint32_t i = 0; i < memoryProperties.memoryTypeCount; i++)

@@ -5,6 +5,8 @@
 #include "../../Common/RHI/RenderPassExecutor.h"
 #include <DirectXMath.h>
 #include <iostream>
+
+#include "../../Common/GraphicsSettings.h"
 #include "../../Common/DirectX12/D3DCore.h"
 #include "../../Common/RHI/BufferAllocator.h"
 #include "../../Common/RHI/Material.h"
@@ -80,6 +82,13 @@ int main()
             ImageMemoryBarrier preBarrier = PRE_BARRIER;
             preBarrier.ImageResource = backBuffer;
             executor->IssueImageMemoryBarrier(preBarrier);
+            
+            executor->Begin(PBR, {backBufferView}, nullptr, window->GetWidth(), window->GetHeight(), clearColors, 0);
+            
+            if (GRAPHICS_SETTINGS.APIToUse == Vulkan)
+            {
+                executor->DrawSceneNode(meshRoot.GetSceneNode(), materialDescriptorSets);
+            }
             
             //if (GRAPHICS_SETTINGS.APIToUse == DirectX12)
             //{

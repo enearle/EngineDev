@@ -211,8 +211,6 @@ D3DPipeline::D3DPipeline(const PipelineDesc& desc)
 
 VulkanPipeline::VulkanPipeline(const PipelineDesc& desc)
 {
-    CreateRenderPass(desc);
-
     // Cache shader modules for cleanup
     // All shaders will allways be loaded. This is meh, but for my engine probably fine.
     std::vector<VkPipelineShaderStageCreateInfo> shaderStages;
@@ -393,6 +391,18 @@ VulkanPipeline::VulkanPipeline(const PipelineDesc& desc)
 
     PipelineLayout = VulkanPipelineLayoutBuilder::BuildPipelineLayout(VulkanCore::GetInstance().GetDevice(), desc.ResourceLayout, SetLayouts);
     
+    std::vector<VkFormat> colorFormats;
+    for (const auto& format : desc.RenderTargetFormats)
+        colorFormats.push_back(VulkanFormat(format));
+    
+    VkPipelineRenderingCreateInfo pipelineRenderingCreateInfo;
+    pipelineRenderingCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO_KHR;
+    pipelineRenderingCreateInfo.viewMask = 0;
+    pipelineRenderingCreateInfo.colorAttachmentCount = static_cast<uint32_t>(desc.RenderTargetFormats.size());
+    pipelineRenderingCreateInfo.pColorAttachmentFormats = colorFormats.data();
+    pipelineRenderingCreateInfo.depthAttachmentFormat = VulkanFormat(desc.DepthStencilFormat);
+    pipelineRenderingCreateInfo.stencilAttachmentFormat = VK_FORMAT_UNDEFINED; 
+    
     VkGraphicsPipelineCreateInfo pipelineCreateInfo{};
     pipelineCreateInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
     pipelineCreateInfo.pDynamicState = &dynamicState;
@@ -407,8 +417,9 @@ VulkanPipeline::VulkanPipeline(const PipelineDesc& desc)
     pipelineCreateInfo.pDepthStencilState = &depthStencilState;
     pipelineCreateInfo.pColorBlendState = &colorBlendState;
     pipelineCreateInfo.flags = VK_PIPELINE_CREATE_DESCRIPTOR_BUFFER_BIT_EXT;
-    pipelineCreateInfo.renderPass = RenderPass;
+    pipelineCreateInfo.renderPass = VK_NULL_HANDLE;
     pipelineCreateInfo.layout = PipelineLayout;
+    pipelineCreateInfo.pNext = &pipelineRenderingCreateInfo;
     
     VkPipelineCacheCreateInfo cacheCreateInfo{};
     cacheCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
@@ -431,15 +442,57 @@ VulkanPipeline::VulkanPipeline(const PipelineDesc& desc)
     if (cacheResult != VK_SUCCESS)
         throw std::runtime_error("Failed to create pipeline cache!");
 
-
     VkResult result = vkCreateGraphicsPipelines(VulkanCore::GetInstance().GetDevice(), PipelineCache, 1, &pipelineCreateInfo, nullptr, &Pipeline);
     if (result != VK_SUCCESS)
         throw std::runtime_error("Failed to create Vulkan graphics pipeline!");
+    
+    if (!desc.CreateOwnAttachments) return;
+    
+    OwnedImages.resize(desc.RenderTargetFormats.size());
+    OwnedImageViews.resize(desc.RenderTargetFormats.size());
+    OwnedImageMemory.resize(desc.RenderTargetFormats.size());
+    
+    for (size_t i = 0; i < desc.RenderTargetFormats.size(); ++i)
+    {
+        VkImageViewCreateInfo imageViewInfo{};
+        imageViewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        imageViewInfo.format = VulkanFormat(desc.RenderTargetFormats[i]);
+        imageViewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        imageViewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        imageViewInfo.subresourceRange.baseMipLevel = 0;
+        imageViewInfo.subresourceRange.levelCount = 1;
+        imageViewInfo.subresourceRange.baseArrayLayer = 0;
+        imageViewInfo.subresourceRange.layerCount = 1;
+        imageViewInfo.image = OwnedImages[i];
+    
+        result = vkCreateImageView(VulkanCore::GetInstance().GetDevice(), &imageViewInfo, nullptr, &OwnedImageViews[i]);
+        if (result != VK_SUCCESS)
+            throw std::runtime_error("Failed to create Vulkan image view for pipeline render target!");
+        
+        VkMemoryRequirements memReqs;
+        vkGetImageMemoryRequirements(VulkanCore::GetInstance().GetDevice(), OwnedImages[i], &memReqs);
+    
+        VkMemoryAllocateInfo allocInfo{};
+        allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        allocInfo.allocationSize = memReqs.size;
+        allocInfo.memoryTypeIndex = VulkanBufferAllocator::FindMemoryType(
+                memReqs.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
+            );
+    
+        result = vkAllocateMemory(VulkanCore::GetInstance().GetDevice(), &allocInfo, nullptr, &OwnedImageMemory[i]);
+        if (result != VK_SUCCESS)
+            throw std::runtime_error("Failed to allocate Vulkan image memory for pipeline render target!");
+    
+        result = vkBindImageMemory(VulkanCore::GetInstance().GetDevice(), OwnedImages[i], OwnedImageMemory[i], 0);
+        if (result != VK_SUCCESS)
+            throw std::runtime_error("Failed to bind Vulkan image memory for pipeline render target!");
+    }
+    
 }
 
 void VulkanPipeline::CreateRenderPass(const PipelineDesc& desc)
 {
-    std::vector<VkAttachmentDescription> attachments;
+    
     std::vector<VkAttachmentReference> colorRefs;
     VkAttachmentReference depthRef{};
     bool hasDepth = desc.DepthStencilFormat != Format::Unknown;

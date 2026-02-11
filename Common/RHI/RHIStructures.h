@@ -314,6 +314,9 @@ namespace RHIStructures
     
     struct PipelineDesc
     {
+        bool CreateOwnAttachments;
+        uint32_t AttachmentWidth = 0;
+        uint32_t AttachmentHeight = 0;
         ShaderStage VertexShader;
         ShaderStage FragmentShader;
         ShaderStage GeometryShader;

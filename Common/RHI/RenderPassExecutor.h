@@ -1,6 +1,7 @@
 ﻿#pragma once
 #include "Pipeline.h"
 #include "../RHI/RHIStructures.h"
+#include "Geometry/Mesh.h"
 
 namespace DirectX { struct XMFLOAT4; }
 class RenderPassExecutor
@@ -22,11 +23,12 @@ public:
     virtual void End() = 0;
     
     // Bind a pipeline for the current pass
-    virtual void BindPipeline(Pipeline* pipeline) = 0;
     
     // Insert barriers between passes
     virtual void IssueMemoryBarrier(const RHIStructures::MemoryBarrier& barrier) = 0;
     virtual void IssueImageMemoryBarrier(const ImageMemoryBarrier& barrier) = 0;
+    
+    virtual void DrawSceneNode(const SceneNode& node, std::vector<uint64_t>& materialDescriptorSets) = 0;
 };
 
 class D3DRenderPassExecutor : public RenderPassExecutor
@@ -42,13 +44,13 @@ public:
                const std::vector<DirectX::XMFLOAT4>& clearColors,
                float clearDepth) override;
     void End() override;
-    void BindPipeline(Pipeline* pipeline) override;
     void IssueMemoryBarrier(const RHIStructures::MemoryBarrier& barrier) override;
     void IssueImageMemoryBarrier(const ImageMemoryBarrier& barrier) override;
-    
+    void DrawSceneNode(const SceneNode& node, std::vector<uint64_t>& materialDescriptorSets) override;
     
 private:
     ID3D12GraphicsCommandList* GetCommandList();
+    D3DPipeline* CurrentPipeline;
 };
 
 class VulkanRenderPassExecutor : public RenderPassExecutor
@@ -64,14 +66,15 @@ public:
                const std::vector<DirectX::XMFLOAT4>& clearColors,
                float clearDepth) override;
     void End() override;
-    void BindPipeline(Pipeline* pipeline) override;
     void IssueMemoryBarrier(const RHIStructures::MemoryBarrier& barrier) override;
     void IssueImageMemoryBarrier(const ImageMemoryBarrier& barrier) override;
+    void DrawSceneNode(const SceneNode& node, std::vector<uint64_t>& materialDescriptorSets) override;
 
 public: // Vulkan specific cleanup
     void InvalidateFramebuffers();
 
 private:
-    std::vector<VkFramebuffer> Framebuffers;
+    
+    VulkanPipeline* CurrentPipeline;
     VkCommandBuffer GetCommandBuffer();
 };

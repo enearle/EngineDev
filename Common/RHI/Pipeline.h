@@ -14,12 +14,24 @@ public:
 class D3DPipeline : public Pipeline
 {
 public:
+    
     D3DPipeline(const PipelineDesc& desc);
     ID3D12PipelineState* GetPipelineState() const { return PipelineState.Get(); }
     ID3D12RootSignature* GetRootSignature() const { return RootSignature.Get(); }
     D3D12_PRIMITIVE_TOPOLOGY GetTopology() const { return Topology; }
     
+    std::vector<ComPtr<ID3D12Resource>> GetOwnedColorResources() const { return OwnedColorResources; }
+    std::vector<D3D12_CPU_DESCRIPTOR_HANDLE> GetOwnedRTVs() const { return OwnedRTVs; }
+    ComPtr<ID3D12Resource> GetOwnedDepthResource() const { return OwnedDepthResource; }
+    D3D12_CPU_DESCRIPTOR_HANDLE GetOwnedDSV() const { return OwnedDSV; }
+    
 private:
+    
+    std::vector<ComPtr<ID3D12Resource>> OwnedColorResources;
+    std::vector<D3D12_CPU_DESCRIPTOR_HANDLE> OwnedRTVs;
+    ComPtr<ID3D12Resource> OwnedDepthResource;
+    D3D12_CPU_DESCRIPTOR_HANDLE OwnedDSV;
+    
     D3D12_PRIMITIVE_TOPOLOGY Topology;
     ComPtr<ID3D12RootSignature> RootSignature;
     ComPtr<ID3D12PipelineState> PipelineState;
@@ -28,6 +40,7 @@ private:
 class VulkanPipeline : public Pipeline
 {
 public:
+    
     VulkanPipeline(const PipelineDesc& desc);
     ~VulkanPipeline();
     
@@ -35,7 +48,25 @@ public:
     VkPipelineLayout GetPipelineLayout() const { return PipelineLayout; }
     VkRenderPass GetRenderPass() const { return RenderPass; }
     
+    std::vector<VkImage> GetOwnedImages() const { return OwnedImages; }
+    std::vector<VkImageView> GetOwnedImageViews() const { return OwnedImageViews; }
+    std::vector<VkDeviceMemory> GetOwnedImageMemory() const { return OwnedImageMemory; }
+    VkImage GetOwnedDepthImage() const { return OwnedDepthImage; }
+    VkDeviceMemory GetOwnedDepthImageMemory() const { return OwnedDepthImageMemory; }
+    VkImageView GetOwnedDepthImageView() const { return OwnedDepthImageView; }
+    
+    std::vector<VkAttachmentDescription> GetAttachmentDescriptions() const { return attachments; }
+
 private:
+    
+    std::vector<VkImage> OwnedImages;
+    std::vector<VkImageView> OwnedImageViews;
+    std::vector<VkDeviceMemory> OwnedImageMemory;
+    VkImage OwnedDepthImage = VK_NULL_HANDLE;
+    VkDeviceMemory OwnedDepthImageMemory = VK_NULL_HANDLE;
+    VkImageView OwnedDepthImageView = VK_NULL_HANDLE;
+    
+    std::vector<VkAttachmentDescription> attachments;
     void CreateRenderPass(const PipelineDesc& desc);
     std::vector<VkShaderModule> ShaderModules;
     VkPipeline Pipeline = VK_NULL_HANDLE;

@@ -4,6 +4,8 @@
 #include "../GraphicsSettings.h"
 #include <DirectXMath.h>
 
+#include "BufferAllocator.h"
+
 
 RenderPassExecutor* RenderPassExecutor::Create()
 {
@@ -124,15 +126,6 @@ void D3DRenderPassExecutor::End()
 
 }
 
-void D3DRenderPassExecutor::BindPipeline(Pipeline* pipeline)
-{
-    ID3D12GraphicsCommandList* cmdList = GetCommandList();
-    D3DPipeline* d3dPipeline = static_cast<D3DPipeline*>(pipeline);
-    
-    cmdList->SetGraphicsRootSignature(d3dPipeline->GetRootSignature());
-    cmdList->SetPipelineState(d3dPipeline->GetPipelineState());
-}
-
 void D3DRenderPassExecutor::IssueMemoryBarrier(const RHIStructures::MemoryBarrier& barrier)
 {
     ID3D12GraphicsCommandList* cmdList = GetCommandList();
@@ -165,6 +158,10 @@ void D3DRenderPassExecutor::IssueImageMemoryBarrier(const ImageMemoryBarrier& ba
     cmdList->ResourceBarrier(1, &d3dBarrier);
 }
 
+void D3DRenderPassExecutor::DrawSceneNode(const SceneNode& node, std::vector<uint64_t>& materialDescriptorSets)
+{
+}
+
 ID3D12GraphicsCommandList* D3DRenderPassExecutor::GetCommandList()
 {
     return D3DCore::GetInstance().GetCommandList().Get();
@@ -176,8 +173,6 @@ ID3D12GraphicsCommandList* D3DRenderPassExecutor::GetCommandList()
 
 VulkanRenderPassExecutor::VulkanRenderPassExecutor()
 {
-    uint32_t swapchainImageCount = VulkanCore::GetInstance().GetSwapchainImageCount();
-    Framebuffers.resize(swapchainImageCount, VK_NULL_HANDLE);
 }
 
 VulkanRenderPassExecutor::~VulkanRenderPassExecutor()
@@ -192,63 +187,81 @@ void VulkanRenderPassExecutor::Begin(Pipeline* pipeline,
                                      const std::vector<DirectX::XMFLOAT4>& clearColors,
                                      float clearDepth)
 {
-    // Set framebuffer
-    VulkanPipeline* vulkanPipeline = static_cast<VulkanPipeline*>(pipeline);
+    CurrentPipeline = static_cast<VulkanPipeline*>(pipeline);
     VkCommandBuffer cmdBuffer = GetCommandBuffer();
     
-    std::vector<VkImageView> attachmentViews;
-    for (const auto& colorView : colorViews)
-        attachmentViews.push_back(reinterpret_cast<VkImageView>(colorView));
-    if (depthView)
-        attachmentViews.push_back(reinterpret_cast<VkImageView>(depthView));
+    VkRenderingInfo renderingInfo{};
+    renderingInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+    renderingInfo.renderArea.offset = {0, 0};
+    renderingInfo.renderArea.extent = {width, height};
+    renderingInfo.layerCount = 1;
     
-    uint32_t swapchainImageIndex = VulkanCore::GetInstance().GetCurrentSwapchainImageIndex();
-    VkFramebuffer& framebuffer = Framebuffers[swapchainImageIndex];
-    
-    if (framebuffer == VK_NULL_HANDLE)
+    VkImageView depthStencilView;
+    std::vector<VkImageView> colourAttachmentViews;
+    if (!colorViews.empty() || depthView)
     {
-        VkFramebufferCreateInfo framebufferInfo{};
-        framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-        framebufferInfo.renderPass = vulkanPipeline->GetRenderPass();
-        framebufferInfo.attachmentCount = static_cast<uint32_t>(attachmentViews.size());
-        framebufferInfo.pAttachments = attachmentViews.data();
-        framebufferInfo.width = width;
-        framebufferInfo.height = height;
-        framebufferInfo.layers = 1;
+        for (const auto& colorView : colorViews)
+            colourAttachmentViews.push_back(reinterpret_cast<VkImageView>(colorView));
+        if (depthView)
+            depthStencilView = reinterpret_cast<VkImageView>(depthView);
         
-        if (vkCreateFramebuffer(VulkanCore::GetInstance().GetDevice(), &framebufferInfo, nullptr, &framebuffer) != VK_SUCCESS)
-            throw std::runtime_error("Failed to create framebuffer");
+        // Prepare clear values
+        std::vector<VkClearValue> clearValues;
+        for (size_t i = 0; i < clearColors.size(); ++i)
+        {
+            VkClearValue clearValue{};
+            clearValue.color = {clearColors[i].x, clearColors[i].y, clearColors[i].z, clearColors[i].w};
+            clearValues.push_back(clearValue);
+        }
+        if (depthView)
+        {
+            VkClearValue depthClear{};
+            depthClear.depthStencil = {clearDepth, 0};
+            clearValues.push_back(depthClear);
+        }
     }
-    
-    // Prepare clear values
-    std::vector<VkClearValue> clearValues;
-    for (size_t i = 0; i < clearColors.size(); ++i)
+    else
     {
-        VkClearValue clearValue{};
-        clearValue.color = {clearColors[i].x, clearColors[i].y, clearColors[i].z, clearColors[i].w};
-        clearValues.push_back(clearValue);
+        colourAttachmentViews = CurrentPipeline->GetOwnedImageViews();
+        if (CurrentPipeline->GetOwnedDepthImageView())
+            depthStencilView = CurrentPipeline->GetOwnedDepthImageView();
+        else if (colourAttachmentViews.empty())
+            throw std::runtime_error("No attachments provided.");
     }
-    if (depthView)
+    
+    std::vector<VkAttachmentDescription> attachmentDescs = CurrentPipeline->GetAttachmentDescriptions();
+    std::vector<VkRenderingAttachmentInfo> colourAttachments;
+    for (size_t i = 0; i < colourAttachmentViews.size(); ++i)
     {
-        VkClearValue depthClear{};
-        depthClear.depthStencil = {clearDepth, 0};
-        clearValues.push_back(depthClear);
+        VkRenderingAttachmentInfo attachment{};
+        attachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+        attachment.imageView = colourAttachmentViews[i];
+        attachment.loadOp = attachmentDescs[i].loadOp;
+        attachment.storeOp = attachmentDescs[i].storeOp;
+        attachment.imageLayout = attachmentDescs[i].finalLayout;
+        attachment.clearValue.color = {clearColors[i].x, clearColors[i].y, clearColors[i].z, clearColors[i].w};
+        colourAttachments.push_back(attachment);
     }
     
-    // Begin render pass
-    VkRenderPassBeginInfo renderPassBeginInfo{};
-    renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-    renderPassBeginInfo.renderPass = vulkanPipeline->GetRenderPass();
-    renderPassBeginInfo.framebuffer = framebuffer;
-    renderPassBeginInfo.renderArea.offset = {0, 0};
-    renderPassBeginInfo.renderArea.extent = {width, height};
-    renderPassBeginInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
-    renderPassBeginInfo.pClearValues = clearValues.data();
+    renderingInfo.colorAttachmentCount = static_cast<uint32_t>(colourAttachmentViews.size());
+    renderingInfo.pColorAttachments = colourAttachments.data();
     
-    vkCmdBeginRenderPass(cmdBuffer, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
+    VkRenderingAttachmentInfo depthAttachment{};
+    if (depthStencilView)
+    {
+        depthAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+        depthAttachment.imageView = depthStencilView;
+        depthAttachment.loadOp = attachmentDescs[colourAttachmentViews.size()].loadOp;
+        depthAttachment.storeOp = attachmentDescs[colourAttachmentViews.size()].storeOp;
+        depthAttachment.imageLayout = attachmentDescs[colourAttachmentViews.size()].finalLayout;
+        depthAttachment.clearValue.depthStencil = {clearDepth, 0};
+        renderingInfo.pDepthAttachment = &depthAttachment;
+    }
+    
+    vkCmdBeginRendering(cmdBuffer, &renderingInfo);
     
     // Bind pipeline
-    vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, vulkanPipeline->GetVulkanPipeline());
+    vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, CurrentPipeline->GetVulkanPipeline());
     
     // Set viewport
     VkViewport viewport{};
@@ -270,13 +283,7 @@ void VulkanRenderPassExecutor::Begin(Pipeline* pipeline,
 void VulkanRenderPassExecutor::End()
 {
     VkCommandBuffer cmdBuffer = GetCommandBuffer();
-    vkCmdEndRenderPass(cmdBuffer);
-}
-
-void VulkanRenderPassExecutor::BindPipeline(Pipeline* pipeline)
-{
-    VulkanPipeline* vulkanPipeline = static_cast<VulkanPipeline*>(pipeline);
-    vkCmdBindPipeline(GetCommandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS, vulkanPipeline->GetVulkanPipeline());
+    vkCmdEndRendering(cmdBuffer);
 }
 
 void VulkanRenderPassExecutor::IssueMemoryBarrier(const RHIStructures::MemoryBarrier& barrier)
@@ -337,21 +344,64 @@ void VulkanRenderPassExecutor::IssueImageMemoryBarrier(const ImageMemoryBarrier&
     );
 }
 
+void VulkanRenderPassExecutor::DrawSceneNode(const SceneNode& node, std::vector<uint64_t>& materialDescriptorSets)
+{
+    VkCommandBuffer cmdBuffer = GetCommandBuffer();
+    VulkanBufferAllocator* alloc = static_cast<VulkanBufferAllocator*>(BufferAllocator::GetInstance());
+    
+        // Get Vulkan function pointers
+    PFN_vkCmdBindDescriptorBuffersEXT vkCmdBindDescriptorBuffersEXT_FnPtr = 
+        VulkanCore::GetInstance().GetVkCmdBindDescriptorBuffersEXT();
+    PFN_vkCmdSetDescriptorBufferOffsetsEXT vkCmdSetDescriptorBufferOffsetsEXT_FnPtr = 
+        VulkanCore::GetInstance().GetVkCmdSetDescriptorBufferOffsetsEXT();
+    
+    // Draw all meshes in this node
+    for (size_t i = 0; i < node.GetMeshCount(); i++)
+    {
+        const Mesh* mesh = node.GetMesh(i);
+        uint32_t materialIndex = mesh->GetLocalMaterialIndex();
+        
+        // Bind descriptor set for this material
+        if (materialIndex < materialDescriptorSets.size())
+        {
+            VkDeviceAddress address = alloc->GetDescriptorBufferAddress();
+            VkDeviceSize offset = materialDescriptorSets[materialIndex] - address;
+            uint32_t bufferIndex = 0;
+            
+            VkDescriptorBufferBindingInfoEXT info{};
+            info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_BUFFER_BINDING_INFO_EXT;
+            info.address = address;
+            info.usage = VK_BUFFER_USAGE_RESOURCE_DESCRIPTOR_BUFFER_BIT_EXT |
+                        VK_BUFFER_USAGE_SAMPLER_DESCRIPTOR_BUFFER_BIT_EXT;
+            info.pNext = nullptr;
+            
+            vkCmdBindDescriptorBuffersEXT_FnPtr(cmdBuffer, 1, &info);
+            vkCmdSetDescriptorBufferOffsetsEXT_FnPtr(
+                cmdBuffer, 
+                VK_PIPELINE_BIND_POINT_GRAPHICS, 
+                CurrentPipeline->GetPipelineLayout(), 
+                0, 1, &bufferIndex, &offset);
+        }
+        
+        // Bind vertex and index buffers
+        // NOTE: You'll need to add buffer handles to your Mesh class
+        // VkBuffer vertexBuffer = mesh->GetVertexBuffer();
+        // VkBuffer indexBuffer = mesh->GetIndexBuffer();
+        // VkDeviceSize offsets[] = {0};
+        // vkCmdBindVertexBuffers(cmdBuffer, 0, 1, &vertexBuffer, offsets);
+        // vkCmdBindIndexBuffer(cmdBuffer, indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+        
+        // Draw indexed
+        // vkCmdDrawIndexed(cmdBuffer, mesh->GetIndexCount(), 1, 0, 0, 0);
+        
+        // For now, if you don't have buffers set up yet:
+        vkCmdDraw(cmdBuffer, mesh->GetVertexCount(), 1, 0, 0);
+    }
+    
+}
+
 VkCommandBuffer VulkanRenderPassExecutor::GetCommandBuffer()
 {
     return VulkanCore::GetInstance().GetCommandBuffer();
 }
 
-void VulkanRenderPassExecutor::InvalidateFramebuffers()
-{
-    VkDevice device = VulkanCore::GetInstance().GetDevice();
-    for (VkFramebuffer framebuffer : Framebuffers)
-    {
-        if (framebuffer != VK_NULL_HANDLE)
-            vkDestroyFramebuffer(device, framebuffer, nullptr);
-    }
-    
-    uint32_t swapchainImageCount = VulkanCore::GetInstance().GetSwapchainImageCount();
-    Framebuffers.clear();
-    Framebuffers.resize(swapchainImageCount, VK_NULL_HANDLE);
-}
