@@ -164,6 +164,12 @@ void D3DRenderPassExecutor::DrawSceneNode(const SceneNode& node, std::vector<uin
 {
 }
 
+void D3DRenderPassExecutor::DrawQuad(std::vector<uint64_t>* descriptorSets)
+{
+    ID3D12GraphicsCommandList* cmdList = GetCommandList();
+    cmdList->DrawInstanced(6, 1, 0, 0);
+}
+
 ID3D12GraphicsCommandList* D3DRenderPassExecutor::GetCommandList()
 {
     return D3DCore::GetInstance().GetCommandList().Get();
@@ -179,7 +185,7 @@ VulkanRenderPassExecutor::VulkanRenderPassExecutor()
 
 VulkanRenderPassExecutor::~VulkanRenderPassExecutor()
 {
-    InvalidateFramebuffers();
+    
 }
 
 void VulkanRenderPassExecutor::Begin(Pipeline* pipeline,
@@ -198,7 +204,7 @@ void VulkanRenderPassExecutor::Begin(Pipeline* pipeline,
     renderingInfo.renderArea.extent = {width, height};
     renderingInfo.layerCount = 1;
     
-    VkImageView depthStencilView;
+    VkImageView depthStencilView = VK_NULL_HANDLE;
     std::vector<VkImageView> colourAttachmentViews;
     if (!colorViews.empty() || depthView)
     {
@@ -233,6 +239,10 @@ void VulkanRenderPassExecutor::Begin(Pipeline* pipeline,
     
     std::vector<VkAttachmentDescription> attachmentDescs = CurrentPipeline->GetAttachmentDescriptions();
     std::vector<VkRenderingAttachmentInfo> colourAttachments;
+    size_t numColourAttachments = depthView && !colorViews.empty() ? colourAttachmentViews.size() - 1 : colourAttachmentViews.size();
+    if (colorViews.size() != numColourAttachments)
+        throw std::runtime_error("Number of color attachments does not match the number of attachments in the pipeline layout.");
+    
     for (size_t i = 0; i < colourAttachmentViews.size(); ++i)
     {
         VkRenderingAttachmentInfo attachment{};
@@ -249,7 +259,7 @@ void VulkanRenderPassExecutor::Begin(Pipeline* pipeline,
     renderingInfo.pColorAttachments = colourAttachments.data();
     
     VkRenderingAttachmentInfo depthAttachment{};
-    if (depthStencilView)
+    if (depthView && depthStencilView != VK_NULL_HANDLE)
     {
         depthAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
         depthAttachment.imageView = depthStencilView;
@@ -349,13 +359,6 @@ void VulkanRenderPassExecutor::IssueImageMemoryBarrier(const ImageMemoryBarrier&
 void VulkanRenderPassExecutor::DrawSceneNode(const SceneNode& node, std::vector<uint64_t>& materialDescriptorSets)
 {
     VkCommandBuffer cmdBuffer = GetCommandBuffer();
-    VulkanBufferAllocator* alloc = static_cast<VulkanBufferAllocator*>(BufferAllocator::GetInstance());
-    
-        // Get Vulkan function pointers
-    PFN_vkCmdBindDescriptorBuffersEXT vkCmdBindDescriptorBuffersEXT_FnPtr = 
-        VulkanCore::GetInstance().GetVkCmdBindDescriptorBuffersEXT();
-    PFN_vkCmdSetDescriptorBufferOffsetsEXT vkCmdSetDescriptorBufferOffsetsEXT_FnPtr = 
-        VulkanCore::GetInstance().GetVkCmdSetDescriptorBufferOffsetsEXT();
     
     // Draw all meshes in this node
     for (size_t i = 0; i < node.GetMeshCount(); i++)
@@ -366,40 +369,52 @@ void VulkanRenderPassExecutor::DrawSceneNode(const SceneNode& node, std::vector<
         // Bind descriptor set for this material
         if (materialIndex < materialDescriptorSets.size())
         {
-            VkDeviceAddress address = alloc->GetDescriptorBufferAddress();
-            VkDeviceSize offset = materialDescriptorSets[materialIndex] - address;
-            uint32_t bufferIndex = 0;
+            // Cast uint64_t back to VkDescriptorSet
+            VkDescriptorSet descriptorSet = reinterpret_cast<VkDescriptorSet>(materialDescriptorSets[materialIndex]);
             
-            VkDescriptorBufferBindingInfoEXT info{};
-            info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_BUFFER_BINDING_INFO_EXT;
-            info.address = address;
-            info.usage = VK_BUFFER_USAGE_RESOURCE_DESCRIPTOR_BUFFER_BIT_EXT |
-                        VK_BUFFER_USAGE_SAMPLER_DESCRIPTOR_BUFFER_BIT_EXT;
-            info.pNext = nullptr;
-            
-            vkCmdBindDescriptorBuffersEXT_FnPtr(cmdBuffer, 1, &info);
-            vkCmdSetDescriptorBufferOffsetsEXT_FnPtr(
-                cmdBuffer, 
-                VK_PIPELINE_BIND_POINT_GRAPHICS, 
-                CurrentPipeline->GetPipelineLayout(), 
-                0, 1, &bufferIndex, &offset);
+            // Bind using traditional descriptor sets (NOT descriptor buffers)
+            vkCmdBindDescriptorSets(
+                cmdBuffer,
+                VK_PIPELINE_BIND_POINT_GRAPHICS,
+                CurrentPipeline->GetPipelineLayout(),
+                0,                  // First set (set = 0 in shader)
+                1,                  // Descriptor set count
+                &descriptorSet,     // Descriptor sets array
+                0,                  // Dynamic offset count
+                nullptr             // Dynamic offsets
+            );
         }
         
-        // Bind vertex and index buffers
-        // NOTE: You'll need to add buffer handles to your Mesh class
-        // VkBuffer vertexBuffer = mesh->GetVertexBuffer();
-        // VkBuffer indexBuffer = mesh->GetIndexBuffer();
-        // VkDeviceSize offsets[] = {0};
-        // vkCmdBindVertexBuffers(cmdBuffer, 0, 1, &vertexBuffer, offsets);
-        // vkCmdBindIndexBuffer(cmdBuffer, indexBuffer, 0, VK_INDEX_TYPE_UINT32);
-        
-        // Draw indexed
-        // vkCmdDrawIndexed(cmdBuffer, mesh->GetIndexCount(), 1, 0, 0, 0);
-        
-        // For now, if you don't have buffers set up yet:
+        // TODO use draw indexed
         vkCmdDraw(cmdBuffer, mesh->GetVertexCount(), 1, 0, 0);
     }
+}
+
+void VulkanRenderPassExecutor::DrawQuad(std::vector<uint64_t>* descriptorSets)
+{
+    VkCommandBuffer cmdBuffer = GetCommandBuffer();
     
+    // Bind descriptor sets if provided (e.g., G-buffer textures for deferred lighting)
+    if (descriptorSets && !descriptorSets->empty())
+    {
+        // Cast uint64_t back to VkDescriptorSet
+        VkDescriptorSet descriptorSet = reinterpret_cast<VkDescriptorSet>((*descriptorSets)[0]);
+        
+        // Bind using traditional descriptor sets (NOT descriptor buffers)
+        vkCmdBindDescriptorSets(
+            cmdBuffer,
+            VK_PIPELINE_BIND_POINT_GRAPHICS,
+            CurrentPipeline->GetPipelineLayout(),
+            0,                  // First set (set = 0 in shader)
+            1,                  // Descriptor set count
+            &descriptorSet,     // Descriptor sets array
+            0,                  // Dynamic offset count
+            nullptr             // Dynamic offsets
+        );
+    }
+    
+    // Draw fullscreen quad (2 triangles = 6 vertices)
+    vkCmdDraw(cmdBuffer, 6, 1, 0, 0);
 }
 
 VkCommandBuffer VulkanRenderPassExecutor::GetCommandBuffer()

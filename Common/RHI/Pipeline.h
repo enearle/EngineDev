@@ -6,17 +6,21 @@ using Microsoft::WRL::ComPtr;
 
 class Pipeline
 {
+protected:
     std::vector<uint64_t> PipelineInputDescriptorSetIDs;
+    IOResource* PipelineOutputResource;
 public:
-    static Pipeline* Create(uint32_t pipelineID, const PipelineDesc& desc, std::vector<IOResource>* inputIOResources, IOResource* outputLayout =nullptr);
+    static Pipeline* Create(uint32_t pipelineID, const PipelineDesc& desc, std::vector<IOResource>* inputIOResources = nullptr);
     virtual ~Pipeline() = default;
+    
+    IOResource* GetOutputResource() const { return PipelineOutputResource; }
 };
 
 class D3DPipeline : public Pipeline
 {
 public:
     
-    D3DPipeline(uint32_t pipelineID, const PipelineDesc& desc, std::vector<IOResource>* inputIOResources, IOResource* outputLayout =nullptr);
+    D3DPipeline(uint32_t pipelineID, const PipelineDesc& desc, std::vector<IOResource>* inputIOResources = nullptr);
     ID3D12PipelineState* GetPipelineState() const { return PipelineState.Get(); }
     ID3D12RootSignature* GetRootSignature() const { return RootSignature.Get(); }
     D3D12_PRIMITIVE_TOPOLOGY GetTopology() const { return Topology; }
@@ -42,7 +46,7 @@ class VulkanPipeline : public Pipeline
 {
 public:
     
-    VulkanPipeline(uint32_t pipelineID, const PipelineDesc& desc, std::vector<IOResource>* inputIOResources, IOResource* outputLayout =nullptr);
+    VulkanPipeline(uint32_t pipelineID, const PipelineDesc& desc, std::vector<IOResource>* inputIOResources = nullptr);
     ~VulkanPipeline();
     
     VkPipeline GetVulkanPipeline() const { return Pipeline; }
@@ -56,7 +60,7 @@ public:
     VkDeviceMemory GetOwnedDepthImageMemory() const { return OwnedDepthImageMemory; }
     VkImageView GetOwnedDepthImageView() const { return OwnedDepthImageView; }
     
-    std::vector<VkAttachmentDescription> GetAttachmentDescriptions() const { return attachments; }
+    std::vector<VkAttachmentDescription> GetAttachmentDescriptions() const { return attachmentDescriptions; }
 
 private:
     
@@ -67,8 +71,7 @@ private:
     VkDeviceMemory OwnedDepthImageMemory = VK_NULL_HANDLE;
     VkImageView OwnedDepthImageView = VK_NULL_HANDLE;
     
-    std::vector<VkAttachmentDescription> attachments;
-    void CreateRenderPass(const PipelineDesc& desc);
+    std::vector<VkAttachmentDescription> attachmentDescriptions;
     std::vector<VkShaderModule> ShaderModules;
     VkPipeline Pipeline = VK_NULL_HANDLE;
     VkPipelineLayout PipelineLayout = VK_NULL_HANDLE;

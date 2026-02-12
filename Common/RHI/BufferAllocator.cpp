@@ -664,6 +664,12 @@ VulkanBufferAllocator::~VulkanBufferAllocator()
 {
     VkDevice device = VulkanCore::GetInstance().GetDevice();
     
+    for (auto& [handle, allocation] : DescriptorSetLayouts)
+    {
+        vkDestroyDescriptorSetLayout(device, allocation.Layout, nullptr);
+        vkDestroyDescriptorPool(device, allocation.Pool, nullptr);       
+    }
+    
     delete SampledImagePool;
     delete StorageImagePool;
     delete UniformBufferPool;

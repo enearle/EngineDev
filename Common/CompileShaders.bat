@@ -22,6 +22,7 @@ glslangValidator -V -S vert -e main -o "%VULKAN_OUTPUT_DIR%\vs_quad.spv" Vulkan\
 glslangValidator -V -S frag -e main -o "%VULKAN_OUTPUT_DIR%\ps_quad.spv" Vulkan\Shaders\ps_quad.glsl
 glslangValidator -V -S vert -e main -o "%VULKAN_OUTPUT_DIR%\vs_pbr.spv" Vulkan\Shaders\vs_pbr.glsl
 glslangValidator -V -S frag -e main -o "%VULKAN_OUTPUT_DIR%\ps_pbr.spv" Vulkan\Shaders\ps_pbr.glsl
-
+glslangValidator -V -S vert -e main -o "%VULKAN_OUTPUT_DIR%\vs_lighting.spv" Vulkan\Shaders\vs_lighting.glsl
+glslangValidator -V -S frag -e main -o "%VULKAN_OUTPUT_DIR%\ps_lighting.spv" Vulkan\Shaders\ps_lighting.glsl
 echo Done!
 pause

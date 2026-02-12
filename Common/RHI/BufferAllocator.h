@@ -10,6 +10,7 @@ using Microsoft::WRL::ComPtr;
 class BufferAllocator
 {
 protected:
+    
     std::unordered_map<uint64_t, ImageAllocation> AllocatedImages;
     std::unordered_map<uint64_t, BufferAllocation> AllocatedBuffers;
     std::map<uint64_t, DescriptorSetAllocation> AllocatedDescriptorSets;
@@ -25,9 +26,9 @@ protected:
     static BufferAllocator* Instance;
     BufferAllocator() = default;
     
+public:    
+    
     uint64_t MakeKey(uint32_t pipelineID, uint32_t setIndex) { return (static_cast<uint64_t>(pipelineID) << 32) | setIndex; }
-
-public:
     static BufferAllocator* GetInstance();
     uint64_t CacheImage(ImageAllocation imageAllocation) {AllocatedImages[NextImageID] = imageAllocation; return NextImageID++;}
     virtual uint64_t CreateBuffer(BufferDesc bufferDesc, bool createDescriptor = false) = 0;
@@ -51,6 +52,7 @@ public:
 class VulkanBufferAllocator : public BufferAllocator
 {
 public:
+    
     uint64_t CreateBuffer(BufferDesc bufferDesc, bool createDescriptor = false) override;
     uint64_t CreateImage(ImageDesc imageDesc, bool createDescriptor = false) override;
     VulkanBufferAllocator();
@@ -70,6 +72,7 @@ public:
     static uint32_t FindMemoryType(uint32_t allowdTypes, VkMemoryPropertyFlags flags);
     
 private:
+    
     // Descriptor buffer for individual descriptors
     VkBuffer DescriptorBuffer;
     VkDeviceMemory DescriptorBufferMemory;

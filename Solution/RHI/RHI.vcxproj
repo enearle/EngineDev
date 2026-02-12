@@ -182,6 +182,8 @@
     </ClCompile>
     <Content Include="..\..\Common\Vulkan\Shaders\ps_pbr.glsl" />
     <Content Include="..\..\Common\Vulkan\Shaders\ps_quad.glsl" />
+    <Content Include="..\..\Common\Vulkan\Shaders\ps_lighting.glsl" />
+    <Content Include="..\..\Common\Vulkan\Shaders\vs_lighting.glsl" />
     <Content Include="..\..\Common\Vulkan\Shaders\vs_pbr.glsl" />
     <Content Include="..\..\Common\Vulkan\Shaders\vs_quad.glsl" />
     <Content Include="Meshes\shells.fbx" />

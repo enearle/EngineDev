@@ -103,7 +103,7 @@ namespace RHIConstants
         rainbowTrianglePipeline.DepthLoadOp = AttachmentLoadOp::Load;
         rainbowTrianglePipeline.DepthStoreOp = AttachmentStoreOp::Store;
 
-        return Pipeline::Create(rainbowTrianglePipeline);
+        return Pipeline::Create(0,rainbowTrianglePipeline);
     }
     
     static Pipeline* TexturedQuadPipeline()
@@ -203,25 +203,28 @@ namespace RHIConstants
         TexturedQuadDesc.DepthLoadOp = AttachmentLoadOp::Load;
         TexturedQuadDesc.DepthStoreOp = AttachmentStoreOp::Store;
 
-        return Pipeline::Create(TexturedQuadDesc);
+        return Pipeline::Create(0,  TexturedQuadDesc);
     }
     
     static Pipeline* PBRPipeline()
     {
-        PipelineDesc PBRDesc = {};
+        PipelineDesc PBRDescGeometry = {};
+        
+        PBRDescGeometry.CreateOwnAttachments = true;
+        PBRDescGeometry.AttachmentWidth = 1280;
+        PBRDescGeometry.AttachmentHeight = 720;
 
         // 1. Shader stages
-        PBRDesc.VertexShader = ImportShader("vs_pbr", "main");
-        PBRDesc.FragmentShader = ImportShader("ps_pbr", "main");
+        PBRDescGeometry.VertexShader = ImportShader("vs_pbr", "main");
+        PBRDescGeometry.FragmentShader = ImportShader("ps_pbr", "main");
 
-        if (!PBRDesc.VertexShader.ByteCode || PBRDesc.VertexShader.ByteCodeSize == 0)
+        if (!PBRDescGeometry.VertexShader.ByteCode || PBRDescGeometry.VertexShader.ByteCodeSize == 0)
             throw std::runtime_error("Failed to load vertex shader!");
-        if (!PBRDesc.FragmentShader.ByteCode || PBRDesc.FragmentShader.ByteCodeSize == 0)
+        if (!PBRDescGeometry.FragmentShader.ByteCode || PBRDescGeometry.FragmentShader.ByteCodeSize == 0)
             throw std::runtime_error("Failed to load fragment shader!");
-        
 
         // 2. Vertex input layout
-        PBRDesc.VertexBindings = {
+        PBRDescGeometry.VertexBindings = {
             VertexBinding{
                 .Binding   = 0,
                 .Stride    = sizeof(Vertex),
@@ -229,7 +232,7 @@ namespace RHIConstants
             }
         };
         
-        PBRDesc.VertexAttributes = {
+        PBRDescGeometry.VertexAttributes = {
             VertexAttribute{.Binding = 0, .Location = 0, .Format = Format::R32G32B32_FLOAT, .Offset = 0,   .SemanticName = SemanticName::Position   },
             VertexAttribute{.Binding = 0, .Location = 1, .Format = Format::R32G32B32_FLOAT, .Offset = 12,  .SemanticName = SemanticName::Normal     },
             VertexAttribute{.Binding = 0, .Location = 2, .Format = Format::R32G32B32_FLOAT, .Offset = 24,  .SemanticName = SemanticName::Tangent    },
@@ -238,10 +241,10 @@ namespace RHIConstants
         };
 
         // 3. Primitive topology
-        PBRDesc.PrimitiveTopology = PrimitiveTopology::TriangleList;
+        PBRDescGeometry.PrimitiveTopology = PrimitiveTopology::TriangleList;
 
         // 4. Rasterizer state
-        PBRDesc.RasterizerState = {
+        PBRDescGeometry.RasterizerState = {
             FillMode::Solid,                        // Solid fill
             CullMode::None,                         // Don't cull any faces
             false,                                  // Front face clockwise
@@ -252,7 +255,7 @@ namespace RHIConstants
         };
 
         // 5. Depth/stencil state
-        PBRDesc.DepthStencilState = {
+        PBRDescGeometry.DepthStencilState = {
             true,
             true,
             CompareOp::Less,                        // Comparison op
@@ -267,24 +270,27 @@ namespace RHIConstants
         };
         
         // 6. Blend state
-        PBRDesc.BlendAttachmentStates = {
+        PBRDescGeometry.BlendAttachmentStates = {
+            DisabledBlendAttachmentState,
             DisabledBlendAttachmentState,
             DisabledBlendAttachmentState,
             DisabledBlendAttachmentState
         };
 
         // 7. Render target format
-        PBRDesc.RenderTargetFormats = {
+        PBRDescGeometry.RenderTargetFormats = {
             Format::R8G8B8A8_UNORM,                 // Albedo
             Format::R16G16B16A16_FLOAT,             // Normal (high quality)
-            Format::R8G8B8A8_UNORM                 // Standard RGBA color format
+            Format::R8G8B8A8_UNORM,                 // Standard RGBA color format
+            Format::R32G32B32A32_FLOAT
+            
         };
 
         // 8. No depth stencil
-        PBRDesc.DepthStencilFormat = Format::D32_FLOAT;
+        PBRDescGeometry.DepthStencilFormat = Format::D32_FLOAT;
 
         // 9. Multisampling
-        PBRDesc.MultisampleState = {
+        PBRDescGeometry.MultisampleState = {
             1,                                      // Sample count (no MSAA)
             false                                   // No alpha to coverage
         };
@@ -303,18 +309,109 @@ namespace RHIConstants
         visibleStages.SetFragment(true);
         visibleStages.SetVertex(true);
         
-        PBRDesc.ResourceLayout = {
+        PBRDescGeometry.ResourceLayout = {
             .Bindings = bindings,
             .VisibleStages = visibleStages
         };
 
         // 11. Attachment load/store operations
-        PBRDesc.ColorLoadOps = {AttachmentLoadOp::Clear, AttachmentLoadOp::Clear, AttachmentLoadOp::Clear};
-        PBRDesc.ColorStoreOps = {AttachmentStoreOp::Store, AttachmentStoreOp::Store, AttachmentStoreOp::Store};
-        PBRDesc.DepthLoadOp = AttachmentLoadOp::Clear;  // Changed from Load
-        PBRDesc.DepthStoreOp = AttachmentStoreOp::Store;
+        PBRDescGeometry.ColorLoadOps = {AttachmentLoadOp::Clear, AttachmentLoadOp::Clear, AttachmentLoadOp::Clear, AttachmentLoadOp::Clear};
+        PBRDescGeometry.ColorStoreOps = {AttachmentStoreOp::Store, AttachmentStoreOp::Store, AttachmentStoreOp::Store, AttachmentStoreOp::Store};
+        PBRDescGeometry.DepthLoadOp = AttachmentLoadOp::Clear;  // Changed from Load
+        PBRDescGeometry.DepthStoreOp = AttachmentStoreOp::Store;
         
-        return Pipeline::Create(PBRDesc);
+        return Pipeline::Create(0, PBRDescGeometry);
+    }
+    
+    static Pipeline* DeferredLightingPipeline(std::vector<IOResource>* inputResources)
+    {
+        PipelineDesc lightingDesc = {};
+
+        // 1. Shader stages - fullscreen quad shaders
+        lightingDesc.VertexShader = ImportShader("vs_lighting", "main");
+        lightingDesc.FragmentShader = ImportShader("ps_lighting", "main");
+
+        if (!lightingDesc.VertexShader.ByteCode || lightingDesc.VertexShader.ByteCodeSize == 0)
+            throw std::runtime_error("Failed to load fullscreen vertex shader!");
+        if (!lightingDesc.FragmentShader.ByteCode || lightingDesc.FragmentShader.ByteCodeSize == 0)
+            throw std::runtime_error("Failed to load deferred lighting fragment shader!");
+
+        // 2. No vertex input - fullscreen triangle generated in vertex shader
+        lightingDesc.VertexBindings = {};
+        lightingDesc.VertexAttributes = {};
+
+        // 3. Primitive topology
+        lightingDesc.PrimitiveTopology = PrimitiveTopology::TriangleList;
+
+        // 4. Rasterizer state
+        lightingDesc.RasterizerState = {
+            FillMode::Solid,                        // Solid fill
+            CullMode::None,                         // No culling for fullscreen quad
+            false,                                  // Front face clockwise
+            0.0f,                                   // No depth bias
+            0.0f,                                   // No slope depth bias
+            0.0f,                                   // No depth bias clamp
+            true                                    // Enable depth clipping
+        };
+
+        // 5. Depth/stencil state - no depth testing for fullscreen pass
+        lightingDesc.DepthStencilState = {
+            false,                                  // No depth test
+            false,                                  // No depth write
+            CompareOp::Always,                      // Comparison op (ignored)
+            false,                                  // No depth bounds test
+            0.0f,                                   // Min depth
+            1.0f,                                   // Max depth
+            false,                                  // Stencil test disabled
+            0xFF,                                   // Stencil read mask
+            0xFF,                                   // Stencil write mask
+            {CompareOp::Always, StencilOp::Keep, StencilOp::Keep, StencilOp::Keep},  // Front
+            {CompareOp::Always, StencilOp::Keep, StencilOp::Keep, StencilOp::Keep}   // Back
+        };
+
+        // 6. Blend state - no blending, direct output
+        lightingDesc.BlendAttachmentStates = {
+            DisabledBlendAttachmentState
+        };
+
+        // 7. Single render target for final lit output
+        lightingDesc.RenderTargetFormats = {
+            Format::R8G8B8A8_UNORM                  // Final HDR/LDR output
+        };
+
+        // 8. No depth buffer needed for lighting pass
+        lightingDesc.DepthStencilFormat = Format::Unknown;
+
+        // 9. No multisampling
+        lightingDesc.MultisampleState = {
+            1,                                      // Sample count
+            false                                   // No alpha to coverage
+        };
+
+        // 10. G-buffer inputs from previous geometry pass
+        std::vector<DescriptorBinding> bindings {
+            { .Type = DescriptorType::SampledImage,  .Slot = 0, .Set = 0, .Count = 1 }, // Albedo from G-buffer
+            { .Type = DescriptorType::SampledImage,  .Slot = 1, .Set = 0, .Count = 1 }, // Normal from G-buffer
+            { .Type = DescriptorType::SampledImage,  .Slot = 2, .Set = 0, .Count = 1 }, // Material from G-buffer
+            { .Type = DescriptorType::SampledImage,  .Slot = 3, .Set = 0, .Count = 1 }
+        };
+
+        ShaderStageMask visibleStages = ShaderStageMask(0);
+        visibleStages.SetFragment(true);
+        visibleStages.SetVertex(true);
+
+        lightingDesc.ResourceLayout = {
+            .Bindings = bindings,
+            .VisibleStages = visibleStages
+        };
+
+        // 11. Attachment operations - load G-buffer, output final color
+        lightingDesc.ColorLoadOps = {AttachmentLoadOp::Clear};
+        lightingDesc.ColorStoreOps = {AttachmentStoreOp::Store};
+        lightingDesc.DepthLoadOp = AttachmentLoadOp::DontCare;
+        lightingDesc.DepthStoreOp = AttachmentStoreOp::DontCare;
+
+        return Pipeline::Create(1, lightingDesc, inputResources);
     }
     
     inline constexpr ImageMemoryBarrier PRE_BARRIER{

@@ -29,6 +29,7 @@ public:
     virtual void IssueImageMemoryBarrier(const ImageMemoryBarrier& barrier) = 0;
     
     virtual void DrawSceneNode(const SceneNode& node, std::vector<uint64_t>& materialDescriptorSets) = 0;
+    virtual void DrawQuad(std::vector<uint64_t>* descriptorSets = nullptr) = 0;
 };
 
 class D3DRenderPassExecutor : public RenderPassExecutor
@@ -47,6 +48,7 @@ public:
     void IssueMemoryBarrier(const RHIStructures::MemoryBarrier& barrier) override;
     void IssueImageMemoryBarrier(const ImageMemoryBarrier& barrier) override;
     void DrawSceneNode(const SceneNode& node, std::vector<uint64_t>& materialDescriptorSets) override;
+    void DrawQuad(std::vector<uint64_t>* descriptorSets = nullptr) override;
     
 private:
     ID3D12GraphicsCommandList* GetCommandList();
@@ -69,9 +71,7 @@ public:
     void IssueMemoryBarrier(const RHIStructures::MemoryBarrier& barrier) override;
     void IssueImageMemoryBarrier(const ImageMemoryBarrier& barrier) override;
     void DrawSceneNode(const SceneNode& node, std::vector<uint64_t>& materialDescriptorSets) override;
-
-public: // Vulkan specific cleanup
-    void InvalidateFramebuffers();
+    void DrawQuad(std::vector<uint64_t>* descriptorSets = nullptr) override;
 
 private:
     
