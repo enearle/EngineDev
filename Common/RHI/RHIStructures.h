@@ -79,6 +79,7 @@ namespace RHIStructures
     VkFormat VulkanFormat(Format format);
     DXGI_FORMAT DXFormat(Format format);
     VkImageAspectFlags VulkanAspects(Format format);
+    size_t FormatSize(Format format);
 
     
     struct ShaderStage
@@ -314,30 +315,33 @@ namespace RHIStructures
     
     struct PipelineDesc
     {
-        bool CreateOwnAttachments;
+        bool CreateOwnAttachments = false;
+        bool CreateDepthAttachment = false;
         uint32_t AttachmentWidth = 0;
         uint32_t AttachmentHeight = 0;
-        ShaderStage VertexShader;
-        ShaderStage FragmentShader;
-        ShaderStage GeometryShader;
-        ShaderStage HullShader;
-        ShaderStage DomainShader;
+        uint32_t OutputDescriptorSetIndex = 1;
+        
+        ShaderStage VertexShader = {};
+        ShaderStage FragmentShader = {};
+        ShaderStage GeometryShader = {};
+        ShaderStage HullShader = {};
+        ShaderStage DomainShader = {};
 
-        std::vector<VertexAttribute> VertexAttributes;
-        std::vector<VertexBinding> VertexBindings;
-        PrimitiveTopology PrimitiveTopology;
-        RasterizerState RasterizerState;
+        std::vector<VertexAttribute> VertexAttributes = {};
+        std::vector<VertexBinding> VertexBindings = {};
+        PrimitiveTopology PrimitiveTopology = PrimitiveTopology::TriangleList;
+        RasterizerState RasterizerState = {};
         DepthStencilState DepthStencilState;
-        std::vector<BlendAttachmentState> BlendAttachmentStates;
-        std::vector<Format> RenderTargetFormats;
-        Format DepthStencilFormat;
-        MultisampleState MultisampleState;
-        ResourceLayout ResourceLayout;
+        std::vector<BlendAttachmentState> BlendAttachmentStates = {};
+        std::vector<Format> RenderTargetFormats = {};
+        Format DepthStencilFormat = Format::Unknown;
+        MultisampleState MultisampleState = {};
+        ResourceLayout ResourceLayout = {};
 
-        std::vector<AttachmentLoadOp> ColorLoadOps;
-        std::vector<AttachmentStoreOp> ColorStoreOps;
-        AttachmentLoadOp DepthLoadOp = AttachmentLoadOp::Load;
-        AttachmentStoreOp DepthStoreOp = AttachmentStoreOp::Store;
+        std::vector<AttachmentLoadOp> ColorLoadOps = {};
+        std::vector<AttachmentStoreOp> ColorStoreOps = {};
+        AttachmentLoadOp DepthLoadOp = AttachmentLoadOp::DontCare;
+        AttachmentStoreOp DepthStoreOp = AttachmentStoreOp::DontCare;
         
         const void* CachedPipelineData = nullptr;
         size_t CachedPipelineDataSize = 0;
@@ -551,7 +555,7 @@ namespace RHIStructures
     struct ImageAllocation
     {
         void* Address = nullptr;
-        ImageDesc Desc;
+        ImageDesc Desc = {};
         void* Image = nullptr;
         uint64_t Descriptor = 0;
         uint8_t DescriptorType = 0;
@@ -559,20 +563,26 @@ namespace RHIStructures
     D3D12_CPU_DESCRIPTOR_HANDLE DXDescriptor(const ImageAllocation& imageAllocation);
     
     //===================================//
-    //  ----  Descriptor Sets  --------  //
+    //  ------  Descriptor Sets  ------  //
     //===================================//
 
     struct DescriptorSetBinding
     {
-        uint32_t Binding;
-        uint64_t ResourceID;  // Handle returned from CreateBuffer or CreateImage
+        uint32_t Binding;                       // Binding index
+        uint64_t ResourceID;                    // Handle returned from CreateBuffer or CreateImage
     };
 
     struct DescriptorSetAllocation
     {
-        uint64_t DescriptorAddress = 0;     // VkDeviceAddress for Vulkan, GPU descriptor handle for DX12
-        uint32_t SetIndex = 0;               // Which descriptor set this is (matches ResourceLayout set indices)
-        void* PlatformData = nullptr;        // Platform-specific data if needed
+        uint64_t DescriptorAddress = 0;         // VkDeviceAddress for Vulkan, GPU descriptor handle for DX12
+        uint64_t SetKey = 0;                    // Pipeline ID << 32 + Set Index
+        void* PlatformData = nullptr;           // Platform-specific data if needed
+    };
+    
+    struct IOResource
+    {
+        std::vector<DescriptorSetBinding> Bindings;
+        ResourceLayout Layout;
     };
     
     //===================================//

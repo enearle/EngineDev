@@ -104,6 +104,29 @@ namespace RHIStructures
         }
     }
 
+    size_t FormatSize(Format format)
+    {
+        switch (format)
+        {
+        case Format::D16_UNORM:
+            return 2;
+        case Format::D32_FLOAT:
+        case Format::D24_UNORM_S8_UINT:
+        case Format::D32_FLOAT_S8X24_UINT:
+        case Format::R8G8B8A8_UNORM:
+        case Format::R8G8B8A8_UNORM_SRGB:
+            return 4;
+        case Format::R16G16B16A16_FLOAT:
+            return 8;
+        case Format::R32G32B32_FLOAT:
+            return 12;
+        case Format::R32G32B32A32_FLOAT:
+            return 16;
+        default:
+            return 8;
+        }
+    }
+
     ShaderStage ImportShader(const std::string& filename, const char* entryPoint)
     {
         ShaderStage shaderStage;

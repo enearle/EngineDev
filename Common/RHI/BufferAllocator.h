@@ -12,22 +12,24 @@ class BufferAllocator
 protected:
     std::unordered_map<uint64_t, ImageAllocation> AllocatedImages;
     std::unordered_map<uint64_t, BufferAllocation> AllocatedBuffers;
-    std::unordered_map<uint64_t, DescriptorSetAllocation> AllocatedDescriptorSets;
+    std::map<uint64_t, DescriptorSetAllocation> AllocatedDescriptorSets;
     
     uint64_t NextBufferID = 0;
     uint64_t NextImageID = 0;
     uint64_t NextDescriptorSetID = 0;
     
-    uint64_t CacheImage(ImageAllocation imageAllocation) {AllocatedImages[NextImageID] = imageAllocation; return NextImageID++;}
+    
     uint64_t CacheBuffer(BufferAllocation bufferAllocation) {AllocatedBuffers[NextBufferID] = bufferAllocation; return NextBufferID++;}
-    uint64_t CacheDescriptorSet(DescriptorSetAllocation setAllocation) {AllocatedDescriptorSets[NextDescriptorSetID] = setAllocation; return NextDescriptorSetID++;}
+    uint64_t CacheDescriptorSet(DescriptorSetAllocation setAllocation) { AllocatedDescriptorSets[NextDescriptorSetID] = setAllocation; return NextDescriptorSetID++; }
     
     static BufferAllocator* Instance;
     BufferAllocator() = default;
+    
+    uint64_t MakeKey(uint32_t pipelineID, uint32_t setIndex) { return (static_cast<uint64_t>(pipelineID) << 32) | setIndex; }
 
 public:
     static BufferAllocator* GetInstance();
-    
+    uint64_t CacheImage(ImageAllocation imageAllocation) {AllocatedImages[NextImageID] = imageAllocation; return NextImageID++;}
     virtual uint64_t CreateBuffer(BufferDesc bufferDesc, bool createDescriptor = false) = 0;
     virtual uint64_t CreateImage(ImageDesc imageDesc, bool createDescriptor = false) = 0;
     
@@ -35,8 +37,9 @@ public:
     virtual void FreeBuffer(uint64_t id) = 0;
     virtual void FreeImage(uint64_t id) = 0;
     
-    virtual void RegisterDescriptorSetLayout(const ResourceLayout& layout) = 0;
-    virtual uint64_t AllocateDescriptorSet(uint32_t pipelineIndex, const std::vector<DescriptorSetBinding>& bindings) = 0;
+    virtual void RegisterDescriptorSetLayout(uint32_t pipelineID, const ResourceLayout& layout) = 0;
+    virtual uint64_t AllocateDescriptorSet(uint32_t pipelineID, uint32_t setIndex, 
+                                           const std::vector<DescriptorSetBinding>& bindings) = 0;
     virtual void FreeDescriptorSet(uint64_t setID) = 0;
     
     ImageAllocation GetImageAllocation(uint64_t id) const { return AllocatedImages.at(id); }
@@ -55,8 +58,9 @@ public:
     void FreeBuffer(uint64_t id) override;
     void FreeImage(uint64_t id) override;
     
-    void RegisterDescriptorSetLayout(const ResourceLayout& layout) override;
-    uint64_t AllocateDescriptorSet(uint32_t pipelineIndex, const std::vector<DescriptorSetBinding>& bindings) override;
+    void RegisterDescriptorSetLayout(uint32_t pipelineID, const ResourceLayout& layout) override;
+    uint64_t AllocateDescriptorSet(uint32_t pipelineID, uint32_t setIndex, 
+                                           const std::vector<DescriptorSetBinding>& bindings) override;
     void FreeDescriptorSet(uint64_t setID) override;
     
     uint64_t GetDescriptorBufferAddress() { return DescriptorBufferAddress; }
@@ -117,8 +121,9 @@ public:
     void FreeBuffer(uint64_t id) override;
     void FreeImage(uint64_t id) override;
 
-    void RegisterDescriptorSetLayout(const ResourceLayout& layout) override;
-    uint64_t AllocateDescriptorSet(uint32_t pipelineIndex, const std::vector<DescriptorSetBinding>& bindings) override;
+    void RegisterDescriptorSetLayout(uint32_t pipelineID, const ResourceLayout& layout) override;
+    uint64_t AllocateDescriptorSet(uint32_t pipelineID, uint32_t setIndex, 
+                                           const std::vector<DescriptorSetBinding>& bindings) override;
     void FreeDescriptorSet(uint64_t setID) override;
 
     enum DescriptorType : uint8_t { SRV, CBV, UAV, RTV, DSV };

@@ -37,15 +37,6 @@ void D3DRenderPassExecutor::Begin(Pipeline* pipeline,
                                    const std::vector<DirectX::XMFLOAT4>& clearColors,
                                    float clearDepth)
 {
-    // Validate inputs
-    if (colorViews.size() != clearColors.size())
-    {
-        throw std::runtime_error(
-            "Mismatch: colorViews.size() (" + std::to_string(colorViews.size()) + 
-            ") must equal clearColors.size() (" + std::to_string(clearColors.size()) + ")"
-        );
-    }
-    
     ID3D12GraphicsCommandList* cmdList = GetCommandList();
     D3DPipeline* d3dPipeline = static_cast<D3DPipeline*>(pipeline);
     
@@ -55,27 +46,38 @@ void D3DRenderPassExecutor::Begin(Pipeline* pipeline,
     
     // Convert view handles to D3D12 format
     std::vector<D3D12_CPU_DESCRIPTOR_HANDLE> rtvHandles;
-    for (const auto& colorView : colorViews)
-    {
-        D3D12_CPU_DESCRIPTOR_HANDLE handle;
-        handle.ptr = reinterpret_cast<SIZE_T>(colorView);  // Reconstruct from the value
-        rtvHandles.push_back(handle);
-    }
-    
-    D3D12_CPU_DESCRIPTOR_HANDLE* pDsvHandle = nullptr;
     D3D12_CPU_DESCRIPTOR_HANDLE dsvHandle;
-    if (depthView)
+    if (!colorViews.empty() || depthView)
     {
-        dsvHandle = *reinterpret_cast<D3D12_CPU_DESCRIPTOR_HANDLE*>(depthView);
-        pDsvHandle = &dsvHandle;
-    }
+        for (const auto& colorView : colorViews)
+        {
+            D3D12_CPU_DESCRIPTOR_HANDLE handle;
+            handle.ptr = reinterpret_cast<SIZE_T>(colorView);  // Reconstruct from the value
+            rtvHandles.push_back(handle);
+        }
     
-    cmdList->OMSetRenderTargets(
-        static_cast<UINT>(rtvHandles.size()),
-        rtvHandles.data(),
-        FALSE,
-        pDsvHandle
-    );
+        D3D12_CPU_DESCRIPTOR_HANDLE* pDsvHandle = nullptr;
+        if (depthView)
+        {
+            dsvHandle = *reinterpret_cast<D3D12_CPU_DESCRIPTOR_HANDLE*>(depthView);
+            pDsvHandle = &dsvHandle;
+        }
+    
+        cmdList->OMSetRenderTargets(
+            static_cast<UINT>(rtvHandles.size()),
+            rtvHandles.data(),
+            FALSE,
+            pDsvHandle
+        );
+    }
+    else
+    {
+        rtvHandles = d3dPipeline->GetOwnedRTVs();
+        dsvHandle = d3dPipeline->GetOwnedDSV();
+        
+        if (!dsvHandle.ptr || rtvHandles.empty())
+            throw std::runtime_error("No attachments provided.");
+    }
     
     // Clear render targets
     for (size_t i = 0; i < colorViews.size(); ++i)

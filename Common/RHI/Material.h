@@ -49,6 +49,6 @@ public:
     
     Material(std::string name, MaterialFormat materialFormat);
     uint32_t GetTextureHandle(TextureType textureType);
-    uint64_t LoadMaterial(uint32_t pipelineIndex, const std::vector<uint64_t>& uniformBufferIDs);
+    uint64_t LoadMaterial(uint32_t pipelineIndex, uint32_t setIndex, const std::vector<uint64_t>& uniformBufferIDs);
     
 };

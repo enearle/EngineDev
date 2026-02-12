@@ -142,7 +142,7 @@ uint32_t Material::GetTextureHandle(TextureType textureType)
     }
 }
 
-uint64_t Material::LoadMaterial(uint32_t pipelineIndex, const std::vector<uint64_t>& uniformBufferIDs)
+uint64_t Material::LoadMaterial(uint32_t pipelineIndex, uint32_t setIndex, const std::vector<uint64_t>& uniformBufferIDs)
 {
     BufferAllocator* bufferAllocator = BufferAllocator::GetInstance();
     std::vector<DescriptorSetBinding> bindings;
@@ -171,6 +171,6 @@ uint64_t Material::LoadMaterial(uint32_t pipelineIndex, const std::vector<uint64
     }
     CachedTextures.clear();
     
-    return bufferAllocator->AllocateDescriptorSet(pipelineIndex, bindings);
+    return bufferAllocator->AllocateDescriptorSet(pipelineIndex, setIndex, bindings);
 }
 

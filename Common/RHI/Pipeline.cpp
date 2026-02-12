@@ -1,9 +1,9 @@
 ﻿#include "Pipeline.h"
-
 #include <stdexcept>
-
 #include "BufferAllocator.h"
 #include "../GraphicsSettings.h"
+#include "../DirectX12/D3D12Structs.h"
+#include "../Vulkan/VulkanStructs.h"
 #include "../DirectX12/D3DCore.h"
 #include "../DirectX12/D3DRootSignatureBuilder.h"
 #include "../Vulkan/VulkanCore.h"
@@ -11,32 +11,37 @@
 #include "../Vulkan/VulkanPipelineLayoutBuilder.h"
 
 using namespace Win32ErrorHandler;
+using namespace VulkanStructs;
+using namespace D3D12Structs;
 
-Pipeline* Pipeline::Create(const PipelineDesc& desc)
+Pipeline* Pipeline::Create(uint32_t pipelineID, const PipelineDesc& desc, std::vector<IOResource>*inputIOResources, IOResource* outputLayout)
 {
-    BufferAllocator::GetInstance()->RegisterDescriptorSetLayout(desc.ResourceLayout);
-    
     if (GRAPHICS_SETTINGS.APIToUse == Vulkan)
-    {
-        return new VulkanPipeline(desc);
-    }
+        return new VulkanPipeline(pipelineID, desc, inputIOResources, outputLayout);
     else if (GRAPHICS_SETTINGS.APIToUse == DirectX12)
-    {
-        return new D3DPipeline(desc);
-    }
+        return new D3DPipeline(pipelineID, desc, inputIOResources, outputLayout);
     else
-    {
         throw std::runtime_error("Invalid graphics API selected.");
-    }
+    
 }
 
-D3DPipeline::D3DPipeline(const PipelineDesc& desc)
+D3DPipeline::D3DPipeline(uint32_t pipelineID, const PipelineDesc& desc, std::vector<IOResource>* inputIOResources, IOResource* outputIOResource)
 {
+    ComPtr<ID3D12Device> device = D3DCore::GetInstance().GetDevice();
+    
+    std::vector<ResourceLayout> resourceLayouts;
+    resourceLayouts.push_back(desc.ResourceLayout);
+    if (inputIOResources)
+        for (const IOResource& ioResource : inputIOResources)
+            resourceLayouts.push_back(ioResource.Layout);
+    
+    if (resourceLayouts.size() > 1)
+        for (uint32_t i = 1; i < resourceLayouts.size(); i++)
+            BufferAllocator::GetInstance()->AllocateDescriptorSet(pipelineID, i, inputIOResources->at(i).Bindings);
+        
+    
     Topology = DXPrimitiveTopology(desc.PrimitiveTopology);
-    RootSignature = D3DRootSignatureBuilder::BuildRootSignature(
-        D3DCore::GetInstance().GetDevice().Get(),
-        desc.ResourceLayout
-    );
+    RootSignature = D3DRootSignatureBuilder::BuildRootSignature(pipelineID, resourceLayouts);
     
     // This is a DirectX-specific means to store 3D vertex data in the pipeline for later use.
     // A more modern (and API agnostic) approach is to handle additional 3D transformations (outside VS/GS)
@@ -206,10 +211,103 @@ D3DPipeline::D3DPipeline(const PipelineDesc& desc)
     D3D12_PIPELINE_STATE_FLAGS flags = D3D12_PIPELINE_STATE_FLAG_NONE;
     pipelineStateDesc.Flags = flags;
 
-    D3DCore::GetInstance().GetDevice()->CreateGraphicsPipelineState(&pipelineStateDesc, IID_PPV_ARGS(&PipelineState)) >> ERROR_HANDLER;
+    device->CreateGraphicsPipelineState(&pipelineStateDesc, IID_PPV_ARGS(&PipelineState)) >> ERROR_HANDLER;
+    
+    if (!desc.CreateOwnAttachments) return;
+    
+    BufferAllocator* alloc = BufferAllocator::GetInstance();
+    
+    OwnedRTVs.resize(desc.RenderTargetFormats.size());
+    OwnedColorResources.resize(desc.RenderTargetFormats.size());
+    
+    if (!outputIOResource)
+        throw std::runtime_error("No output layout provided for attachments");
+    
+    for (size_t i = 0; i < desc.RenderTargetFormats.size(); i++)
+    {
+        DXGI_SAMPLE_DESC sampleDesc = {};
+        if (desc.MultisampleState.SampleCount > 1)
+        {
+            sampleDesc.Count = desc.MultisampleState.SampleCount;
+            sampleDesc.Quality = D3DCore::GetInstance().GetMSAAQualityLevel(
+                DXFormat(desc.RenderTargetFormats[i]),
+                desc.MultisampleState.SampleCount
+            );
+        }
+        else
+        {
+            sampleDesc.Count = 1;
+            sampleDesc.Quality = 0;
+        }
+        
+        D3D12_RESOURCE_DESC resourceDesc = {};
+        resourceDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+        resourceDesc.Alignment = 0;
+        resourceDesc.Width = desc.AttachmentWidth;
+        resourceDesc.Height = desc.AttachmentHeight;
+        resourceDesc.DepthOrArraySize = 1;
+        resourceDesc.MipLevels = 1;
+        resourceDesc.Format = DXFormat(desc.RenderTargetFormats[i]);
+        resourceDesc.SampleDesc = sampleDesc;
+        
+        D3D12_HEAP_PROPERTIES heapProps = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
+        device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &resourceDesc, 
+            D3D12_RESOURCE_STATE_RENDER_TARGET, nullptr, IID_PPV_ARGS(&OwnedColorResources[i])) >> ERROR_HANDLER;
+        
+        D3D12_RENDER_TARGET_VIEW_DESC rtvDesc = {};
+        rtvDesc.Format = DXFormat(desc.RenderTargetFormats[i]);
+        rtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
+        rtvDesc.Texture2D.MipSlice = 0;
+        device->CreateRenderTargetView(OwnedColorResources[i].Get(), &rtvDesc, OwnedRTVs[i]);
+        
+        DescriptorBinding binding{};
+        binding.Type = DescriptorType::SampledImage;
+        binding.Count = 1;
+        binding.Set = desc.OutputDescriptorSetIndex;
+        binding.Slot = static_cast<uint32_t>(i);
+        outputIOResource->Layout.Bindings.push_back(binding);
+        
+        DX12ImageData* imageData = new DX12ImageData();
+        imageData->Image = imageResource;
+        //TODO FINISH HEREEEEE
+        ImageAllocation imageAllocation;
+    }
+    
+    if (desc.CreateDepthAttachment)
+    {
+        D3D12_RESOURCE_DESC depthResourceDesc = {};
+        depthResourceDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+        depthResourceDesc.Alignment = 0;
+        depthResourceDesc.Width = desc.AttachmentWidth;
+        depthResourceDesc.Height = desc.AttachmentHeight;
+        depthResourceDesc.DepthOrArraySize = 1;
+        depthResourceDesc.MipLevels = 1;
+        depthResourceDesc.Format = DXFormat(desc.DepthStencilFormat);
+        depthResourceDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
+        depthResourceDesc.SampleDesc.Count = 1;
+        depthResourceDesc.SampleDesc.Quality = 0;
+        
+        D3D12_HEAP_PROPERTIES heapProps = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
+        device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &depthResourceDesc, 
+            D3D12_RESOURCE_STATE_DEPTH_WRITE, nullptr, IID_PPV_ARGS(&OwnedDepthResource)) >> ERROR_HANDLER;
+        
+        D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc = {};
+        dsvDesc.Format = DXFormat(desc.DepthStencilFormat);
+        dsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
+        dsvDesc.Flags = D3D12_DSV_FLAG_NONE;
+        dsvDesc.Texture2D.MipSlice = 0;
+        device->CreateDepthStencilView(OwnedDepthResource.Get(), &dsvDesc, OwnedDSV);
+        
+        DescriptorBinding binding{};
+        binding.Type = DescriptorType::SampledImage;
+        binding.Count = 1;
+        binding.Set = desc.OutputDescriptorSetIndex;
+        binding.Slot = static_cast<uint32_t>(desc.RenderTargetFormats.size());
+        outputIOResource->Layout.Bindings.push_back(binding);
+    }
 }
 
-VulkanPipeline::VulkanPipeline(const PipelineDesc& desc)
+VulkanPipeline::VulkanPipeline(uint32_t pipelineID, const PipelineDesc& desc, std::vector<IOResource>* inputIOResources, IOResource* outputIOResource)
 {
     // Cache shader modules for cleanup
     // All shaders will allways be loaded. This is meh, but for my engine probably fine.
@@ -388,8 +486,18 @@ VulkanPipeline::VulkanPipeline(const PipelineDesc& desc)
         cacheInfo.initialDataSize = desc.CachedPipelineDataSize;
         cacheInfo.pInitialData = desc.CachedPipelineData;
     }
+    
+    std::vector<ResourceLayout> resourceLayouts;
+    resourceLayouts.push_back(desc.ResourceLayout);
+    if (inputIOResources)
+        for (const IOResource& ioResource : inputIOResources)
+            resourceLayouts.push_back(ioResource.Layout);
+    
+    if (resourceLayouts.size() > 1)
+        for (uint32_t i = 1; i < resourceLayouts.size(); i++)
+            BufferAllocator::GetInstance()->AllocateDescriptorSet(pipelineID, i, inputIOResources->at(i).Bindings);
 
-    PipelineLayout = VulkanPipelineLayoutBuilder::BuildPipelineLayout(VulkanCore::GetInstance().GetDevice(), desc.ResourceLayout, SetLayouts);
+    PipelineLayout = VulkanPipelineLayoutBuilder::BuildPipelineLayout(pipelineID, resourceLayouts, SetLayouts);
     
     std::vector<VkFormat> colorFormats;
     for (const auto& format : desc.RenderTargetFormats)
@@ -452,10 +560,54 @@ VulkanPipeline::VulkanPipeline(const PipelineDesc& desc)
     OwnedImageViews.resize(desc.RenderTargetFormats.size());
     OwnedImageMemory.resize(desc.RenderTargetFormats.size());
     
+    if (!outputIOResource)
+        throw std::runtime_error("Output layout must be specified for pipeline render targets!");
+    
+    
+    outputIOResource->Layout.VisibleStages.SetFragment(true);
+    
     for (size_t i = 0; i < desc.RenderTargetFormats.size(); ++i)
     {
+        VkImageCreateInfo imageInfo{};
+        imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+        imageInfo.imageType = VK_IMAGE_TYPE_2D;
+        imageInfo.format = VulkanFormat(desc.RenderTargetFormats[i]);
+        imageInfo.extent.width = desc.AttachmentWidth;
+        imageInfo.extent.height = desc.AttachmentHeight;
+        imageInfo.extent.depth = 1;
+        imageInfo.mipLevels = 1;
+        imageInfo.arrayLayers = 1;
+        imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+        imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+        imageInfo.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT; // Can be sampled by next pass
+        imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+        result = vkCreateImage(VulkanCore::GetInstance().GetDevice(), &imageInfo, nullptr, &OwnedImages[i]);
+        if (result != VK_SUCCESS)
+            throw std::runtime_error("Failed to create Vulkan image for pipeline render target!");
+        
+        VkMemoryRequirements memReqs;
+        vkGetImageMemoryRequirements(VulkanCore::GetInstance().GetDevice(), OwnedImages[i], &memReqs);
+
+        VkMemoryAllocateInfo allocInfo{};
+        allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        allocInfo.allocationSize = memReqs.size;
+        allocInfo.memoryTypeIndex = VulkanBufferAllocator::FindMemoryType(
+            memReqs.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
+        );
+
+        result = vkAllocateMemory(VulkanCore::GetInstance().GetDevice(), &allocInfo, nullptr, &OwnedImageMemory[i]);
+        if (result != VK_SUCCESS)
+            throw std::runtime_error("Failed to allocate Vulkan image memory for pipeline render target!");
+        
+        result = vkBindImageMemory(VulkanCore::GetInstance().GetDevice(), OwnedImages[i], OwnedImageMemory[i], 0);
+        if (result != VK_SUCCESS)
+            throw std::runtime_error("Failed to bind Vulkan image memory for pipeline render target!");
+        
         VkImageViewCreateInfo imageViewInfo{};
         imageViewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        imageViewInfo.image = OwnedImages[i];
         imageViewInfo.format = VulkanFormat(desc.RenderTargetFormats[i]);
         imageViewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
         imageViewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
@@ -463,31 +615,110 @@ VulkanPipeline::VulkanPipeline(const PipelineDesc& desc)
         imageViewInfo.subresourceRange.levelCount = 1;
         imageViewInfo.subresourceRange.baseArrayLayer = 0;
         imageViewInfo.subresourceRange.layerCount = 1;
-        imageViewInfo.image = OwnedImages[i];
-    
+
         result = vkCreateImageView(VulkanCore::GetInstance().GetDevice(), &imageViewInfo, nullptr, &OwnedImageViews[i]);
         if (result != VK_SUCCESS)
             throw std::runtime_error("Failed to create Vulkan image view for pipeline render target!");
         
+        VulkanImageData* vulkanImageData = new VulkanImageData();
+        vulkanImageData->ImageView = OwnedImageViews[i];
+        vulkanImageData->ImageHandle = OwnedImages[i];
+        vulkanImageData->Memory = OwnedImageMemory[i];
+        
+        DescriptorBinding binding{};
+        binding.Type = DescriptorType::SampledImage;
+        binding.Count = 1;
+        binding.Set = desc.OutputDescriptorSetIndex;
+        binding.Slot = static_cast<uint32_t>(OwnedImageViews.size());
+        outputIOResource->Layout.Bindings.push_back(binding);
+        
+        ImageAllocation allocation;
+        allocation.Image = vulkanImageData;
+        
+        DescriptorSetBinding bindingData{};
+        bindingData.Binding = binding.Slot;
+        bindingData.ResourceID = BufferAllocator::GetInstance()->CacheImage(allocation);
+        outputIOResource->Bindings.push_back(bindingData);
+    }
+
+    // Depth buffer (if needed)
+    if (desc.CreateDepthAttachment)
+    {
+        VkImageCreateInfo depthImageInfo{};
+        depthImageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+        depthImageInfo.imageType = VK_IMAGE_TYPE_2D;
+        depthImageInfo.format = VulkanFormat(desc.DepthStencilFormat);
+        depthImageInfo.extent.width = desc.AttachmentWidth;
+        depthImageInfo.extent.height = desc.AttachmentHeight;
+        depthImageInfo.extent.depth = 1;
+        depthImageInfo.mipLevels = 1;
+        depthImageInfo.arrayLayers = 1;
+        depthImageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+        depthImageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+        depthImageInfo.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+        depthImageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        depthImageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+        result = vkCreateImage(VulkanCore::GetInstance().GetDevice(), &depthImageInfo, nullptr, &OwnedDepthImage);
+        if (result != VK_SUCCESS)
+            throw std::runtime_error("Failed to create Vulkan image for pipeline depth buffer!");
+        
         VkMemoryRequirements memReqs;
-        vkGetImageMemoryRequirements(VulkanCore::GetInstance().GetDevice(), OwnedImages[i], &memReqs);
-    
+        vkGetImageMemoryRequirements(VulkanCore::GetInstance().GetDevice(), OwnedDepthImage, &memReqs);
+        
         VkMemoryAllocateInfo allocInfo{};
         allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
         allocInfo.allocationSize = memReqs.size;
         allocInfo.memoryTypeIndex = VulkanBufferAllocator::FindMemoryType(
-                memReqs.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
-            );
-    
-        result = vkAllocateMemory(VulkanCore::GetInstance().GetDevice(), &allocInfo, nullptr, &OwnedImageMemory[i]);
+            memReqs.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
+        );
+
+        result = vkAllocateMemory(VulkanCore::GetInstance().GetDevice(), &allocInfo, nullptr, &OwnedDepthImageMemory);
         if (result != VK_SUCCESS)
-            throw std::runtime_error("Failed to allocate Vulkan image memory for pipeline render target!");
-    
-        result = vkBindImageMemory(VulkanCore::GetInstance().GetDevice(), OwnedImages[i], OwnedImageMemory[i], 0);
+            throw std::runtime_error("Failed to allocate Vulkan image memory for pipeline depth buffer!");
+        
+        result = vkBindImageMemory(VulkanCore::GetInstance().GetDevice(), OwnedDepthImage, OwnedDepthImageMemory, 0);
         if (result != VK_SUCCESS)
-            throw std::runtime_error("Failed to bind Vulkan image memory for pipeline render target!");
+            throw std::runtime_error("Failed to bind Vulkan image memory for pipeline depth buffer!");
+        
+        VkImageViewCreateInfo imageViewInfo{};
+        imageViewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        imageViewInfo.image = OwnedDepthImage;
+        imageViewInfo.format = VulkanFormat(desc.DepthStencilFormat);
+        imageViewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        imageViewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+        if (desc.DepthStencilFormat == Format::D24_UNORM_S8_UINT || desc.DepthStencilFormat == Format::D32_FLOAT_S8X24_UINT)
+            imageViewInfo.subresourceRange.aspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
+        imageViewInfo.subresourceRange.baseMipLevel = 0;
+        imageViewInfo.subresourceRange.levelCount = 1;
+        imageViewInfo.subresourceRange.baseArrayLayer = 0;
+        imageViewInfo.subresourceRange.layerCount = 1;
+
+        result = vkCreateImageView(VulkanCore::GetInstance().GetDevice(), &imageViewInfo, nullptr, &OwnedDepthImageView);
+        if (result != VK_SUCCESS)
+            throw std::runtime_error("Failed to create Vulkan image view for pipeline depth buffer!");
+        
+        
+        VulkanImageData* vulkanImageData = new VulkanImageData();
+        vulkanImageData->ImageView = OwnedDepthImageView;
+        vulkanImageData->ImageHandle = OwnedDepthImage;
+        vulkanImageData->Memory = OwnedDepthImageMemory;
+        
+        DescriptorBinding binding{};
+        binding.Type = DescriptorType::SampledImage;
+        binding.Count = 1;
+        binding.Set = desc.OutputDescriptorSetIndex;
+        binding.Slot = static_cast<uint32_t>(OwnedImageViews.size());
+        outputIOResource->Layout.Bindings.push_back(binding);
+        
+        ImageAllocation allocation;
+        allocation.Image = vulkanImageData;
+        
+        DescriptorSetBinding bindingData{};
+        bindingData.Binding = binding.Slot;
+        bindingData.ResourceID = BufferAllocator::GetInstance()->CacheImage(allocation);
+        outputIOResource->Bindings.push_back(bindingData);
     }
-    
 }
 
 void VulkanPipeline::CreateRenderPass(const PipelineDesc& desc)
@@ -585,6 +816,17 @@ void VulkanPipeline::CreateRenderPass(const PipelineDesc& desc)
 VulkanPipeline::~VulkanPipeline()
 {
     VkDevice device = VulkanCore::GetInstance().GetDevice();
+    
+    if (OwnedDepthImage) vkDestroyImage(device, OwnedDepthImage, nullptr);
+    if (OwnedDepthImageMemory) vkFreeMemory(device, OwnedDepthImageMemory, nullptr);
+    if (OwnedDepthImageView) vkDestroyImageView(device, OwnedDepthImageView, nullptr);
+
+    for (auto& image : OwnedImages) 
+        vkDestroyImage(device, OwnedImages[0], nullptr);
+    for (auto& memory : OwnedImageMemory) 
+        vkFreeMemory(device, memory, nullptr);
+    for (auto& imageView : OwnedImageViews) 
+        vkDestroyImageView(device, imageView, nullptr);
     
     for (VkDescriptorSetLayout setLayout : SetLayouts)
         vkDestroyDescriptorSetLayout(device, setLayout, nullptr);

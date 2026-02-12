@@ -71,8 +71,8 @@ int main()
                 // After flush
                 pbrUniformBuffers.push_back(bufferAlloc->CreateBuffer(cameraBufferDesc));
                 pbrUniformBuffers.push_back(bufferAlloc->CreateBuffer(modelBufferDesc));
-                materialDescriptorSets.push_back(materials[0].LoadMaterial(0, pbrUniformBuffers));
-                materialDescriptorSets.push_back(materials[1].LoadMaterial(0, pbrUniformBuffers));
+                materialDescriptorSets.push_back(materials[0].LoadMaterial(0, 0, pbrUniformBuffers));
+                materialDescriptorSets.push_back(materials[1].LoadMaterial(0, 0, pbrUniformBuffers));
 
                 uploaded = true;
             }

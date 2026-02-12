@@ -482,7 +482,7 @@ uint64_t VulkanBufferAllocator::CreateImage(ImageDesc imageDesc, bool createDesc
     return CacheImage(allocation);
 }
 
-void VulkanBufferAllocator::RegisterDescriptorSetLayout(const ResourceLayout& layout)
+void VulkanBufferAllocator::RegisterDescriptorSetLayout(uint32_t pipelineID, const ResourceLayout& layout)
 {
     VkDevice device = VulkanCore::GetInstance().GetDevice();
     
@@ -494,8 +494,10 @@ void VulkanBufferAllocator::RegisterDescriptorSetLayout(const ResourceLayout& la
     // Create descriptor set layout and pool for each set
     for (const auto& [setIndex, bindings] : bindingsBySet)
     {
+        uint64_t key = MakeKey(pipelineID, setIndex);
+        
         // Skip if already registered
-        if (DescriptorSetLayouts.find(setIndex) != DescriptorSetLayouts.end())
+        if (DescriptorSetLayouts.find(key) != DescriptorSetLayouts.end())
             continue;
         
         // Create VkDescriptorSetLayoutBinding array
@@ -544,21 +546,21 @@ void VulkanBufferAllocator::RegisterDescriptorSetLayout(const ResourceLayout& la
             throw std::runtime_error("Failed to create descriptor pool");
         
         // Store layout info
-        DescriptorSetLayoutInfo layoutInfo_storage;
-        layoutInfo_storage.Layout = descriptorSetLayout;
-        layoutInfo_storage.Pool = descriptorPool;
-        layoutInfo_storage.Bindings = bindings;
-        DescriptorSetLayouts[setIndex] = layoutInfo_storage;
+        DescriptorSetLayoutInfo layoutInfoStore;
+        layoutInfoStore.Layout = descriptorSetLayout;
+        layoutInfoStore.Pool = descriptorPool;
+        layoutInfoStore.Bindings = bindings;
+        DescriptorSetLayouts[key] = layoutInfoStore;
     }
 }
 
-uint64_t VulkanBufferAllocator::AllocateDescriptorSet(uint32_t pipelineIndex, const std::vector<DescriptorSetBinding>& bindings)
+uint64_t VulkanBufferAllocator::AllocateDescriptorSet(uint32_t pipelineID, uint32_t setIndex, const std::vector<DescriptorSetBinding>& bindings)
 {
     VkDevice device = VulkanCore::GetInstance().GetDevice();
     
-    auto iterator = DescriptorSetLayouts.find(pipelineIndex);
+    auto iterator = DescriptorSetLayouts.find(pipelineID);
     if (iterator == DescriptorSetLayouts.end())
-        throw std::runtime_error("Descriptor set layout not registered for set " + std::to_string(pipelineIndex));
+        throw std::runtime_error("Descriptor set layout not registered for set " + std::to_string(pipelineID));
     
     DescriptorSetLayoutInfo& layoutInfo = iterator->second;
     
@@ -637,7 +639,7 @@ uint64_t VulkanBufferAllocator::AllocateDescriptorSet(uint32_t pipelineIndex, co
     // Create allocation
     DescriptorSetAllocation allocation;
     allocation.DescriptorAddress = reinterpret_cast<uint64_t>(descriptorSet);
-    allocation.SetIndex = pipelineIndex;
+    allocation.SetKey = MakeKey(pipelineID, setIndex);
     allocation.PlatformData = nullptr;
     
     return CacheDescriptorSet(allocation);
@@ -648,7 +650,7 @@ void VulkanBufferAllocator::FreeDescriptorSet(uint64_t setID)
     VkDevice device = VulkanCore::GetInstance().GetDevice();
     auto& allocation = AllocatedDescriptorSets[setID];
     
-    auto it = DescriptorSetLayouts.find(allocation.SetIndex);
+    auto it = DescriptorSetLayouts.find(allocation.SetKey);
     if (it != DescriptorSetLayouts.end())
     {
         VkDescriptorSet descriptorSet = reinterpret_cast<VkDescriptorSet>(allocation.DescriptorAddress);
@@ -1318,7 +1320,7 @@ DirectX12BufferAllocator::~DirectX12BufferAllocator()
     delete DSVAllocator;
 }
 
-void DirectX12BufferAllocator::RegisterDescriptorSetLayout(const ResourceLayout& layout)
+void DirectX12BufferAllocator::RegisterDescriptorSetLayout(uint32_t pipelineID, const ResourceLayout& layout)
 {
     std::map<uint32_t, std::vector<DescriptorBinding>> bindingsBySet;
     for (const DescriptorBinding& binding : layout.Bindings)
@@ -1326,20 +1328,22 @@ void DirectX12BufferAllocator::RegisterDescriptorSetLayout(const ResourceLayout&
     
     for (const auto& [setIndex, bindings] : bindingsBySet)
     {
-        if (DescriptorSetLayouts.find(setIndex) != DescriptorSetLayouts.end())
+        uint64_t key = MakeKey(pipelineID, setIndex);
+        
+        if (DescriptorSetLayouts.find(key) != DescriptorSetLayouts.end())
             continue;
         
         DescriptorSetLayoutInfo layoutInfo;
         layoutInfo.Bindings = bindings;
-        DescriptorSetLayouts[setIndex] = layoutInfo;
+        DescriptorSetLayouts[key] = layoutInfo;
     }
 }
 
-uint64_t DirectX12BufferAllocator::AllocateDescriptorSet(uint32_t pipelineIndex, const std::vector<DescriptorSetBinding>& bindings)
+uint64_t DirectX12BufferAllocator::AllocateDescriptorSet(uint32_t pipelineID, uint32_t setIndex, const std::vector<DescriptorSetBinding>& bindings)
 {
     ID3D12Device* device = D3DCore::GetInstance().GetDevice().Get();
     
-    auto iterator = DescriptorSetLayouts.find(pipelineIndex);
+    auto iterator = DescriptorSetLayouts.find(pipelineID);
     if (iterator == DescriptorSetLayouts.end())
         throw std::runtime_error("Descriptor set layout not registered");
     
@@ -1389,6 +1393,7 @@ uint64_t DirectX12BufferAllocator::AllocateDescriptorSet(uint32_t pipelineIndex,
             device->CreateConstantBufferView(&cbvDesc, dstHandle);
         }
         
+        // Doing this garbage to track gpu address... not sure if needed
         tableData->CpuHandles.push_back(dstHandle);
         tableData->DescriptorTypes.push_back(dxType);
         
@@ -1403,7 +1408,7 @@ uint64_t DirectX12BufferAllocator::AllocateDescriptorSet(uint32_t pipelineIndex,
     
     DescriptorSetAllocation allocation;
     allocation.DescriptorAddress = tableData->BaseHandle.ptr;
-    allocation.SetIndex = pipelineIndex;
+    allocation.SetKey = MakeKey(pipelineID, setIndex);
     allocation.PlatformData = tableData;
     
     return CacheDescriptorSet(allocation);

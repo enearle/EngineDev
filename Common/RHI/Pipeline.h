@@ -6,8 +6,9 @@ using Microsoft::WRL::ComPtr;
 
 class Pipeline
 {
+    std::vector<uint64_t> PipelineInputDescriptorSetIDs;
 public:
-    static Pipeline* Create(const PipelineDesc& desc);
+    static Pipeline* Create(uint32_t pipelineID, const PipelineDesc& desc, std::vector<IOResource>* inputIOResources, IOResource* outputLayout =nullptr);
     virtual ~Pipeline() = default;
 };
 
@@ -15,7 +16,7 @@ class D3DPipeline : public Pipeline
 {
 public:
     
-    D3DPipeline(const PipelineDesc& desc);
+    D3DPipeline(uint32_t pipelineID, const PipelineDesc& desc, std::vector<IOResource>* inputIOResources, IOResource* outputLayout =nullptr);
     ID3D12PipelineState* GetPipelineState() const { return PipelineState.Get(); }
     ID3D12RootSignature* GetRootSignature() const { return RootSignature.Get(); }
     D3D12_PRIMITIVE_TOPOLOGY GetTopology() const { return Topology; }
@@ -30,7 +31,7 @@ private:
     std::vector<ComPtr<ID3D12Resource>> OwnedColorResources;
     std::vector<D3D12_CPU_DESCRIPTOR_HANDLE> OwnedRTVs;
     ComPtr<ID3D12Resource> OwnedDepthResource;
-    D3D12_CPU_DESCRIPTOR_HANDLE OwnedDSV;
+    D3D12_CPU_DESCRIPTOR_HANDLE OwnedDSV = {};
     
     D3D12_PRIMITIVE_TOPOLOGY Topology;
     ComPtr<ID3D12RootSignature> RootSignature;
@@ -41,7 +42,7 @@ class VulkanPipeline : public Pipeline
 {
 public:
     
-    VulkanPipeline(const PipelineDesc& desc);
+    VulkanPipeline(uint32_t pipelineID, const PipelineDesc& desc, std::vector<IOResource>* inputIOResources, IOResource* outputLayout =nullptr);
     ~VulkanPipeline();
     
     VkPipeline GetVulkanPipeline() const { return Pipeline; }
