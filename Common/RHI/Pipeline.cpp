@@ -28,6 +28,7 @@ Pipeline* Pipeline::Create(uint32_t pipelineID, const PipelineDesc& desc, std::v
 D3DPipeline::D3DPipeline(uint32_t pipelineID, const PipelineDesc& desc, std::vector<IOResource>* inputIOResources)
 {
     ComPtr<ID3D12Device> device = D3DCore::GetInstance().GetDevice();
+    Topology = DXPrimitiveTopology(desc.PrimitiveTopology);
     
     std::vector<ResourceLayout> resourceLayouts;
     resourceLayouts.push_back(desc.ResourceLayout);
@@ -35,16 +36,14 @@ D3DPipeline::D3DPipeline(uint32_t pipelineID, const PipelineDesc& desc, std::vec
         for (const IOResource& ioResource : *inputIOResources)
             resourceLayouts.push_back(ioResource.Layout);
     
+    RootSignature = D3DRootSignatureBuilder::BuildRootSignature(pipelineID, resourceLayouts);
+    
     if (resourceLayouts.size() > 1)
         for (uint32_t i = 1; i < resourceLayouts.size(); i++)
         {
-            BufferAllocator::GetInstance()->AllocateDescriptorSet(pipelineID, i, inputIOResources->at(i).Bindings);
+            BufferAllocator::GetInstance()->AllocateDescriptorSet(pipelineID, i, inputIOResources->at(i - 1).Bindings);
             PipelineInputDescriptorSetIDs.push_back(BufferAllocator::GetInstance()->MakeKey(pipelineID, i));
         }
-        
-    
-    Topology = DXPrimitiveTopology(desc.PrimitiveTopology);
-    RootSignature = D3DRootSignatureBuilder::BuildRootSignature(pipelineID, resourceLayouts);
     
     // This is a DirectX-specific means to store 3D vertex data in the pipeline for later use.
     // A more modern (and API agnostic) approach is to handle additional 3D transformations (outside VS/GS)
@@ -527,15 +526,15 @@ VulkanPipeline::VulkanPipeline(uint32_t pipelineID, const PipelineDesc& desc, st
     if (inputIOResources)
         for (const IOResource& ioResource : *inputIOResources)
             resourceLayouts.push_back(ioResource.Layout);
+
+    PipelineLayout = VulkanPipelineLayoutBuilder::BuildPipelineLayout(pipelineID, resourceLayouts, SetLayouts);
     
     if (resourceLayouts.size() > 1)
         for (uint32_t i = 1; i < resourceLayouts.size(); i++)
         {
-            BufferAllocator::GetInstance()->AllocateDescriptorSet(pipelineID, i, inputIOResources->at(i).Bindings);
+            BufferAllocator::GetInstance()->AllocateDescriptorSet(pipelineID, i, inputIOResources->at(i - 1).Bindings);
             PipelineInputDescriptorSetIDs.push_back(BufferAllocator::GetInstance()->MakeKey(pipelineID, i));
         }
-
-    PipelineLayout = VulkanPipelineLayoutBuilder::BuildPipelineLayout(pipelineID, resourceLayouts, SetLayouts);
     
     std::vector<VkFormat> colorFormats;
     for (const auto& format : desc.RenderTargetFormats)
@@ -614,11 +613,11 @@ VulkanPipeline::VulkanPipeline(uint32_t pipelineID, const PipelineDesc& desc, st
         attachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
         attachment.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
         
-        attachmentDescriptions.push_back(attachment);
+        AttachmentDescriptions.push_back(attachment);
     }
     
     // Depth attachment (if present)
-    if (desc.DepthStencilFormat != Format::Unknown)
+    if (desc.DepthStencilFormat != Format::Unknown && desc.DepthStoreOp == AttachmentStoreOp::Store)
     {
         VkAttachmentDescription depthAttachment{};
         depthAttachment.format = VulkanFormat(desc.DepthStencilFormat);
@@ -636,7 +635,7 @@ VulkanPipeline::VulkanPipeline(uint32_t pipelineID, const PipelineDesc& desc, st
         depthAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
         depthAttachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
         
-        attachmentDescriptions.push_back(depthAttachment);
+        AttachmentDescriptions.push_back(depthAttachment);
     }
     
     // Create pipeline local attachment images
@@ -714,7 +713,7 @@ VulkanPipeline::VulkanPipeline(uint32_t pipelineID, const PipelineDesc& desc, st
         binding.Type = DescriptorType::SampledImage;
         binding.Count = 1;
         binding.Set = desc.OutputDescriptorSetIndex;
-        binding.Slot = static_cast<uint32_t>(OwnedImageViews.size());
+        binding.Slot = static_cast<uint32_t>(i);
         PipelineOutputResource->Layout.Bindings.push_back(binding);
         
         ImageAllocation allocation;

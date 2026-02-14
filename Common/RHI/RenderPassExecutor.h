@@ -72,6 +72,7 @@ public:
     void IssueImageMemoryBarrier(const ImageMemoryBarrier& barrier) override;
     void DrawSceneNode(const SceneNode& node, std::vector<uint64_t>& materialDescriptorSets) override;
     void DrawQuad(std::vector<uint64_t>* descriptorSets = nullptr) override;
+    void BindDescriptorSets(std::vector<uint64_t>* descriptorSets);
 
 private:
     

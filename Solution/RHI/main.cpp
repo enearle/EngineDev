@@ -30,7 +30,7 @@ int main()
         Renderer::StartRender(window, data);
         RenderPassExecutor* executor = RenderPassExecutor::Create();
         BufferAllocator* bufferAlloc = BufferAllocator::GetInstance();
-        Pipeline* PBRGeometryPipe = PBRPipeline();
+        Pipeline* PBRGeometryPipe = PBRGeometryPipeline();
         std::vector<IOResource> inputResources = {*PBRGeometryPipe->GetOutputResource()};
         Pipeline* PBRLightingPipe = DeferredLightingPipeline(&inputResources);
         
@@ -63,7 +63,7 @@ int main()
         void* backBufferView;
         void* backBuffer;
 
-        std::vector<DirectX::XMFLOAT4> clearColors {{0,0,0,1}, {0,0,0,1}, {0,0,0,1}};
+        std::vector<DirectX::XMFLOAT4> clearColors {{0,0,0,1}, {0,0,0,1}, {0,0,0,1}, {0,0,0,1}};
         bool uploaded = false;
         
         std::vector<uint64_t> materialDescriptorSets;
@@ -79,8 +79,8 @@ int main()
                 // After flush
                 pbrUniformBuffers.push_back(bufferAlloc->CreateBuffer(cameraBufferDesc));
                 pbrUniformBuffers.push_back(bufferAlloc->CreateBuffer(modelBufferDesc));
-                materialDescriptorSets.push_back(materials[0].LoadMaterial(0, 0, pbrUniformBuffers));
-                materialDescriptorSets.push_back(materials[1].LoadMaterial(0, 0, pbrUniformBuffers));
+                materialDescriptorSets.push_back(materials[0].LoadMaterial(1, 0, pbrUniformBuffers));
+                materialDescriptorSets.push_back(materials[1].LoadMaterial(1, 0, pbrUniformBuffers));
 
                 uploaded = true;
             }
@@ -92,10 +92,11 @@ int main()
             executor->IssueImageMemoryBarrier(preBarrier);
             
             executor->Begin(PBRGeometryPipe, {}, nullptr, window->GetWidth(), window->GetHeight(), clearColors, 0);
-            
             executor->DrawSceneNode(meshRoot.GetSceneNode(), materialDescriptorSets);
+            executor->End();
             
-
+            executor->Begin(PBRLightingPipe, {backBufferView}, nullptr, window->GetWidth(), window->GetHeight(), {{0, 0, 0, 1}}, 0);
+            executor->DrawQuad();
             executor->End();
             
             ImageMemoryBarrier postBarrier = POST_BARRIER;

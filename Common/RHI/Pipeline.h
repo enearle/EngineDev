@@ -59,8 +59,9 @@ public:
     VkImage GetOwnedDepthImage() const { return OwnedDepthImage; }
     VkDeviceMemory GetOwnedDepthImageMemory() const { return OwnedDepthImageMemory; }
     VkImageView GetOwnedDepthImageView() const { return OwnedDepthImageView; }
+    std::vector<uint64_t> GetInputDescriptorSetIDs() const { return PipelineInputDescriptorSetIDs; }
     
-    std::vector<VkAttachmentDescription> GetAttachmentDescriptions() const { return attachmentDescriptions; }
+    std::vector<VkAttachmentDescription> GetAttachmentDescriptions() const { return AttachmentDescriptions; }
 
 private:
     
@@ -71,7 +72,7 @@ private:
     VkDeviceMemory OwnedDepthImageMemory = VK_NULL_HANDLE;
     VkImageView OwnedDepthImageView = VK_NULL_HANDLE;
     
-    std::vector<VkAttachmentDescription> attachmentDescriptions;
+    std::vector<VkAttachmentDescription> AttachmentDescriptions;
     std::vector<VkShaderModule> ShaderModules;
     VkPipeline Pipeline = VK_NULL_HANDLE;
     VkPipelineLayout PipelineLayout = VK_NULL_HANDLE;

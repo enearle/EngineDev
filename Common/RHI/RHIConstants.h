@@ -206,7 +206,7 @@ namespace RHIConstants
         return Pipeline::Create(0,  TexturedQuadDesc);
     }
     
-    static Pipeline* PBRPipeline()
+    static Pipeline* PBRGeometryPipeline()
     {
         PipelineDesc PBRDescGeometry = {};
         
@@ -300,9 +300,9 @@ namespace RHIConstants
         { .Type = DescriptorType::UniformBuffer, .Slot = 0, .Set = 0, .Count = 1 }, // Camera/VP
         { .Type = DescriptorType::UniformBuffer, .Slot = 1, .Set = 0, .Count = 1 }, // Model
             
-        { .Type = DescriptorType::SampledImage,  .Slot = 2, .Set = 0, .Count = 1 }, // Albedo
-        { .Type = DescriptorType::SampledImage,  .Slot = 3, .Set = 0, .Count = 1 }, // Normal
-        { .Type = DescriptorType::SampledImage,  .Slot = 4, .Set = 0, .Count = 1 }, // MetallicRoughness
+        { .Type = DescriptorType::SampledImage,  .Slot = 0, .Set = 1, .Count = 1 }, // Albedo
+        { .Type = DescriptorType::SampledImage,  .Slot = 1, .Set = 1, .Count = 1 }, // Normal
+        { .Type = DescriptorType::SampledImage,  .Slot = 2, .Set = 1, .Count = 1 }, // MetallicRoughness
         };
         
         ShaderStageMask visibleStages = ShaderStageMask(0);
@@ -318,7 +318,7 @@ namespace RHIConstants
         PBRDescGeometry.ColorLoadOps = {AttachmentLoadOp::Clear, AttachmentLoadOp::Clear, AttachmentLoadOp::Clear, AttachmentLoadOp::Clear};
         PBRDescGeometry.ColorStoreOps = {AttachmentStoreOp::Store, AttachmentStoreOp::Store, AttachmentStoreOp::Store, AttachmentStoreOp::Store};
         PBRDescGeometry.DepthLoadOp = AttachmentLoadOp::Clear;  // Changed from Load
-        PBRDescGeometry.DepthStoreOp = AttachmentStoreOp::Store;
+        PBRDescGeometry.DepthStoreOp = AttachmentStoreOp::DontCare;
         
         return Pipeline::Create(0, PBRDescGeometry);
     }
@@ -339,7 +339,6 @@ namespace RHIConstants
         // 2. No vertex input - fullscreen triangle generated in vertex shader
         lightingDesc.VertexBindings = {};
         lightingDesc.VertexAttributes = {};
-
         // 3. Primitive topology
         lightingDesc.PrimitiveTopology = PrimitiveTopology::TriangleList;
 
