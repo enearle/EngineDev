@@ -19,7 +19,6 @@ protected:
     uint64_t NextImageID = 0;
     uint64_t NextDescriptorSetID = 0;
     
-    
     uint64_t CacheBuffer(BufferAllocation bufferAllocation) {AllocatedBuffers[NextBufferID] = bufferAllocation; return NextBufferID++;}
     uint64_t CacheDescriptorSet(DescriptorSetAllocation setAllocation) { AllocatedDescriptorSets[NextDescriptorSetID] = setAllocation; return NextDescriptorSetID++; }
     
@@ -44,8 +43,7 @@ public:
     virtual void FreeDescriptorSet(uint64_t setID) = 0;
     
     ImageAllocation GetImageAllocation(uint64_t id) const { return AllocatedImages.at(id); }
-    BufferAllocation GetBufferAllocation(uint64_t id) const { 
-        return AllocatedBuffers.at(id); }
+    BufferAllocation GetBufferAllocation(uint64_t id) const { return AllocatedBuffers.at(id); }
     DescriptorSetAllocation GetDescriptorSet(uint64_t id) const { return AllocatedDescriptorSets.at(id); }
 };
 
@@ -101,7 +99,7 @@ private:
         VkDescriptorPool Pool;
         std::vector<DescriptorBinding> Bindings;
     };
-    std::map<uint32_t, DescriptorSetLayoutInfo> DescriptorSetLayouts;
+    std::map<uint64_t, DescriptorSetLayoutInfo> DescriptorSetLayouts;
     
     VkDeviceAddress AllocateDescriptor(VkDescriptorGetInfoEXT* descriptorInfo, DescriptorType type);
     void FreeDescriptor(VkDeviceAddress address, DescriptorType type);
@@ -142,7 +140,7 @@ private:
     {
         std::vector<DescriptorBinding> Bindings;
     };
-    std::map<uint32_t, DescriptorSetLayoutInfo> DescriptorSetLayouts;
+    std::map<uint64_t, DescriptorSetLayoutInfo> DescriptorSetLayouts;
     
     struct DescriptorTableData
     {

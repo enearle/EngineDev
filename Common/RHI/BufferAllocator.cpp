@@ -558,7 +558,10 @@ uint64_t VulkanBufferAllocator::AllocateDescriptorSet(uint32_t pipelineID, uint3
 {
     VkDevice device = VulkanCore::GetInstance().GetDevice();
     
-    auto iterator = DescriptorSetLayouts.find(pipelineID);
+    
+    uint64_t key = MakeKey(pipelineID, setIndex);
+    auto iterator = DescriptorSetLayouts.find(key);
+    
     if (iterator == DescriptorSetLayouts.end())
         throw std::runtime_error("Descriptor set layout not registered for set " + std::to_string(pipelineID));
     
@@ -1349,7 +1352,9 @@ uint64_t DirectX12BufferAllocator::AllocateDescriptorSet(uint32_t pipelineID, ui
 {
     ID3D12Device* device = D3DCore::GetInstance().GetDevice().Get();
     
-    auto iterator = DescriptorSetLayouts.find(pipelineID);
+    uint64_t key = MakeKey(pipelineID, setIndex);
+    auto iterator = DescriptorSetLayouts.find(key);
+    
     if (iterator == DescriptorSetLayouts.end())
         throw std::runtime_error("Descriptor set layout not registered");
     

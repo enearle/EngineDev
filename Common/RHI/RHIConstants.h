@@ -211,6 +211,7 @@ namespace RHIConstants
         PipelineDesc PBRDescGeometry = {};
         
         PBRDescGeometry.CreateOwnAttachments = true;
+        PBRDescGeometry.OutputDescriptorSetIndex = 0;
         PBRDescGeometry.AttachmentWidth = 1280;
         PBRDescGeometry.AttachmentHeight = 720;
 
@@ -281,9 +282,8 @@ namespace RHIConstants
         PBRDescGeometry.RenderTargetFormats = {
             Format::R8G8B8A8_UNORM,                 // Albedo
             Format::R16G16B16A16_FLOAT,             // Normal (high quality)
-            Format::R8G8B8A8_UNORM,                 // Standard RGBA color format
-            Format::R32G32B32A32_FLOAT
-            
+            Format::R8G8B8A8_UNORM,                 // Mask for Metal, Rough, and AO
+            Format::R32G32B32A32_FLOAT              // Position buffer
         };
 
         // 8. No depth stencil
@@ -327,6 +327,8 @@ namespace RHIConstants
     {
         PipelineDesc lightingDesc = {};
 
+        lightingDesc.UseOwnResourceLayout = false;
+        
         // 1. Shader stages - fullscreen quad shaders
         lightingDesc.VertexShader = ImportShader("vs_lighting", "main");
         lightingDesc.FragmentShader = ImportShader("ps_lighting", "main");
@@ -387,22 +389,7 @@ namespace RHIConstants
             false                                   // No alpha to coverage
         };
 
-        // 10. G-buffer inputs from previous geometry pass
-        std::vector<DescriptorBinding> bindings {
-            { .Type = DescriptorType::SampledImage,  .Slot = 0, .Set = 0, .Count = 1 }, // Albedo from G-buffer
-            { .Type = DescriptorType::SampledImage,  .Slot = 1, .Set = 0, .Count = 1 }, // Normal from G-buffer
-            { .Type = DescriptorType::SampledImage,  .Slot = 2, .Set = 0, .Count = 1 }, // Material from G-buffer
-            { .Type = DescriptorType::SampledImage,  .Slot = 3, .Set = 0, .Count = 1 }
-        };
-
-        ShaderStageMask visibleStages = ShaderStageMask(0);
-        visibleStages.SetFragment(true);
-        visibleStages.SetVertex(true);
-
-        lightingDesc.ResourceLayout = {
-            .Bindings = bindings,
-            .VisibleStages = visibleStages
-        };
+        // 10. Skip resource layout because we input one from another pipeline
 
         // 11. Attachment operations - load G-buffer, output final color
         lightingDesc.ColorLoadOps = {AttachmentLoadOp::Clear};
@@ -429,6 +416,33 @@ namespace RHIConstants
         .DstAccessMask = 0u,
         .OldLayout     = ImageLayout::ColorAttachment,
         .NewLayout     = ImageLayout::Present,
+    };
+
+    inline constexpr ImageMemoryBarrier INIT_BARRIER{
+        .SrcStage = PipelineStage::TopOfPipe,
+        .DstStage = PipelineStage::FragmentShader,
+        .SrcAccessMask = 0u,
+        .DstAccessMask = static_cast<uint32_t>(AccessFlag::ShaderRead),
+        .OldLayout = ImageLayout::Undefined,
+        .NewLayout = ImageLayout::ShaderReadOnly,
+    };
+    
+    inline constexpr ImageMemoryBarrier ATTACHMENT_TO_READ_BARRIER{
+        .SrcStage = PipelineStage::ColorAttachmentOutput,
+        .DstStage = PipelineStage::FragmentShader,
+        .SrcAccessMask = static_cast<uint32_t>(AccessFlag::ColorAttachmentWrite),
+        .DstAccessMask = static_cast<uint32_t>(AccessFlag::ShaderRead),
+        .OldLayout = ImageLayout::ColorAttachment,
+        .NewLayout = ImageLayout::ShaderReadOnly,
+    };
+    
+    inline constexpr ImageMemoryBarrier READ_TO_ATTACHMENT_BARRIER{
+        .SrcStage = PipelineStage::FragmentShader,
+        .DstStage = PipelineStage::ColorAttachmentOutput,
+        .SrcAccessMask = static_cast<uint32_t>(AccessFlag::ShaderRead),
+        .DstAccessMask = static_cast<uint32_t>(AccessFlag::ColorAttachmentWrite),
+        .OldLayout = ImageLayout::ShaderReadOnly,
+        .NewLayout = ImageLayout::ColorAttachment,
     };
     
     static const std::vector<std::vector<uint8_t>> DefaultMetalnessRoughnessOcclusion = 

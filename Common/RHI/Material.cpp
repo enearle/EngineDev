@@ -142,28 +142,16 @@ uint32_t Material::GetTextureHandle(TextureType textureType)
     }
 }
 
-uint64_t Material::LoadMaterial(uint32_t pipelineIndex, uint32_t setIndex, const std::vector<uint64_t>& uniformBufferIDs)
+uint64_t Material::LoadMaterial(uint32_t pipelineIndex, uint32_t setIndex)
 {
     BufferAllocator* bufferAllocator = BufferAllocator::GetInstance();
     std::vector<DescriptorSetBinding> bindings;
-    
-    // First, add the uniform buffers (they go in slots 0, 1, etc.)
-    for (size_t i = 0; i < uniformBufferIDs.size(); ++i)
-    {
-        bindings.emplace_back(DescriptorSetBinding {
-            .Binding = static_cast<uint32_t>(i),
-            .ResourceID = uniformBufferIDs[i]
-        });
-    }
-    
-    // Then add the textures (they start after the uniform buffers)
-    uint32_t textureStartSlot = static_cast<uint32_t>(uniformBufferIDs.size());
     
     bindings.reserve(CachedTextures.size());   
     for (uint32_t i = 0; i < CachedTextures.size(); ++i)
     {
         bindings.emplace_back(DescriptorSetBinding {
-            .Binding = textureStartSlot + i,
+            .Binding = i,
             .ResourceID = bufferAllocator->CreateImage(*CachedTextures[i]->Desc)
         });
         

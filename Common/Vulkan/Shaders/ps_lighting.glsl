@@ -1,10 +1,10 @@
 #version 450
 
 // G-buffer inputs (matching your pipeline bindings)
-layout(set = 0, binding = 0) uniform sampler2D subBaseColour;      // Albedo
-layout(set = 0, binding = 1) uniform sampler2D subNormal;          // Normal
-layout(set = 0, binding = 2) uniform sampler2D subMetalicRoughnessAO;  // Material
-layout(set = 0, binding = 3) uniform sampler2D subPosition;        // Position
+layout(set = 0, binding = 0) uniform sampler2D subBaseColour;           // Albedo
+layout(set = 0, binding = 1) uniform sampler2D subNormal;               // Normal
+layout(set = 0, binding = 2) uniform sampler2D subMetalicRoughnessAO;   // Material
+layout(set = 0, binding = 3) uniform sampler2D subPosition;             // Position
 
 layout(location = 0) out vec4 outColour;
 
@@ -136,22 +136,30 @@ vec3 LightPBR(Light light)
 
 void main()
 {
-    init();
-
-    // Define a simple point light in the scene
-    Light light;
-    light.Position = vec3(0.0, 5.0, 0.0);      // Light position in world space
-    light.Colour = vec3(1.0, 1.0, 1.0);        // White light
-    light.Intensity = 20.0;                     // Light intensity
-    light.Radius = 50.0;                        // Light radius
-
-    // Calculate lighting
-    vec3 outGoingLight = LightPBR(light);
-
-    // Add ambient term (very simple ambient occlusion)
-    vec3 ambient = vec3(0.03) * albedo * ambientOcclusion;
-    outGoingLight += ambient;
-
-    // Output final color (no clamp needed, handled by render target)
-    outColour = vec4(outGoingLight, 1.0);
+    vec2 screenPos = gl_FragCoord.xy / vec2(1280.0, 720.0);
+    vec4 sampledColor = texture(subBaseColour, screenPos);
+    outColour = vec4(sampledColor.rgb, 1.0);  // Output exactly what we sampled
 }
+
+//void main()
+//{
+//    init();
+//
+//    // Define a simple point light in the scene
+//    Light light;
+//    light.Position = vec3(0.0, 5.0, 0.0);      // Light position in world space
+//    light.Colour = vec3(1.0, 1.0, 1.0);        // White light
+//    light.Intensity = 20.0;                     // Light intensity
+//    light.Radius = 50.0;                        // Light radius
+//
+//    // Calculate lighting
+//    vec3 outGoingLight = LightPBR(light);
+//
+//    // Add ambient term (very simple ambient occlusion)
+//    vec3 ambient = vec3(0.03) * albedo * ambientOcclusion;
+//    outGoingLight += ambient;
+//
+//    // Output final color (no clamp needed, handled by render target)
+//    //outColour = vec4(outGoingLight, 1.0);
+//    outColour = vec4(albedo, 1.0);
+//}

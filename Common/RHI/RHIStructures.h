@@ -316,7 +316,10 @@ namespace RHIStructures
     struct PipelineDesc
     {
         bool CreateOwnAttachments = false;
+        bool UseOwnResourceLayout = true;
         bool CreateDepthAttachment = false;
+        bool UseDescriptorBuffer = false;
+        
         uint32_t AttachmentWidth = 0;
         uint32_t AttachmentHeight = 0;
         uint32_t OutputDescriptorSetIndex = 1;

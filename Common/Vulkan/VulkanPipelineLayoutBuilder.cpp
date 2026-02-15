@@ -34,7 +34,6 @@ VkPipelineLayout VulkanPipelineLayoutBuilder::BuildPipelineLayout(uint32_t pipel
     for (uint32_t i = 0; i < layouts.size(); i++)
     {
         const ResourceLayout& layout = layouts[i];
-        
         BufferAllocator::GetInstance()->RegisterDescriptorSetLayout(pipelineID, layout);
         
         std::map<uint32_t, std::vector<DescriptorSetLayoutBinding>> bindingsBySet;

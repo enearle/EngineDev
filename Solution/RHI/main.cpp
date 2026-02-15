@@ -5,9 +5,10 @@
 #include "../../Common/RHI/RenderPassExecutor.h"
 #include <DirectXMath.h>
 #include <iostream>
-
+#include "../../Common/RHI/Uniform.h"
 #include "../../Common/GraphicsSettings.h"
 #include "../../Common/DirectX12/D3DCore.h"
+#include "../../Common/Vulkan/VulkanCore.h"
 #include "../../Common/RHI/BufferAllocator.h"
 #include "../../Common/RHI/Material.h"
 #include "../../Common/RHI/Geometry/Mesh.h"
@@ -36,8 +37,8 @@ int main()
         
         CameraUBO cameraData;
         
-        DirectX::XMMATRIX view = DirectX::XMMatrixIdentity() * DirectX::XMMatrixTranslation(0.0f, 0.0f, -5.0f);
-        view = DirectX::XMMatrixInverse(nullptr, view);
+        DirectX::XMMATRIX view = DirectX::XMMatrixLookAtLH(DirectX::XMVectorSet(0.0f, -0.1f, -0.1f, 1), DirectX::XMVectorSet(0.0f, 0.0f, 0.0f, 1), DirectX::XMVectorSet(0.0f, 1.0f, 0.0f, 1));
+        //view = DirectX::XMMatrixInverse(nullptr, view);
         DirectX::XMMATRIX projection = DirectX::XMMatrixPerspectiveFovLH(DirectX::XM_PIDIV2, 1280.0f / 720.0f, 0.1f, 100.0f);
         DirectX::XMStoreFloat4x4(&cameraData.ViewProjection, view * projection);
         
@@ -58,15 +59,18 @@ int main()
         materials.push_back(Material("shells_0", Material::PBR));
         materials.push_back(Material("shells_1", Material::PBR));
         
-        RootNode meshRoot = GeometryImport::CreateMeshGroup("Shells.fbx", "Shells", DirectX::XMMatrixIdentity());
+        RootNode meshRoot = GeometryImport::CreateMeshGroup("shells.fbx", "Shells", DirectX::XMMatrixIdentity());
         
         void* backBufferView;
         void* backBuffer;
 
         std::vector<DirectX::XMFLOAT4> clearColors {{0,0,0,1}, {0,0,0,1}, {0,0,0,1}, {0,0,0,1}};
-        bool uploaded = false;
+        bool initialized = false;
         
-        std::vector<uint64_t> materialDescriptorSets;
+        std::vector<BufferDesc> uniformBufferDescs = {cameraBufferDesc, modelBufferDesc};
+        std::vector<std::vector<uint64_t>> drawSets = {};
+        
+        Uniform uniform;
         
         while (!window->PeekMessages())
         {
@@ -74,15 +78,30 @@ int main()
                 throw std::runtime_error("Vulkan is the only supported API for this sample");
             Renderer::BeginFrame();
             
-            if (!uploaded)
+            if (!initialized)
             {
-                // After flush
-                pbrUniformBuffers.push_back(bufferAlloc->CreateBuffer(cameraBufferDesc));
-                pbrUniformBuffers.push_back(bufferAlloc->CreateBuffer(modelBufferDesc));
-                materialDescriptorSets.push_back(materials[0].LoadMaterial(1, 0, pbrUniformBuffers));
-                materialDescriptorSets.push_back(materials[1].LoadMaterial(1, 0, pbrUniformBuffers));
-
-                uploaded = true;
+                uniform = Uniform(uniformBufferDescs);
+                uint64_t uniformSet = bufferAlloc->AllocateDescriptorSet(0,0, uniform.GetBindings());
+                
+                for (uint32_t i = 0; i < materials.size(); i++)
+                {
+                    std::vector<uint64_t> materialDescriptorSets;
+                    materialDescriptorSets.push_back(uniformSet);
+                    materialDescriptorSets.push_back(materials[i].LoadMaterial(0, 1));
+                    drawSets.push_back(materialDescriptorSets);
+                }
+                
+                ImageMemoryBarrier initBarrier = INIT_BARRIER;
+                initBarrier.ImageResource = PBRGeometryPipe->GetOwnedImage(0);
+                executor->IssueImageMemoryBarrier(initBarrier);
+                initBarrier.ImageResource = PBRGeometryPipe->GetOwnedImage(1);
+                executor->IssueImageMemoryBarrier(initBarrier);
+                initBarrier.ImageResource = PBRGeometryPipe->GetOwnedImage(2);
+                executor->IssueImageMemoryBarrier(initBarrier);
+                initBarrier.ImageResource = PBRGeometryPipe->GetOwnedImage(3);
+                executor->IssueImageMemoryBarrier(initBarrier);
+                
+                initialized = true;
             }
             
             Renderer::GetSwapChainRenderTargets(backBufferView, backBuffer);
@@ -91,12 +110,32 @@ int main()
             preBarrier.ImageResource = backBuffer;
             executor->IssueImageMemoryBarrier(preBarrier);
             
+            ImageMemoryBarrier readToAttachmentBarrier = READ_TO_ATTACHMENT_BARRIER;
+            readToAttachmentBarrier.ImageResource = PBRGeometryPipe->GetOwnedImage(0);
+            executor->IssueImageMemoryBarrier(readToAttachmentBarrier);
+            readToAttachmentBarrier.ImageResource = PBRGeometryPipe->GetOwnedImage(1);
+            executor->IssueImageMemoryBarrier(readToAttachmentBarrier);
+            readToAttachmentBarrier.ImageResource = PBRGeometryPipe->GetOwnedImage(2);
+            executor->IssueImageMemoryBarrier(readToAttachmentBarrier);
+            readToAttachmentBarrier.ImageResource = PBRGeometryPipe->GetOwnedImage(3);
+            executor->IssueImageMemoryBarrier(readToAttachmentBarrier);
+            
             executor->Begin(PBRGeometryPipe, {}, nullptr, window->GetWidth(), window->GetHeight(), clearColors, 0);
-            executor->DrawSceneNode(meshRoot.GetSceneNode(), materialDescriptorSets);
+            executor->DrawSceneNode(meshRoot.GetSceneNode(), drawSets);
             executor->End();
             
+            ImageMemoryBarrier gBufferBarrier = ATTACHMENT_TO_READ_BARRIER;
+            gBufferBarrier.ImageResource = PBRGeometryPipe->GetOwnedImage(0);
+            executor->IssueImageMemoryBarrier(gBufferBarrier);
+            gBufferBarrier.ImageResource = PBRGeometryPipe->GetOwnedImage(1);
+            executor->IssueImageMemoryBarrier(gBufferBarrier);
+            gBufferBarrier.ImageResource = PBRGeometryPipe->GetOwnedImage(2);
+            executor->IssueImageMemoryBarrier(gBufferBarrier);
+            gBufferBarrier.ImageResource = PBRGeometryPipe->GetOwnedImage(3);
+            executor->IssueImageMemoryBarrier(gBufferBarrier);
+            
             executor->Begin(PBRLightingPipe, {backBufferView}, nullptr, window->GetWidth(), window->GetHeight(), {{0, 0, 0, 1}}, 0);
-            executor->DrawQuad();
+            executor->DrawQuad(); // Internally references geometry descriptor, no argument needed
             executor->End();
             
             ImageMemoryBarrier postBarrier = POST_BARRIER;
@@ -107,9 +146,13 @@ int main()
         }
 
         Renderer::Wait();
-        delete bufferAlloc;
-        delete executor;
+        // Delete pipelines FIRST (before buffer allocator)
         delete PBRGeometryPipe;
+        delete PBRLightingPipe;  // Don't forget this one!
+        delete executor;
+
+        // Delete buffer allocator LAST
+        delete bufferAlloc;
         //delete TrianglePipe;
         //delete texturedQuadPipe;
         Renderer::EndRender();

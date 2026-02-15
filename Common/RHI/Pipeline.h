@@ -14,6 +14,7 @@ public:
     virtual ~Pipeline() = default;
     
     IOResource* GetOutputResource() const { return PipelineOutputResource; }
+    virtual void* GetOwnedImage(uint32_t index) = 0;
 };
 
 class D3DPipeline : public Pipeline
@@ -24,6 +25,8 @@ public:
     ID3D12PipelineState* GetPipelineState() const { return PipelineState.Get(); }
     ID3D12RootSignature* GetRootSignature() const { return RootSignature.Get(); }
     D3D12_PRIMITIVE_TOPOLOGY GetTopology() const { return Topology; }
+    
+    void* GetOwnedImage(uint32_t index) override { return OwnedColorResources[index].Get(); }
     
     std::vector<ComPtr<ID3D12Resource>> GetOwnedColorResources() const { return OwnedColorResources; }
     std::vector<D3D12_CPU_DESCRIPTOR_HANDLE> GetOwnedRTVs() const { return OwnedRTVs; }
@@ -53,6 +56,9 @@ public:
     VkPipelineLayout GetPipelineLayout() const { return PipelineLayout; }
     VkRenderPass GetRenderPass() const { return RenderPass; }
     
+    void* GetOwnedImage(uint32_t index) override { return OwnedImages[index]; }
+    
+    // Owned images are tracked in in allocations and do not need cleanup in pipeline
     std::vector<VkImage> GetOwnedImages() const { return OwnedImages; }
     std::vector<VkImageView> GetOwnedImageViews() const { return OwnedImageViews; }
     std::vector<VkDeviceMemory> GetOwnedImageMemory() const { return OwnedImageMemory; }

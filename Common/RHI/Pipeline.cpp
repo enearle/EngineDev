@@ -522,18 +522,21 @@ VulkanPipeline::VulkanPipeline(uint32_t pipelineID, const PipelineDesc& desc, st
     }
     
     std::vector<ResourceLayout> resourceLayouts;
-    resourceLayouts.push_back(desc.ResourceLayout);
+    if (desc.UseOwnResourceLayout)
+        resourceLayouts.push_back(desc.ResourceLayout);
+    
     if (inputIOResources)
         for (const IOResource& ioResource : *inputIOResources)
             resourceLayouts.push_back(ioResource.Layout);
 
     PipelineLayout = VulkanPipelineLayoutBuilder::BuildPipelineLayout(pipelineID, resourceLayouts, SetLayouts);
     
-    if (resourceLayouts.size() > 1)
-        for (uint32_t i = 1; i < resourceLayouts.size(); i++)
+    if (inputIOResources)
+        for (uint32_t i = desc.UseOwnResourceLayout ? 1 : 0; i < resourceLayouts.size(); i++)
         {
-            BufferAllocator::GetInstance()->AllocateDescriptorSet(pipelineID, i, inputIOResources->at(i - 1).Bindings);
-            PipelineInputDescriptorSetIDs.push_back(BufferAllocator::GetInstance()->MakeKey(pipelineID, i));
+            uint32_t inputIndex = desc.UseOwnResourceLayout ? i - 1 : i;
+            uint64_t descriptorSetID = BufferAllocator::GetInstance()->AllocateDescriptorSet(pipelineID, i, inputIOResources->at(inputIndex).Bindings);
+            PipelineInputDescriptorSetIDs.push_back(descriptorSetID);
         }
     
     std::vector<VkFormat> colorFormats;
@@ -562,7 +565,7 @@ VulkanPipeline::VulkanPipeline(uint32_t pipelineID, const PipelineDesc& desc, st
     pipelineCreateInfo.pMultisampleState = &multisampling;
     pipelineCreateInfo.pDepthStencilState = &depthStencilState;
     pipelineCreateInfo.pColorBlendState = &colorBlendState;
-    pipelineCreateInfo.flags = VK_PIPELINE_CREATE_DESCRIPTOR_BUFFER_BIT_EXT;
+    pipelineCreateInfo.flags = desc.UseDescriptorBuffer ? VK_PIPELINE_CREATE_DESCRIPTOR_BUFFER_BIT_EXT : 0;
     pipelineCreateInfo.renderPass = VK_NULL_HANDLE;
     pipelineCreateInfo.layout = PipelineLayout;
     pipelineCreateInfo.pNext = &pipelineRenderingCreateInfo;
@@ -808,17 +811,6 @@ VulkanPipeline::VulkanPipeline(uint32_t pipelineID, const PipelineDesc& desc, st
 VulkanPipeline::~VulkanPipeline()
 {
     VkDevice device = VulkanCore::GetInstance().GetDevice();
-    
-    if (OwnedDepthImage) vkDestroyImage(device, OwnedDepthImage, nullptr);
-    if (OwnedDepthImageMemory) vkFreeMemory(device, OwnedDepthImageMemory, nullptr);
-    if (OwnedDepthImageView) vkDestroyImageView(device, OwnedDepthImageView, nullptr);
-
-    for (auto& image : OwnedImages) 
-        vkDestroyImage(device, OwnedImages[0], nullptr);
-    for (auto& memory : OwnedImageMemory) 
-        vkFreeMemory(device, memory, nullptr);
-    for (auto& imageView : OwnedImageViews) 
-        vkDestroyImageView(device, imageView, nullptr);
     
     for (VkDescriptorSetLayout setLayout : SetLayouts)
         vkDestroyDescriptorSetLayout(device, setLayout, nullptr);

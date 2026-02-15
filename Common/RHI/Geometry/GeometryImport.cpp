@@ -15,6 +15,7 @@ SceneNode GeometryImport::LoadNode(aiNode* node, const aiScene* scene, const XMM
 {
     XMMATRIX newTransform = XMMatrixTranspose(XMMATRIX(&node->mTransformation.a1)) * transform;
     SceneNode newNode;
+    newNode.SetModelMatrix(newTransform);
     for (size_t i = 0; i < node->mNumMeshes; i++)
     {
         uint32_t meshIndex = node->mMeshes[i];

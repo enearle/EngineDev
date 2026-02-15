@@ -28,7 +28,7 @@ public:
     virtual void IssueMemoryBarrier(const RHIStructures::MemoryBarrier& barrier) = 0;
     virtual void IssueImageMemoryBarrier(const ImageMemoryBarrier& barrier) = 0;
     
-    virtual void DrawSceneNode(const SceneNode& node, std::vector<uint64_t>& materialDescriptorSets) = 0;
+    virtual void DrawSceneNode(const SceneNode& node, std::vector<std::vector<uint64_t>>& perItemDrawSets) = 0;
     virtual void DrawQuad(std::vector<uint64_t>* descriptorSets = nullptr) = 0;
 };
 
@@ -47,7 +47,7 @@ public:
     void End() override;
     void IssueMemoryBarrier(const RHIStructures::MemoryBarrier& barrier) override;
     void IssueImageMemoryBarrier(const ImageMemoryBarrier& barrier) override;
-    void DrawSceneNode(const SceneNode& node, std::vector<uint64_t>& materialDescriptorSets) override;
+    void DrawSceneNode(const SceneNode& node, std::vector<std::vector<uint64_t>>& perItemDrawSets) override;
     void DrawQuad(std::vector<uint64_t>* descriptorSets = nullptr) override;
     
 private:
@@ -70,7 +70,7 @@ public:
     void End() override;
     void IssueMemoryBarrier(const RHIStructures::MemoryBarrier& barrier) override;
     void IssueImageMemoryBarrier(const ImageMemoryBarrier& barrier) override;
-    void DrawSceneNode(const SceneNode& node, std::vector<uint64_t>& materialDescriptorSets) override;
+    void DrawSceneNode(const SceneNode& node, std::vector<std::vector<uint64_t>>& perItemDrawSets) override;
     void DrawQuad(std::vector<uint64_t>* descriptorSets = nullptr) override;
     void BindDescriptorSets(std::vector<uint64_t>* descriptorSets);
 

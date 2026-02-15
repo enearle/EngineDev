@@ -160,7 +160,7 @@ void D3DRenderPassExecutor::IssueImageMemoryBarrier(const ImageMemoryBarrier& ba
     cmdList->ResourceBarrier(1, &d3dBarrier);
 }
 
-void D3DRenderPassExecutor::DrawSceneNode(const SceneNode& node, std::vector<uint64_t>& materialDescriptorSets)
+void D3DRenderPassExecutor::DrawSceneNode(const SceneNode& node, std::vector<std::vector<uint64_t>>& perItemDrawSets)
 {
 }
 
@@ -253,7 +253,7 @@ void VulkanRenderPassExecutor::Begin(Pipeline* pipeline,
         colourAttachments.push_back(attachment);
     }
     
-    renderingInfo.colorAttachmentCount = static_cast<uint32_t>(colourAttachmentViews.size());
+    renderingInfo.colorAttachmentCount = static_cast<uint32_t>(colourAttachments.size());
     renderingInfo.pColorAttachments = colourAttachments.data();
     
     VkRenderingAttachmentInfo depthAttachment{};
@@ -354,20 +354,45 @@ void VulkanRenderPassExecutor::IssueImageMemoryBarrier(const ImageMemoryBarrier&
     );
 }
 
-void VulkanRenderPassExecutor::DrawSceneNode(const SceneNode& node, std::vector<uint64_t>& materialDescriptorSets)
+void VulkanRenderPassExecutor::DrawSceneNode(const SceneNode& node, std::vector<std::vector<uint64_t>>& perItemDrawSets)
 {
     VkCommandBuffer cmdBuffer = GetCommandBuffer();
-    
+    BufferAllocator* bufferAlloc = BufferAllocator::GetInstance();
+
+    // Render meshes on this node
     for (size_t i = 0; i < node.GetMeshCount(); i++)
     {
         const Mesh* mesh = node.GetMesh(i);
         uint32_t materialIndex = mesh->GetLocalMaterialIndex();
-        std::vector<uint64_t> descriptorSets = { materialDescriptorSets[materialIndex] }; // Turning a single set into vector because func expects vector ptr
+        
+        std::vector<uint64_t> descriptorSets = perItemDrawSets[materialIndex];
         BindDescriptorSets(&descriptorSets);
         
-        vkCmdDraw(cmdBuffer, mesh->GetVertexCount(), 1, 0, 0);
+        BufferAllocation vertexBufferAlloc = bufferAlloc->GetBufferAllocation(mesh->GetVertexBufferID());
+        VkBuffer vertexBuffer = static_cast<VulkanBufferData*>(vertexBufferAlloc.Buffer)->Buffer;
+        VkDeviceSize offset = 0;
+        vkCmdBindVertexBuffers(cmdBuffer, 0, 1, &vertexBuffer, &offset);
+        
+        if (mesh->GetIndexCount() > 0)
+        {
+            BufferAllocation indexBufferAlloc = bufferAlloc->GetBufferAllocation(mesh->GetIndexBufferID());
+            VkBuffer indexBuffer = static_cast<VulkanBufferData*>(indexBufferAlloc.Buffer)->Buffer;
+            vkCmdBindIndexBuffer(cmdBuffer, indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+            vkCmdDrawIndexed(cmdBuffer, mesh->GetIndexCount(), 1, 0, 0, 0);
+        }
+        else
+        {
+            vkCmdDraw(cmdBuffer, mesh->GetVertexCount(), 1, 0, 0);
+        }
+    }
+
+    std::vector<SceneNode> children = node.GetChildren();
+    for (const SceneNode& child : children)
+    {
+        DrawSceneNode(child, perItemDrawSets);
     }
 }
+
 
 void VulkanRenderPassExecutor::DrawQuad(std::vector<uint64_t>* descriptorSets)
 {

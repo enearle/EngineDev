@@ -22,12 +22,20 @@ public:
     uint32_t GetVertexCount() const                     { return VertexCount; }
     uint32_t GetIndexCount() const                      { return IndexCount; }
     uint32_t GetLocalMaterialIndex() const              { return LocalMaterialIndex; }
-
+    
+    uint64_t GetVertexBufferID() const                 { return VertexBufferID; }
+    uint64_t GetIndexBufferID() const                  { return IndexBufferID; }
+    void* GetVertexBufferHandle() const;
+    void* GetIndexBufferHandle() const;
+    
 private:
     
     uint32_t VertexCount;
     uint32_t IndexCount;
     uint32_t LocalMaterialIndex;
+    
+    uint64_t VertexBufferID = 0;
+    uint64_t IndexBufferID = 0;
     
 };
 
