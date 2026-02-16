@@ -1,4 +1,7 @@
 ﻿#include "Mesh.h"
+
+#include <iostream>
+
 #include "../BufferAllocator.h"
 #include <stdexcept>
 

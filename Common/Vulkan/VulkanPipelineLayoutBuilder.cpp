@@ -5,14 +5,14 @@
 #include "VulkanCore.h"
 
 VkPipelineLayout VulkanPipelineLayoutBuilder::BuildPipelineLayout(uint32_t pipelineID,
-    const std::vector<ResourceLayout>& layouts, std::vector<VkDescriptorSetLayout>& descriptorSetLayouts)
+    const std::vector<ResourceLayout>& layouts, std::vector<VkDescriptorSetLayout>& descriptorSetLayouts, const std::vector<PipelineConstant>& constants)
 {
     VkDevice device = VulkanCore::GetInstance().GetDevice();
     if (!device)
         throw std::runtime_error("Vulkan device is null");
     
     // Create an empty pipeline layout if needed
-    if (layouts.size() == 1 && layouts[0].Bindings.empty())
+    if (layouts.size() == 1 && layouts[0].Bindings.empty() && constants.empty())
     {
         VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
         pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
@@ -73,14 +73,27 @@ VkPipelineLayout VulkanPipelineLayoutBuilder::BuildPipelineLayout(uint32_t pipel
             descriptorSetLayouts.push_back(descriptorSetLayout);
         }
     }
+    
+    // Define push constant ranges
+    std::vector<VkPushConstantRange> pushConstantRanges;
+    size_t pushConstantRangeOffset = 0;
+    for (const PipelineConstant& constant : constants)
+    {
+        VkPushConstantRange range{};
+        range.stageFlags = VulkanShaderStageFlags(constant.VisibleStages);
+        range.offset = pushConstantRangeOffset;
+        range.size = constant.Size;
+        pushConstantRanges.push_back(range);
+        pushConstantRangeOffset += constant.Size;
+    }
 
     // Create pipeline layout
     VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
     pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
     pipelineLayoutInfo.setLayoutCount = static_cast<uint32_t>(descriptorSetLayouts.size());
-    pipelineLayoutInfo.pSetLayouts = descriptorSetLayouts.data();
-    pipelineLayoutInfo.pushConstantRangeCount = 0;
-    pipelineLayoutInfo.pPushConstantRanges = nullptr;
+    pipelineLayoutInfo.pSetLayouts = descriptorSetLayouts.empty() ? nullptr : descriptorSetLayouts.data();
+    pipelineLayoutInfo.pushConstantRangeCount = static_cast<uint32_t>(pushConstantRanges.size());
+    pipelineLayoutInfo.pPushConstantRanges = pushConstantRanges.empty() ? nullptr : pushConstantRanges.data();
 
     VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
     VkResult result = vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &pipelineLayout);

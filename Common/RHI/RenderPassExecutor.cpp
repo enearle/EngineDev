@@ -5,6 +5,7 @@
 #include <DirectXMath.h>
 
 #include "BufferAllocator.h"
+#include "RHIConstants.h"
 
 
 RenderPassExecutor* RenderPassExecutor::Create()
@@ -103,7 +104,7 @@ void D3DRenderPassExecutor::Begin(Pipeline* pipeline,
         );
     }
 
-    cmdList->IASetPrimitiveTopology( dynamic_cast<D3DPipeline*>(pipeline)->GetTopology());
+    cmdList->IASetPrimitiveTopology(dynamic_cast<D3DPipeline*>(pipeline)->GetTopology());
     
     D3D12_VIEWPORT viewport{};
     viewport.TopLeftX = 0.0f;
@@ -160,7 +161,7 @@ void D3DRenderPassExecutor::IssueImageMemoryBarrier(const ImageMemoryBarrier& ba
     cmdList->ResourceBarrier(1, &d3dBarrier);
 }
 
-void D3DRenderPassExecutor::DrawSceneNode(const SceneNode& node, std::vector<std::vector<uint64_t>>& perItemDrawSets)
+void D3DRenderPassExecutor::DrawSceneNode(const SceneNode& node, std::vector<uint64_t>& perItemDrawSets, const DirectX::XMFLOAT4X4& camera)
 {
 }
 
@@ -206,40 +207,42 @@ void VulkanRenderPassExecutor::Begin(Pipeline* pipeline,
     
     VkImageView depthStencilView = VK_NULL_HANDLE;
     std::vector<VkImageView> colourAttachmentViews;
-    if (!colorViews.empty() || depthView)
-    {
+    if (!colorViews.empty())
         for (const auto& colorView : colorViews)
             colourAttachmentViews.push_back(reinterpret_cast<VkImageView>(colorView));
-        if (depthView)
-            depthStencilView = reinterpret_cast<VkImageView>(depthView);
-        
-        // Prepare clear values
-        std::vector<VkClearValue> clearValues;
-        for (size_t i = 0; i < clearColors.size(); ++i)
-        {
-            VkClearValue clearValue{};
-            clearValue.color = {clearColors[i].x, clearColors[i].y, clearColors[i].z, clearColors[i].w};
-            clearValues.push_back(clearValue);
-        }
-        if (depthView)
-        {
-            VkClearValue depthClear{};
-            depthClear.depthStencil = {clearDepth, 0};
-            clearValues.push_back(depthClear);
-        }
-    }
     else
-    {
         colourAttachmentViews = CurrentPipeline->GetOwnedImageViews();
-        if (CurrentPipeline->GetOwnedDepthImageView())
-            depthStencilView = CurrentPipeline->GetOwnedDepthImageView();
-        else if (colourAttachmentViews.empty())
-            throw std::runtime_error("No attachments provided.");
+    
+    if (depthView)
+        depthStencilView = reinterpret_cast<VkImageView>(depthView);
+    else 
+        depthStencilView = CurrentPipeline->GetOwnedDepthImageView();
+    
+    if (colourAttachmentViews.empty() && depthStencilView == VK_NULL_HANDLE)
+        throw std::runtime_error("No attachments provided.");
+    
+    if (clearColors.size() != colourAttachmentViews.size())
+        throw std::runtime_error("Number of clear colors does not match number of attachments.");
+    
+    std::vector<VkClearValue> clearValues;
+    VkClearValue depthClear{};
+    for (size_t i = 0; i < clearColors.size(); ++i)
+    {
+        VkClearValue clearValue{};
+        clearValue.color = {clearColors[i].x, clearColors[i].y, clearColors[i].z, clearColors[i].w};
+        clearValues.push_back(clearValue);
+    }
+    if (depthStencilView)
+    {
+        depthClear.depthStencil = {clearDepth, 0};
     }
     
     std::vector<VkAttachmentDescription> attachmentDescs = CurrentPipeline->GetAttachmentDescriptions();
+    VkAttachmentDescription depthStencilDesc = {};  // Initialize to zero
+    if (depthStencilView != VK_NULL_HANDLE) 
+        depthStencilDesc = CurrentPipeline->GetDepthAttachmentDescription();
     std::vector<VkRenderingAttachmentInfo> colourAttachments;
-    size_t numColourAttachments = depthView && !colorViews.empty() ? colourAttachmentViews.size() - 1 : colourAttachmentViews.size();
+    size_t numColourAttachments = colourAttachmentViews.size();
     
     for (size_t i = 0; i < numColourAttachments; ++i)
     {
@@ -261,9 +264,9 @@ void VulkanRenderPassExecutor::Begin(Pipeline* pipeline,
     {
         depthAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
         depthAttachment.imageView = depthStencilView;
-        depthAttachment.loadOp = attachmentDescs[colourAttachmentViews.size()].loadOp;
-        depthAttachment.storeOp = attachmentDescs[colourAttachmentViews.size()].storeOp;
-        depthAttachment.imageLayout = attachmentDescs[colourAttachmentViews.size()].finalLayout;
+        depthAttachment.loadOp = depthStencilDesc.loadOp;
+        depthAttachment.storeOp = depthStencilDesc.storeOp;
+        depthAttachment.imageLayout = depthStencilDesc.finalLayout;
         depthAttachment.clearValue.depthStencil = {clearDepth, 0};
         renderingInfo.pDepthAttachment = &depthAttachment;
     }
@@ -354,7 +357,7 @@ void VulkanRenderPassExecutor::IssueImageMemoryBarrier(const ImageMemoryBarrier&
     );
 }
 
-void VulkanRenderPassExecutor::DrawSceneNode(const SceneNode& node, std::vector<std::vector<uint64_t>>& perItemDrawSets)
+void VulkanRenderPassExecutor::DrawSceneNode(const SceneNode& node, std::vector<uint64_t>& perItemDrawSets, const DirectX::XMFLOAT4X4& camera)
 {
     VkCommandBuffer cmdBuffer = GetCommandBuffer();
     BufferAllocator* bufferAlloc = BufferAllocator::GetInstance();
@@ -365,8 +368,21 @@ void VulkanRenderPassExecutor::DrawSceneNode(const SceneNode& node, std::vector<
         const Mesh* mesh = node.GetMesh(i);
         uint32_t materialIndex = mesh->GetLocalMaterialIndex();
         
-        std::vector<uint64_t> descriptorSets = perItemDrawSets[materialIndex];
+        DirectX::XMFLOAT4X4 model;
+        DirectX::XMStoreFloat4x4(&model, node.GetModelMatrix());
+        
+        std::vector<uint64_t> descriptorSets = {perItemDrawSets[materialIndex]};
         BindDescriptorSets(&descriptorSets);
+        
+        RHIConstants::MVPData mvpData {camera, model};
+        
+
+        
+        vkCmdPushConstants(cmdBuffer, CurrentPipeline->GetPipelineLayout(),
+            VK_SHADER_STAGE_VERTEX_BIT,
+            0,
+            sizeof(RHIConstants::MVPData),
+            &mvpData);
         
         BufferAllocation vertexBufferAlloc = bufferAlloc->GetBufferAllocation(mesh->GetVertexBufferID());
         VkBuffer vertexBuffer = static_cast<VulkanBufferData*>(vertexBufferAlloc.Buffer)->Buffer;
@@ -389,7 +405,7 @@ void VulkanRenderPassExecutor::DrawSceneNode(const SceneNode& node, std::vector<
     std::vector<SceneNode> children = node.GetChildren();
     for (const SceneNode& child : children)
     {
-        DrawSceneNode(child, perItemDrawSets);
+        DrawSceneNode(child, perItemDrawSets, camera);
     }
 }
 

@@ -22,6 +22,7 @@ namespace RHIStructures
     //  ----------  Universal  ----------  //
     //=====================================//
     
+#pragma pack(push, 1)
     struct Vertex
     {
         DirectX::XMFLOAT3 Position = {0,0,0};
@@ -30,7 +31,8 @@ namespace RHIStructures
         DirectX::XMFLOAT3 Bitangent = {0,0,0};
         DirectX::XMFLOAT2 TexCoord = {0,0};
     };
-
+#pragma pack(pop)
+    
     class Mask
     {
     protected:
@@ -313,10 +315,17 @@ namespace RHIStructures
         DontCare = 1    // Results not needed
     };
     
+    struct PipelineConstant
+    {
+        size_t Size;
+        ShaderStageMask VisibleStages;
+    };
+    
     struct PipelineDesc
     {
         bool CreateOwnAttachments = false;
         bool UseOwnResourceLayout = true;
+        bool CreateDepthImage = false;
         bool CreateDepthAttachment = false;
         bool UseDescriptorBuffer = false;
         
@@ -339,8 +348,9 @@ namespace RHIStructures
         std::vector<Format> RenderTargetFormats = {};
         Format DepthStencilFormat = Format::Unknown;
         MultisampleState MultisampleState = {};
+        
+        std::vector<PipelineConstant> Constants = {};
         ResourceLayout ResourceLayout = {};
-
         std::vector<AttachmentLoadOp> ColorLoadOps = {};
         std::vector<AttachmentStoreOp> ColorStoreOps = {};
         AttachmentLoadOp DepthLoadOp = AttachmentLoadOp::DontCare;

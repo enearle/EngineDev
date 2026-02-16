@@ -58,7 +58,7 @@ public:
     
     void* GetOwnedImage(uint32_t index) override { return OwnedImages[index]; }
     
-    // Owned images are tracked in in allocations and do not need cleanup in pipeline
+    // Owned images are tracked in buffer allocator and do not need cleanup in pipeline
     std::vector<VkImage> GetOwnedImages() const { return OwnedImages; }
     std::vector<VkImageView> GetOwnedImageViews() const { return OwnedImageViews; }
     std::vector<VkDeviceMemory> GetOwnedImageMemory() const { return OwnedImageMemory; }
@@ -68,6 +68,7 @@ public:
     std::vector<uint64_t> GetInputDescriptorSetIDs() const { return PipelineInputDescriptorSetIDs; }
     
     std::vector<VkAttachmentDescription> GetAttachmentDescriptions() const { return AttachmentDescriptions; }
+    VkAttachmentDescription GetDepthAttachmentDescription() const { return DepthAttachmentDescription; }
 
 private:
     
@@ -79,6 +80,7 @@ private:
     VkImageView OwnedDepthImageView = VK_NULL_HANDLE;
     
     std::vector<VkAttachmentDescription> AttachmentDescriptions;
+    VkAttachmentDescription DepthAttachmentDescription;
     std::vector<VkShaderModule> ShaderModules;
     VkPipeline Pipeline = VK_NULL_HANDLE;
     VkPipelineLayout PipelineLayout = VK_NULL_HANDLE;

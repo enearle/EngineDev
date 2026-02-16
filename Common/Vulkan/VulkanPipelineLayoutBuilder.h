@@ -10,7 +10,8 @@ class VulkanPipelineLayoutBuilder
 public:
     static VkPipelineLayout BuildPipelineLayout(
         uint32_t pipelineID,
-        const std::vector<ResourceLayout>& layouts, std::vector<VkDescriptorSetLayout>& descriptorSetLayouts
+        const std::vector<ResourceLayout>& layouts, std::vector<VkDescriptorSetLayout>& descriptorSetLayouts, const std::
+        vector<PipelineConstant>& constants
     );
 
 private:

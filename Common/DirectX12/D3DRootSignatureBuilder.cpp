@@ -7,14 +7,14 @@
 
 using namespace Win32ErrorHandler;
 
-ComPtr<ID3D12RootSignature> D3DRootSignatureBuilder::BuildRootSignature(uint32_t pipelineID, const std::vector<ResourceLayout>& layouts)
+ComPtr<ID3D12RootSignature> D3DRootSignatureBuilder::BuildRootSignature(uint32_t pipelineID, const std::vector<ResourceLayout>& layouts, const std::vector<PipelineConstant>& constants)
 {
     ComPtr<ID3D12Device> device = D3DCore::GetInstance().GetDevice();
     if (!device)
         throw std::runtime_error("D3D12 device is null");
     
     std::vector<RootParameter> rootParameters;
-    CreateRootParameters(pipelineID, layouts, rootParameters);
+    CreateRootParameters(pipelineID, layouts, constants, rootParameters);
     
     std::vector<D3D12_ROOT_PARAMETER> parameters;
     parameters.reserve(rootParameters.size());
@@ -62,10 +62,22 @@ ComPtr<ID3D12RootSignature> D3DRootSignatureBuilder::BuildRootSignature(uint32_t
     return rootSignature;
 }
 
-
 void D3DRootSignatureBuilder::CreateRootParameters(uint32_t pipelineID, const std::vector<ResourceLayout>& layouts, 
-    std::vector<RootParameter>& outRootParameters)
+    const std::vector<PipelineConstant>& constants, std::vector<RootParameter>& outRootParameters)
 {
+    std::vector<D3D12_ROOT_PARAMETER> constantRanges;
+    uint32_t constantSlot = 0;
+    for (const PipelineConstant& constant : constants)
+    {
+        D3D12_ROOT_PARAMETER parameter = {};
+        parameter.ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
+        parameter.Constants.ShaderRegister = constantSlot++;
+        parameter.Constants.RegisterSpace = 0;
+        parameter.Constants.Num32BitValues = constant.Size / 4;
+        parameter.ShaderVisibility = DXShaderStageFlags(constant.VisibleStages);
+        constantRanges.push_back(parameter);
+    }
+    outRootParameters.insert(outRootParameters.end(), constantRanges.begin(), constantRanges.end());
     
     for (uint32_t i = 0; i < layouts.size(); i++)
     {

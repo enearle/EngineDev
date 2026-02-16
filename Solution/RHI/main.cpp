@@ -37,21 +37,9 @@ int main()
         
         CameraUBO cameraData;
         
-        DirectX::XMMATRIX view = DirectX::XMMatrixLookAtLH(DirectX::XMVectorSet(0.0f, -0.1f, -0.1f, 1), DirectX::XMVectorSet(0.0f, 0.0f, 0.0f, 1), DirectX::XMVectorSet(0.0f, 1.0f, 0.0f, 1));
-        //view = DirectX::XMMatrixInverse(nullptr, view);
+        DirectX::XMMATRIX view = DirectX::XMMatrixLookAtLH(DirectX::XMVectorSet(0.0, 10, 8, 1), DirectX::XMVectorSet(0.0f, 0.0f, 0.0f, 1), DirectX::XMVectorSet(0.0f, 1.0f, 0.0f, 1));
         DirectX::XMMATRIX projection = DirectX::XMMatrixPerspectiveFovLH(DirectX::XM_PIDIV2, 1280.0f / 720.0f, 0.1f, 100.0f);
         DirectX::XMStoreFloat4x4(&cameraData.ViewProjection, view * projection);
-        
-        BufferDesc cameraBufferDesc = DefaultConstantBufferDesc;
-        cameraBufferDesc.Size = sizeof(CameraUBO);
-        cameraBufferDesc.InitialData = &cameraData;
-        
-        ModelUBO modelData;
-        DirectX::XMStoreFloat4x4(&modelData.Model, DirectX::XMMatrixIdentity()); // Set your actual model matrix
-        
-        BufferDesc modelBufferDesc = DefaultConstantBufferDesc;
-        modelBufferDesc.Size = sizeof(ModelUBO);
-        modelBufferDesc.InitialData = &modelData;
         
         std::vector<uint64_t> pbrUniformBuffers {};
         
@@ -67,9 +55,8 @@ int main()
         std::vector<DirectX::XMFLOAT4> clearColors {{0,0,0,1}, {0,0,0,1}, {0,0,0,1}, {0,0,0,1}};
         bool initialized = false;
         
-        std::vector<BufferDesc> uniformBufferDescs = {cameraBufferDesc, modelBufferDesc};
-        std::vector<std::vector<uint64_t>> drawSets = {};
-        
+        //std::vector<std::vector<uint64_t>> drawSets = {};
+        std::vector<uint64_t> materialDescriptorSets;
         Uniform uniform;
         
         while (!window->PeekMessages())
@@ -80,16 +67,8 @@ int main()
             
             if (!initialized)
             {
-                uniform = Uniform(uniformBufferDescs);
-                uint64_t uniformSet = bufferAlloc->AllocateDescriptorSet(0,0, uniform.GetBindings());
-                
-                for (uint32_t i = 0; i < materials.size(); i++)
-                {
-                    std::vector<uint64_t> materialDescriptorSets;
-                    materialDescriptorSets.push_back(uniformSet);
-                    materialDescriptorSets.push_back(materials[i].LoadMaterial(0, 1));
-                    drawSets.push_back(materialDescriptorSets);
-                }
+                materialDescriptorSets.push_back(materials[0].LoadMaterial(0, 0));
+                materialDescriptorSets.push_back(materials[1].LoadMaterial(0, 0));
                 
                 ImageMemoryBarrier initBarrier = INIT_BARRIER;
                 initBarrier.ImageResource = PBRGeometryPipe->GetOwnedImage(0);
@@ -121,7 +100,7 @@ int main()
             executor->IssueImageMemoryBarrier(readToAttachmentBarrier);
             
             executor->Begin(PBRGeometryPipe, {}, nullptr, window->GetWidth(), window->GetHeight(), clearColors, 0);
-            executor->DrawSceneNode(meshRoot.GetSceneNode(), drawSets);
+            executor->DrawSceneNode(meshRoot.GetSceneNode(), materialDescriptorSets, cameraData.ViewProjection);
             executor->End();
             
             ImageMemoryBarrier gBufferBarrier = ATTACHMENT_TO_READ_BARRIER;

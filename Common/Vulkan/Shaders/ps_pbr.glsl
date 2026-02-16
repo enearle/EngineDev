@@ -8,9 +8,9 @@ layout(location = 3) in vec3 inBinormal;
 layout(location = 4) in vec2 inUV;
 
 // PBR textures
-layout(set = 1, binding = 0) uniform sampler2D albedoMap;
-layout(set = 1, binding = 1) uniform sampler2D normalMap;
-layout(set = 1, binding = 2) uniform sampler2D metallicRoughnessMap;
+layout(set = 0, binding = 0) uniform sampler2D albedoMap;
+layout(set = 0, binding = 1) uniform sampler2D normalMap;
+layout(set = 0, binding = 2) uniform sampler2D metallicRoughnessMap;
 
 // G-Buffer outputs (matching your lighting pass expectations)
 layout(location = 0) out vec4 outAlbedo;           // R8G8B8A8_UNORM

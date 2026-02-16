@@ -21,14 +21,11 @@ public:
     
     // End current rendering operation
     virtual void End() = 0;
-    
-    // Bind a pipeline for the current pass
-    
-    // Insert barriers between passes
+
     virtual void IssueMemoryBarrier(const RHIStructures::MemoryBarrier& barrier) = 0;
     virtual void IssueImageMemoryBarrier(const ImageMemoryBarrier& barrier) = 0;
     
-    virtual void DrawSceneNode(const SceneNode& node, std::vector<std::vector<uint64_t>>& perItemDrawSets) = 0;
+    virtual void DrawSceneNode(const SceneNode& node, std::vector<uint64_t>& perItemDrawSets, const DirectX::XMFLOAT4X4& camera) = 0;
     virtual void DrawQuad(std::vector<uint64_t>* descriptorSets = nullptr) = 0;
 };
 
@@ -47,7 +44,7 @@ public:
     void End() override;
     void IssueMemoryBarrier(const RHIStructures::MemoryBarrier& barrier) override;
     void IssueImageMemoryBarrier(const ImageMemoryBarrier& barrier) override;
-    void DrawSceneNode(const SceneNode& node, std::vector<std::vector<uint64_t>>& perItemDrawSets) override;
+    void DrawSceneNode(const SceneNode& node, std::vector<uint64_t>& perItemDrawSets, const DirectX::XMFLOAT4X4& camera) override;
     void DrawQuad(std::vector<uint64_t>* descriptorSets = nullptr) override;
     
 private:
@@ -70,7 +67,7 @@ public:
     void End() override;
     void IssueMemoryBarrier(const RHIStructures::MemoryBarrier& barrier) override;
     void IssueImageMemoryBarrier(const ImageMemoryBarrier& barrier) override;
-    void DrawSceneNode(const SceneNode& node, std::vector<std::vector<uint64_t>>& perItemDrawSets) override;
+    void DrawSceneNode(const SceneNode& node, std::vector<uint64_t>& perItemDrawSets, const DirectX::XMFLOAT4X4& camera) override;
     void DrawQuad(std::vector<uint64_t>* descriptorSets = nullptr) override;
     void BindDescriptorSets(std::vector<uint64_t>* descriptorSets);
 

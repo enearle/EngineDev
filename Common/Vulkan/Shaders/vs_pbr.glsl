@@ -8,13 +8,10 @@ layout(location = 3) in vec3 inBinormal;
 layout(location = 4) in vec2 inUV;
 
 // Uniform buffers
-layout(set = 0, binding = 0) uniform CameraBuffer {
+layout(push_constant, row_major) uniform MVPData {
     mat4 viewProjection;
-} camera;
-
-layout(set = 0, binding = 1) uniform ModelBuffer {
     mat4 model;
-} modelData;
+} mvpData;
 
 // Outputs to fragment shader
 layout(location = 0) out vec3 outWorldPosition;
@@ -25,20 +22,15 @@ layout(location = 4) out vec2 outUV;
 
 
 void main() {
-    // Transform position to world space
-    vec4 worldPosition = modelData.model * vec4(inPosition, 1.0);
+    vec4 worldPosition = vec4(inPosition, 1.0) * mvpData.model;
     outWorldPosition = worldPosition.xyz;
+    
+    gl_Position = worldPosition * mvpData.viewProjection;
+    
+    mat3 normalMatrix = mat3(mvpData.model);
+    outNormal   = normalize(inNormal   * normalMatrix);
+    outTangent  = normalize(inTangent  * normalMatrix);
+    outBinormal = normalize(inBinormal * normalMatrix);
 
-    // Transform to clip space
-    gl_Position = camera.viewProjection * worldPosition;
-
-    // Transform TBN vectors to world space (assuming uniform scaling)
-    // For non-uniform scaling, you'd need the normal matrix (transpose(inverse(model)))
-    mat3 normalMatrix = mat3(modelData.model);
-    outNormal = normalize(normalMatrix * inNormal);
-    outTangent = normalize(normalMatrix * inTangent);
-    outBinormal = normalize(normalMatrix * inBinormal);
-
-    // Pass through UVs
     outUV = inUV;
 }

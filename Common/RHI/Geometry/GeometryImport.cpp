@@ -1,5 +1,6 @@
 #include "GeometryImport.h"
 
+#include <iostream>
 #include <stdexcept>
 #include <assimp/Importer.hpp>
 #include <assimp/scene.h>
@@ -18,6 +19,9 @@ SceneNode GeometryImport::LoadNode(aiNode* node, const aiScene* scene, const XMM
     newNode.SetModelMatrix(newTransform);
     for (size_t i = 0; i < node->mNumMeshes; i++)
     {
+        std::string nodeName = node->mName.C_Str();
+        if (nodeName == "12_gauge_00_buck_box_HP") continue;
+        std::cout << node->mName.C_Str() << std::endl;
         uint32_t meshIndex = node->mMeshes[i];
         Mesh mesh = LoadMesh(scene->mMeshes[meshIndex], newTransform);
         newNode.AddMesh(mesh);
@@ -31,11 +35,11 @@ SceneNode GeometryImport::LoadNode(aiNode* node, const aiScene* scene, const XMM
 
 Mesh GeometryImport::LoadMesh(aiMesh* mesh, const XMMATRIX& transform)
 {
-    std::vector<RHIStructures::Vertex> vertices;
+    std::vector<Vertex> vertices;
     std::vector<uint32_t> indices;
     
     vertices.resize(mesh->mNumVertices);
-    indices.resize(mesh->mNumFaces * 3);
+    indices.reserve(mesh->mNumFaces * 3);
     
     for (size_t i = 0; i < mesh->mNumVertices; i++)
     {

@@ -189,12 +189,12 @@ namespace RHIConstants
                 }
         };
         
-        ShaderStageMask visibleStages = ShaderStageMask(0);
-        visibleStages.SetFragment(true);
+        ShaderStageMask descriptorVisibleStages = ShaderStageMask(0);
+        descriptorVisibleStages.SetFragment(true);
         
         TexturedQuadDesc.ResourceLayout = {
             .Bindings = bindings,
-            .VisibleStages = visibleStages
+            .VisibleStages = descriptorVisibleStages
         };
 
         // 11. Attachment load/store operations
@@ -205,6 +205,11 @@ namespace RHIConstants
 
         return Pipeline::Create(0,  TexturedQuadDesc);
     }
+    
+    struct MVPData {
+        DirectX::XMFLOAT4X4 ViewProjection;
+        DirectX::XMFLOAT4X4 Model;
+    }; 
     
     static Pipeline* PBRGeometryPipeline()
     {
@@ -247,7 +252,7 @@ namespace RHIConstants
         // 4. Rasterizer state
         PBRDescGeometry.RasterizerState = {
             FillMode::Solid,                        // Solid fill
-            CullMode::None,                         // Don't cull any faces
+            CullMode::Back,                         // Don't cull any faces
             false,                                  // Front face clockwise
             0.0f,                                   // No depth bias
             0.0f,                                   // No slope depth bias
@@ -259,7 +264,7 @@ namespace RHIConstants
         PBRDescGeometry.DepthStencilState = {
             true,
             true,
-            CompareOp::Less,                        // Comparison op
+            CompareOp::LessEqual,                   // Comparison op
             false,                                  // No depth bounds test
             0.0f,                                   // Min depth
             1.0f,                                   // Max depth
@@ -286,8 +291,9 @@ namespace RHIConstants
             Format::R32G32B32A32_FLOAT              // Position buffer
         };
 
-        // 8. No depth stencil
+        // 8. Depth
         PBRDescGeometry.DepthStencilFormat = Format::D32_FLOAT;
+        PBRDescGeometry.CreateDepthImage = true;
 
         // 9. Multisampling
         PBRDescGeometry.MultisampleState = {
@@ -297,12 +303,9 @@ namespace RHIConstants
         
         // 10. Binding texture
         std::vector<DescriptorBinding> bindings {
-        { .Type = DescriptorType::UniformBuffer, .Slot = 0, .Set = 0, .Count = 1 }, // Camera/VP
-        { .Type = DescriptorType::UniformBuffer, .Slot = 1, .Set = 0, .Count = 1 }, // Model
-            
-        { .Type = DescriptorType::SampledImage,  .Slot = 0, .Set = 1, .Count = 1 }, // Albedo
-        { .Type = DescriptorType::SampledImage,  .Slot = 1, .Set = 1, .Count = 1 }, // Normal
-        { .Type = DescriptorType::SampledImage,  .Slot = 2, .Set = 1, .Count = 1 }, // MetallicRoughness
+        { .Type = DescriptorType::SampledImage,  .Slot = 0, .Set = 0, .Count = 1 }, // Albedo
+        { .Type = DescriptorType::SampledImage,  .Slot = 1, .Set = 0, .Count = 1 }, // Normal
+        { .Type = DescriptorType::SampledImage,  .Slot = 2, .Set = 0, .Count = 1 }, // MetallicRoughness
         };
         
         ShaderStageMask visibleStages = ShaderStageMask(0);
@@ -319,6 +322,17 @@ namespace RHIConstants
         PBRDescGeometry.ColorStoreOps = {AttachmentStoreOp::Store, AttachmentStoreOp::Store, AttachmentStoreOp::Store, AttachmentStoreOp::Store};
         PBRDescGeometry.DepthLoadOp = AttachmentLoadOp::Clear;  // Changed from Load
         PBRDescGeometry.DepthStoreOp = AttachmentStoreOp::DontCare;
+        
+        // 12. Constants (ViewProjection & Model Matrices)
+        ShaderStageMask constantVisibleStages = ShaderStageMask(0);
+        constantVisibleStages.SetVertex(true);
+        std::vector<PipelineConstant> constants {
+                {
+                    .Size = sizeof(MVPData),
+                    .VisibleStages = constantVisibleStages
+                }
+        };
+        PBRDescGeometry.Constants = constants;
         
         return Pipeline::Create(0, PBRDescGeometry);
     }
@@ -487,5 +501,7 @@ namespace RHIConstants
         .Access = MemoryAccess(9),
         .InitialData = nullptr
     };
+    
+
     
 };
