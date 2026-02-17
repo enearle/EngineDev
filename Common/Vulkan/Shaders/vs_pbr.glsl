@@ -26,7 +26,6 @@ void main() {
     outWorldPosition = worldPosition.xyz;
 
     mat3 normalMatrix = transpose(inverse(mat3(mvpData.model)));
-    normalMatrix[0] *= -1;
     
     gl_Position = worldPosition * mvpData.viewProjection;
     outNormal   = normalize(inNormal * normalMatrix);

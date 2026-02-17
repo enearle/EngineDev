@@ -36,7 +36,7 @@ void main() {
     vec3 metallicRoughnessAO = texture(metallicRoughnessMap, inUV).rgb;
 
     outAlbedo = vec4(albedo, 1.0);
-    outNormal = vec4(worldNormal * 0.5 + 0.5, 1.0);
+    outNormal = vec4(worldNormal, 1.0);
     outMaterial = vec4(metallicRoughnessAO, 1.0);
     outPosition = vec4(inWorldPosition, 1.0);
 

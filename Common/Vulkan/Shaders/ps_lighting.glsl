@@ -37,7 +37,7 @@ void init()
 
     // Sample G-buffers
     albedo = texture(subBaseColour, screenPos).rgb;
-    normal = normalize(texture(subNormal, screenPos).rgb * 2 - 1);
+    normal = normalize(texture(subNormal, screenPos).rgb);
     fragPosition = texture(subPosition, screenPos).rgb;
 
     vec3 materialData = texture(subMetalicRoughnessAO, screenPos).rgb;
@@ -133,7 +133,7 @@ void main()
     
     // Define a simple point light in the scene
     Light light;
-    light.Position = vec3(-10.0, 20.0, 10.0);      // Light position in world space
+    light.Position = vec3(-20.0, -20.0, -20.0);   // Light position in world space
     light.Colour = vec3(1.0, 1.0, 1.0);         // White light
     light.Intensity = 20.0;                     // Light intensity
     light.Radius = 50.0;                        // Light radius
