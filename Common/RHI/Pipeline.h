@@ -15,6 +15,7 @@ public:
     
     IOResource* GetOutputResource() const { return PipelineOutputResource; }
     virtual void* GetOwnedImage(uint32_t index) = 0;
+    virtual void* GetOwnedDepthImage() = 0;
 };
 
 class D3DPipeline : public Pipeline
@@ -32,6 +33,7 @@ public:
     std::vector<D3D12_CPU_DESCRIPTOR_HANDLE> GetOwnedRTVs() const { return OwnedRTVs; }
     ComPtr<ID3D12Resource> GetOwnedDepthResource() const { return OwnedDepthResource; }
     D3D12_CPU_DESCRIPTOR_HANDLE GetOwnedDSV() const { return OwnedDSV; }
+    void* GetOwnedDepthImage() override { return OwnedDepthResource.Get(); }
     
 private:
     
@@ -66,6 +68,7 @@ public:
     VkDeviceMemory GetOwnedDepthImageMemory() const { return OwnedDepthImageMemory; }
     VkImageView GetOwnedDepthImageView() const { return OwnedDepthImageView; }
     std::vector<uint64_t> GetInputDescriptorSetIDs() const { return PipelineInputDescriptorSetIDs; }
+    void* GetOwnedDepthImage() override { return OwnedDepthImage; }
     
     std::vector<VkAttachmentDescription> GetAttachmentDescriptions() const { return AttachmentDescriptions; }
     VkAttachmentDescription GetDepthAttachmentDescription() const { return DepthAttachmentDescription; }

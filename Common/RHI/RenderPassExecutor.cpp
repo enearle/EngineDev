@@ -329,7 +329,7 @@ void VulkanRenderPassExecutor::IssueImageMemoryBarrier(const ImageMemoryBarrier&
     vkBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     vkBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     vkBarrier.image = reinterpret_cast<VkImage>(barrier.ImageResource);
-    vkBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    vkBarrier.subresourceRange.aspectMask = barrier.IsDepthImage ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
     vkBarrier.subresourceRange.baseMipLevel = barrier.BaseMipLevel;
     vkBarrier.subresourceRange.levelCount = barrier.MipLevelCount;
     vkBarrier.subresourceRange.baseArrayLayer = barrier.BaseArrayLayer;
@@ -369,7 +369,10 @@ void VulkanRenderPassExecutor::DrawSceneNode(const SceneNode& node, std::vector<
         uint32_t materialIndex = mesh->GetLocalMaterialIndex();
         
         DirectX::XMFLOAT4X4 model;
-        DirectX::XMStoreFloat4x4(&model, node.GetModelMatrix());
+        
+        DirectX::XMMATRIX m = node.GetModelMatrix();
+        m = DirectX::XMMatrixTranspose(m);
+        DirectX::XMStoreFloat4x4(&model, m);
         
         std::vector<uint64_t> descriptorSets = {perItemDrawSets[materialIndex]};
         BindDescriptorSets(&descriptorSets);

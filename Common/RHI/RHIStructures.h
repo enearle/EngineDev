@@ -273,12 +273,19 @@ namespace RHIStructures
     VkShaderStageFlags VulkanShaderStageFlags(ShaderStageMask flags);
     D3D12_SHADER_VISIBILITY DXShaderStageFlags(ShaderStageMask flags);
     
+    enum class SamplerType
+    {
+        Linear,
+        Nearest
+    };
+    
     struct DescriptorBinding
     {
         DescriptorType Type;
         uint32_t Slot;                  // "Binding index" (replaces Register)
         uint32_t Set;                   // "Descriptor set" (replaces Space) - 0 for most cases
         uint32_t Count;                 // For arrays
+        SamplerType Sampler;
     };
 
     struct ResourceLayout               // RootSignatureDesc 
@@ -353,6 +360,7 @@ namespace RHIStructures
         ResourceLayout ResourceLayout = {};
         std::vector<AttachmentLoadOp> ColorLoadOps = {};
         std::vector<AttachmentStoreOp> ColorStoreOps = {};
+        std::vector<SamplerType> AttachmentSamplers = {};
         AttachmentLoadOp DepthLoadOp = AttachmentLoadOp::DontCare;
         AttachmentStoreOp DepthStoreOp = AttachmentStoreOp::DontCare;
         
@@ -461,6 +469,7 @@ namespace RHIStructures
         uint32_t MipLevelCount = 1;
         uint32_t BaseArrayLayer = 0;
         uint32_t ArrayLayerCount = 1;
+        bool IsDepthImage = false;
     };
     VkPipelineStageFlags ConvertPipelineStage(PipelineStage stage);
     

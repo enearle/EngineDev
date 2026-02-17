@@ -113,7 +113,16 @@ VulkanPipelineLayoutBuilder::CreateDescriptorSetLayoutBinding(const DescriptorBi
     result.binding.descriptorType = VulkanDescriptorType(binding.Type);
     result.binding.descriptorCount = binding.Count > 0 ? binding.Count : 1;
     result.binding.stageFlags = VulkanShaderStageFlags(visibleStages);
-    result.binding.pImmutableSamplers = VulkanCore::GetInstance().GetGenericSampler();
+    
+    switch (binding.Sampler)
+    {
+    case SamplerType::Linear:
+        result.binding.pImmutableSamplers = VulkanCore::GetInstance().GetLinearSampler();
+        break;
+    case SamplerType::Nearest:
+        result.binding.pImmutableSamplers = VulkanCore::GetInstance().GetNearestSampler();
+        break;
+    }
 
     return result;
 }

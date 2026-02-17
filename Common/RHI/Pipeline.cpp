@@ -217,6 +217,10 @@ D3DPipeline::D3DPipeline(uint32_t pipelineID, const PipelineDesc& desc, std::vec
 
     device->CreateGraphicsPipelineState(&pipelineStateDesc, IID_PPV_ARGS(&PipelineState)) >> ERROR_HANDLER;
     
+    BufferAllocator* alloc = BufferAllocator::GetInstance();
+    
+    // Create depth image
+    DescriptorSetBinding bindingData{};
     if (desc.CreateDepthAttachment)
     {
         D3D12_RESOURCE_DESC depthResourceDesc = {};
@@ -241,12 +245,28 @@ D3DPipeline::D3DPipeline(uint32_t pipelineID, const PipelineDesc& desc, std::vec
         dsvDesc.Flags = D3D12_DSV_FLAG_NONE;
         dsvDesc.Texture2D.MipSlice = 0;
         device->CreateDepthStencilView(OwnedDepthResource.Get(), &dsvDesc, OwnedDSV);
+        
+        DescriptorBinding binding{};
+        binding.Type = DescriptorType::SampledImage;
+        binding.Count = 1;
+        binding.Set = desc.OutputDescriptorSetIndex;
+        binding.Slot = static_cast<uint32_t>(desc.RenderTargetFormats.size());
+        PipelineOutputResource->Layout.Bindings.push_back(binding);
+
+        // Create shader resource view descriptor for sampling the depth buffer
+        DX12ImageData* depthImageData = new DX12ImageData();
+        depthImageData->Image = OwnedDepthResource.Get();
+
+        ImageAllocation depthAllocation;
+        depthAllocation.Image = depthImageData;
+
+        
+        bindingData.Binding = binding.Slot;
+        bindingData.ResourceID = alloc->CacheImage(depthAllocation);
     }
     
     if (!desc.CreateOwnAttachments) return;
     PipelineOutputResource = new IOResource();
-    
-    BufferAllocator* alloc = BufferAllocator::GetInstance();
     
     OwnedRTVs.resize(desc.RenderTargetFormats.size());
     OwnedColorResources.resize(desc.RenderTargetFormats.size());
@@ -318,23 +338,6 @@ D3DPipeline::D3DPipeline(uint32_t pipelineID, const PipelineDesc& desc, std::vec
     
     if (desc.CreateDepthAttachment && desc.CreateDepthImage)
     {
-        DescriptorBinding binding{};
-        binding.Type = DescriptorType::SampledImage;
-        binding.Count = 1;
-        binding.Set = desc.OutputDescriptorSetIndex;
-        binding.Slot = static_cast<uint32_t>(desc.RenderTargetFormats.size());
-        PipelineOutputResource->Layout.Bindings.push_back(binding);
-
-        // Create shader resource view descriptor for sampling the depth buffer
-        DX12ImageData* depthImageData = new DX12ImageData();
-        depthImageData->Image = OwnedDepthResource.Get();
-
-        ImageAllocation depthAllocation;
-        depthAllocation.Image = depthImageData;
-
-        DescriptorSetBinding bindingData{};
-        bindingData.Binding = binding.Slot;
-        bindingData.ResourceID = alloc->CacheImage(depthAllocation);
         PipelineOutputResource->Bindings.push_back(bindingData);
     }
 }
@@ -648,6 +651,7 @@ VulkanPipeline::VulkanPipeline(uint32_t pipelineID, const PipelineDesc& desc, st
     }
     
     // Depth buffer (if needed)
+    DescriptorSetBinding depthBindingData{};
     if (desc.CreateDepthImage)
     {
         VkImageCreateInfo depthImageInfo{};
@@ -703,6 +707,23 @@ VulkanPipeline::VulkanPipeline(uint32_t pipelineID, const PipelineDesc& desc, st
         result = vkCreateImageView(VulkanCore::GetInstance().GetDevice(), &imageViewInfo, nullptr, &OwnedDepthImageView);
         if (result != VK_SUCCESS)
             throw std::runtime_error("Failed to create Vulkan image view for pipeline depth buffer!");
+        
+        VulkanImageData* vulkanImageData = new VulkanImageData();
+        vulkanImageData->ImageView = OwnedDepthImageView;
+        vulkanImageData->ImageHandle = OwnedDepthImage;
+        vulkanImageData->Memory = OwnedDepthImageMemory;
+        
+        DescriptorBinding binding{};
+        binding.Type = DescriptorType::SampledImage;
+        binding.Count = 1;
+        binding.Set = desc.OutputDescriptorSetIndex;
+        binding.Slot = static_cast<uint32_t>(OwnedImageViews.size());
+        binding.Sampler = SamplerType::Linear;
+        
+        ImageAllocation allocation;
+        allocation.Image = vulkanImageData;
+        depthBindingData.Binding = binding.Slot;
+        depthBindingData.ResourceID = BufferAllocator::GetInstance()->CacheImage(allocation);
     }
     
     
@@ -782,6 +803,7 @@ VulkanPipeline::VulkanPipeline(uint32_t pipelineID, const PipelineDesc& desc, st
         binding.Count = 1;
         binding.Set = desc.OutputDescriptorSetIndex;
         binding.Slot = static_cast<uint32_t>(i);
+        binding.Sampler = desc.AttachmentSamplers[i];
         PipelineOutputResource->Layout.Bindings.push_back(binding);
         
         ImageAllocation allocation;
@@ -795,24 +817,6 @@ VulkanPipeline::VulkanPipeline(uint32_t pipelineID, const PipelineDesc& desc, st
     
     if (desc.CreateDepthAttachment && desc.CreateDepthImage)
     {
-        VulkanImageData* vulkanImageData = new VulkanImageData();
-        vulkanImageData->ImageView = OwnedDepthImageView;
-        vulkanImageData->ImageHandle = OwnedDepthImage;
-        vulkanImageData->Memory = OwnedDepthImageMemory;
-        
-        DescriptorBinding binding{};
-        binding.Type = DescriptorType::SampledImage;
-        binding.Count = 1;
-        binding.Set = desc.OutputDescriptorSetIndex;
-        binding.Slot = static_cast<uint32_t>(OwnedImageViews.size());
-        PipelineOutputResource->Layout.Bindings.push_back(binding);
-        
-        ImageAllocation allocation;
-        allocation.Image = vulkanImageData;
-        
-        DescriptorSetBinding depthBindingData{};
-        depthBindingData.Binding = binding.Slot;
-        depthBindingData.ResourceID = BufferAllocator::GetInstance()->CacheImage(allocation);
         PipelineOutputResource->Bindings.push_back(depthBindingData);
     }
 }

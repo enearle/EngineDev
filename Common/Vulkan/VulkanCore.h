@@ -50,7 +50,8 @@ class VulkanCore
     std::vector<VkCommandBuffer> CommandBuffers;                            // Command buffer for each swapchain image.
     VkCommandBuffer TransferCommandBuffer               = VK_NULL_HANDLE;
     
-    VkSampler GenericSampler                            = VK_NULL_HANDLE;
+    VkSampler LinearSampler                             = VK_NULL_HANDLE;
+    VkSampler PointSampler                            = VK_NULL_HANDLE;
     
     // Debug
     const std::vector<const char*> DEVICE_EXTENSIONS = {
@@ -103,7 +104,8 @@ public:
     PFN_vkCmdBindDescriptorBuffersEXT GetVkCmdBindDescriptorBuffersEXT() const { return vkCmdBindDescriptorBuffersEXT_FnPtr; }
     PFN_vkCmdSetDescriptorBufferOffsetsEXT GetVkCmdSetDescriptorBufferOffsetsEXT() const { return vkCmdSetDescriptorBufferOffsetsEXT_FnPtr; }
     const VkPhysicalDeviceDescriptorBufferPropertiesEXT& GetDescriptorBufferProperties() const{ return DescriptorBufferProperties; }
-    const VkSampler* GetGenericSampler() const { return &GenericSampler; }
+    const VkSampler* GetLinearSampler() const { return &LinearSampler; }
+    const VkSampler* GetNearestSampler() const { return &PointSampler; }
     
 private:
     

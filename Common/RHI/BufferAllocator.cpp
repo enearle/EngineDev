@@ -456,7 +456,7 @@ uint64_t VulkanBufferAllocator::CreateImage(ImageDesc imageDesc, bool createDesc
         
         if (vkDescriptorType == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER)
         {
-            imageInfo.sampler = *VulkanCore::GetInstance().GetGenericSampler();
+            imageInfo.sampler = *VulkanCore::GetInstance().GetLinearSampler();
         }
         else
         {
@@ -511,7 +511,7 @@ void VulkanBufferAllocator::RegisterDescriptorSetLayout(uint32_t pipelineID, con
             vkBinding.descriptorType = VulkanDescriptorType(binding.Type);
             vkBinding.descriptorCount = binding.Count > 0 ? binding.Count : 1;
             vkBinding.stageFlags = VulkanShaderStageFlags(layout.VisibleStages);
-            vkBinding.pImmutableSamplers = VulkanCore::GetInstance().GetGenericSampler();
+            vkBinding.pImmutableSamplers = VulkanCore::GetInstance().GetLinearSampler();
             vkBindings.push_back(vkBinding);
             
             // Add to pool sizes
@@ -615,7 +615,7 @@ uint64_t VulkanBufferAllocator::AllocateDescriptorSet(uint32_t pipelineID, uint3
             VkDescriptorImageInfo imageInfo{};
             imageInfo.imageView = imageData->ImageView;
             imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-            imageInfo.sampler = *VulkanCore::GetInstance().GetGenericSampler();
+            imageInfo.sampler = *VulkanCore::GetInstance().GetLinearSampler();
             imageInfos.push_back(imageInfo);
             
             write.pImageInfo = &imageInfos.back();

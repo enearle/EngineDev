@@ -39,7 +39,8 @@ int main()
         
         DirectX::XMMATRIX view = DirectX::XMMatrixLookAtLH(DirectX::XMVectorSet(0.0, 10, 8, 1), DirectX::XMVectorSet(0.0f, 0.0f, 0.0f, 1), DirectX::XMVectorSet(0.0f, 1.0f, 0.0f, 1));
         DirectX::XMMATRIX projection = DirectX::XMMatrixPerspectiveFovLH(DirectX::XM_PIDIV2, 1280.0f / 720.0f, 0.1f, 100.0f);
-        DirectX::XMStoreFloat4x4(&cameraData.ViewProjection, view * projection);
+        DirectX::XMMATRIX vp = DirectX::XMMatrixTranspose(view * projection);
+        DirectX::XMStoreFloat4x4(&cameraData.ViewProjection, vp);
         
         std::vector<uint64_t> pbrUniformBuffers {};
         
@@ -80,6 +81,10 @@ int main()
                 initBarrier.ImageResource = PBRGeometryPipe->GetOwnedImage(3);
                 executor->IssueImageMemoryBarrier(initBarrier);
                 
+                ImageMemoryBarrier intDepthBarrier = INIT_DEPTH_BARRIER;
+                intDepthBarrier.ImageResource = PBRGeometryPipe->GetOwnedDepthImage();
+                executor->IssueImageMemoryBarrier(intDepthBarrier);
+                
                 initialized = true;
             }
             
@@ -99,7 +104,7 @@ int main()
             readToAttachmentBarrier.ImageResource = PBRGeometryPipe->GetOwnedImage(3);
             executor->IssueImageMemoryBarrier(readToAttachmentBarrier);
             
-            executor->Begin(PBRGeometryPipe, {}, nullptr, window->GetWidth(), window->GetHeight(), clearColors, 0);
+            executor->Begin(PBRGeometryPipe, {}, nullptr, window->GetWidth(), window->GetHeight(), clearColors, 1.0);
             executor->DrawSceneNode(meshRoot.GetSceneNode(), materialDescriptorSets, cameraData.ViewProjection);
             executor->End();
             

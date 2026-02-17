@@ -286,14 +286,21 @@ namespace RHIConstants
         // 7. Render target format
         PBRDescGeometry.RenderTargetFormats = {
             Format::R8G8B8A8_UNORM,                 // Albedo
-            Format::R16G16B16A16_FLOAT,             // Normal (high quality)
+            Format::R32G32B32A32_FLOAT,             // Normal (high quality)
             Format::R8G8B8A8_UNORM,                 // Mask for Metal, Rough, and AO
             Format::R32G32B32A32_FLOAT              // Position buffer
+        };
+        
+        PBRDescGeometry.AttachmentSamplers = {
+            SamplerType::Linear,
+            SamplerType::Nearest,
+            SamplerType::Linear,
+            SamplerType::Linear
         };
 
         // 8. Depth
         PBRDescGeometry.DepthStencilFormat = Format::D32_FLOAT;
-        PBRDescGeometry.CreateDepthImage = true;
+        PBRDescGeometry.CreateDepthImage = true; // <--- changing this will allow drawing without depth
 
         // 9. Multisampling
         PBRDescGeometry.MultisampleState = {
@@ -303,9 +310,9 @@ namespace RHIConstants
         
         // 10. Binding texture
         std::vector<DescriptorBinding> bindings {
-        { .Type = DescriptorType::SampledImage,  .Slot = 0, .Set = 0, .Count = 1 }, // Albedo
-        { .Type = DescriptorType::SampledImage,  .Slot = 1, .Set = 0, .Count = 1 }, // Normal
-        { .Type = DescriptorType::SampledImage,  .Slot = 2, .Set = 0, .Count = 1 }, // MetallicRoughness
+        { .Type = DescriptorType::SampledImage,  .Slot = 0, .Set = 0, .Count = 1, .Sampler = SamplerType::Linear }, // Albedo
+        { .Type = DescriptorType::SampledImage,  .Slot = 1, .Set = 0, .Count = 1, .Sampler = SamplerType::Nearest }, // Normal
+        { .Type = DescriptorType::SampledImage,  .Slot = 2, .Set = 0, .Count = 1, .Sampler = SamplerType::Linear }, // MetallicRoughness
         };
         
         ShaderStageMask visibleStages = ShaderStageMask(0);
@@ -439,6 +446,16 @@ namespace RHIConstants
         .DstAccessMask = static_cast<uint32_t>(AccessFlag::ShaderRead),
         .OldLayout = ImageLayout::Undefined,
         .NewLayout = ImageLayout::ShaderReadOnly,
+    };
+    
+    inline constexpr ImageMemoryBarrier INIT_DEPTH_BARRIER{
+        .SrcStage = PipelineStage::TopOfPipe,
+        .DstStage = PipelineStage::EarlyFragmentTests,
+        .SrcAccessMask = 0u,
+        .DstAccessMask = static_cast<uint32_t>(AccessFlag::DepthStencilAttachmentWrite),
+        .OldLayout = ImageLayout::Undefined,
+        .NewLayout = ImageLayout::DepthStencilAttachment,
+        .IsDepthImage = true
     };
     
     inline constexpr ImageMemoryBarrier ATTACHMENT_TO_READ_BARRIER{

@@ -19,30 +19,25 @@ layout(location = 2) out vec4 outMaterial;         // R8G8B8A8_UNORM (Metal, Rou
 layout(location = 3) out vec4 outPosition;         // R32G32B32A32_FLOAT
 
 void main() {
-    // Sample albedo texture
     vec3 albedo = texture(albedoMap, inUV).rgb;
 
-    // Sample normal map and convert from [0,1] to [-1,1]
-    vec3 tangentNormal = texture(normalMap, inUV).rgb * 2.0 - 1.0;
+    // Sample and decode normal map
+    vec3 tangentNormal = texture(normalMap, inUV).xyz * 2.0 - 1.0;
 
-    // Construct TBN matrix to transform normal from tangent space to world space
+    // Build TBN matrix - use TRANSPOSE if columns are wrong
     mat3 TBN = mat3(
     normalize(inTangent),
     normalize(inBinormal),
     normalize(inNormal)
     );
 
-    // Transform normal to world space
     vec3 worldNormal = normalize(TBN * tangentNormal);
 
-    // Sample metallic-roughness map
-    // Standard PBR convention: R = metallic, G = roughness, B = ambient occlusion
     vec3 metallicRoughnessAO = texture(metallicRoughnessMap, inUV).rgb;
 
-    // Output to G-Buffer targets
     outAlbedo = vec4(albedo, 1.0);
-    outNormal = vec4(worldNormal, 1.0);
-    outMaterial = vec4(metallicRoughnessAO, 1.0);  // R=metallic, G=roughness, B=AO
+    outNormal = vec4(worldNormal * 0.5 + 0.5, 1.0);
+    outMaterial = vec4(metallicRoughnessAO, 1.0);
     outPosition = vec4(inWorldPosition, 1.0);
 
 }

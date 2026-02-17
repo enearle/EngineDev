@@ -44,7 +44,8 @@ void VulkanCore::Cleanup()
     vkQueueWaitIdle(GraphicsQueue);
     vkQueueWaitIdle(PresentQueue);
     
-    vkDestroySampler(Device, GenericSampler, nullptr);
+    vkDestroySampler(Device, PointSampler, nullptr);
+    vkDestroySampler(Device, LinearSampler, nullptr);
     for (uint32_t i = 0; i < SwapChainImageCount; i++)
     {
         vkDestroySemaphore(Device, ImageAvailableSemaphores[i], nullptr);
@@ -421,7 +422,15 @@ void VulkanCore::CreateSamplers()
 
     samplerInfo.unnormalizedCoordinates = VK_FALSE;
     
-    VkResult result = vkCreateSampler(Device, &samplerInfo, nullptr, &GenericSampler);
+    VkResult result = vkCreateSampler(Device, &samplerInfo, nullptr, &LinearSampler);
+    if (result != VK_SUCCESS)
+        throw std::runtime_error("Failed to create texture sampler.");
+    
+    samplerInfo.magFilter = VK_FILTER_NEAREST;
+    samplerInfo.minFilter = VK_FILTER_NEAREST;
+    samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+    
+    result = vkCreateSampler(Device, &samplerInfo, nullptr, &PointSampler);
     if (result != VK_SUCCESS)
         throw std::runtime_error("Failed to create texture sampler.");
 }
