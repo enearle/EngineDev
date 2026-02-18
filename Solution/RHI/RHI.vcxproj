@@ -77,7 +77,7 @@
       <PreprocessorDefinitions>WIN32;_DEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp23</LanguageStandard>
-      <AdditionalOptions>-I$(VULKAN_SDK)\Include</AdditionalOptions>
+      <AdditionalIncludeDirectories>$(SolutionDir)..\External\assimp\include;$(VULKAN_SDK)\Include;</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -95,7 +95,7 @@
       <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp23</LanguageStandard>
-      <AdditionalOptions>-I$(VULKAN_SDK)\Include</AdditionalOptions>
+      <AdditionalIncludeDirectories>$(SolutionDir)..\External\assimp\include;$(VULKAN_SDK)\Include;</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -113,14 +113,13 @@
       <PreprocessorDefinitions>_DEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp23</LanguageStandard>
-      <AdditionalOptions>-I$(VULKAN_SDK)\Include</AdditionalOptions>
-      <AdditionalIncludeDirectories>$(SolutionDir)..\External\assimp\include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)..\External\assimp\include;$(VULKAN_SDK)\Include;</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalLibraryDirectories>$(VULKAN_SDK)\Lib;%(AdditionalLibraryDirectories);$(SolutionDir)..\External\assimp\lib;</AdditionalLibraryDirectories>
-      <AdditionalDependencies>vulkan-1.lib;%(AdditionalDependencies); $(SolutionDir)..\External\assimp\lib\Release\assimp-vc143-mt.lib</AdditionalDependencies>
+      <AdditionalDependencies>vulkan-1.lib;%(AdditionalDependencies);$(SolutionDir)..\External\assimp\lib\Release\assimp-vc143-mt.lib</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -132,7 +131,7 @@
       <PreprocessorDefinitions>NDEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp23</LanguageStandard>
-      <AdditionalOptions>-I$(VULKAN_SDK)\Include</AdditionalOptions>
+      <AdditionalIncludeDirectories>$(SolutionDir)..\External\assimp\include;$(VULKAN_SDK)\Include;</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -239,8 +238,7 @@
       <DisableAnalyzeExternal>false</DisableAnalyzeExternal>
       <PreprocessorDefinitions>_DEBUG;_WINDOWS;_UNICODE;UNICODE;</PreprocessorDefinitions>
       <SDLCheck>true</SDLCheck>
-      <AdditionalOptions>-IC:\Users\SwaggyJ\Documents\Vinyl\VulkanAPI\Include</AdditionalOptions>
-      <AdditionalIncludeDirectories>C:\Users\SwaggyJ\Desktop\GameEnginesDev2\EngineDev\Solution\..\External\assimp\include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)..\External\assimp\include;$(VULKAN_SDK)\Include</AdditionalIncludeDirectories>
       <LinkCompiled>true</LinkCompiled>
     </ClCompile>
     <ClCompile Include="..\..\Common\Vulkan\VulkanCore.cpp" />

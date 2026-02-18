@@ -430,6 +430,7 @@ void VulkanCore::CreateSamplers()
     samplerInfo.minFilter = VK_FILTER_NEAREST;
     samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
     
+    
     result = vkCreateSampler(Device, &samplerInfo, nullptr, &PointSampler);
     if (result != VK_SUCCESS)
         throw std::runtime_error("Failed to create texture sampler.");

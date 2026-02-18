@@ -39,7 +39,7 @@ int main()
         
         DirectX::XMMATRIX view = DirectX::XMMatrixLookAtLH(DirectX::XMVectorSet(0.0, 10, 8, 1), DirectX::XMVectorSet(0.0f, 0.0f, 0.0f, 1), DirectX::XMVectorSet(0.0f, 1.0f, 0.0f, 1));
         DirectX::XMMATRIX projection = DirectX::XMMatrixPerspectiveFovLH(DirectX::XM_PIDIV2, 1280.0f / 720.0f, 0.1f, 100.0f);
-        DirectX::XMMATRIX vp = DirectX::XMMatrixTranspose(view * projection);
+        DirectX::XMMATRIX vp = view * projection;
         DirectX::XMStoreFloat4x4(&cameraData.ViewProjection, vp);
         
         std::vector<uint64_t> pbrUniformBuffers {};

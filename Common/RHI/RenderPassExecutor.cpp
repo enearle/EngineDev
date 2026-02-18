@@ -369,10 +369,7 @@ void VulkanRenderPassExecutor::DrawSceneNode(const SceneNode& node, std::vector<
         uint32_t materialIndex = mesh->GetLocalMaterialIndex();
         
         DirectX::XMFLOAT4X4 model;
-        
-        DirectX::XMMATRIX m = node.GetModelMatrix();
-        m = DirectX::XMMatrixTranspose(m);
-        DirectX::XMStoreFloat4x4(&model, m);
+        DirectX::XMStoreFloat4x4(&model, node.GetModelMatrix());
         
         std::vector<uint64_t> descriptorSets = {perItemDrawSets[materialIndex]};
         BindDescriptorSets(&descriptorSets);

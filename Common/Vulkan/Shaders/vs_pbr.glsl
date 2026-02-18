@@ -8,7 +8,7 @@ layout(location = 3) in vec3 inBinormal;
 layout(location = 4) in vec2 inUV;
 
 // Uniform buffers
-layout(push_constant) uniform MVPData {
+layout(push_constant, row_major) uniform MVPData {
     mat4 viewProjection;
     mat4 model;
 } mvpData;
@@ -25,7 +25,7 @@ void main() {
     vec4 worldPosition = vec4(inPosition, 1.0) * mvpData.model;
     outWorldPosition = worldPosition.xyz;
 
-    mat3 normalMatrix = transpose(inverse(mat3(mvpData.model)));
+    mat3 normalMatrix = mat3(mvpData.model);
     
     gl_Position = worldPosition * mvpData.viewProjection;
     outNormal   = normalize(inNormal * normalMatrix);
