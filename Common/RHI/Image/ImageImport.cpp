@@ -106,7 +106,7 @@ ImageData* ImageImport::LoadImage_16Bit(const std::string& imagePath, bool force
 ImageData* ImageImport::LoadImageSideBySide(const std::vector<std::string>& fileNames, std::vector<std::vector<uint8_t>> imagecChannelDefaults)
 {
     ImageData* result = new ImageData{};
-
+    
     if (fileNames.empty() || fileNames.size() > 4)
         throw std::runtime_error("LoadImageSideBySide requires between 1 and 4 file names.");
 
@@ -156,7 +156,7 @@ ImageData* ImageImport::LoadImageSideBySide(const std::vector<std::string>& file
 
         totalChannels += channelsPerImage[i];
         if (totalChannels > 4)
-            throw std::runtime_error("All images' channels must total 4 or less.");
+            throw std::runtime_error("All images' channels must total 4 or total fallbackValues.");
     }
 
     bool anyLoaded = false;
@@ -178,6 +178,7 @@ ImageData* ImageImport::LoadImageSideBySide(const std::vector<std::string>& file
     else
         result->Pixels = new stbi_uc[static_cast<size_t>(baseWidth) * static_cast<size_t>(baseHeight) * static_cast<size_t>(totalChannels)];
 
+    uint32_t outputStride = (totalChannels == 3) ? 4 : totalChannels;
     for (int pixelIndex = 0; pixelIndex < baseWidth * baseHeight; ++pixelIndex)
     {
         uint32_t outputChannel = 0;
@@ -192,7 +193,7 @@ ImageData* ImageImport::LoadImageSideBySide(const std::vector<std::string>& file
             {
                 for (uint32_t channelIndex = 0; channelIndex < nCh; ++channelIndex)
                 {
-                    static_cast<stbi_uc*>(result->Pixels)[pixelIndex * totalChannels + outputChannel++] =
+                    static_cast<stbi_uc*>(result->Pixels)[pixelIndex * outputStride + outputChannel++] =
                         loadedFiles[imageIndex][pixelIndex * nCh + channelIndex];
                 }
             }
@@ -203,14 +204,15 @@ ImageData* ImageImport::LoadImageSideBySide(const std::vector<std::string>& file
                     const uint8_t fallback =
                         (channelIndex < imagecChannelDefaults[imageIndex].size()) ? imagecChannelDefaults[imageIndex][channelIndex] : 0;
 
-                    static_cast<stbi_uc*>(result->Pixels)[pixelIndex * totalChannels + outputChannel++] =
+                    static_cast<stbi_uc*>(result->Pixels)[pixelIndex * outputStride + outputChannel++] =
                         static_cast<stbi_uc>(fallback);
                 }
             }
         }
 
+        // Add an empty channel for 4 byte alignment
         if (totalChannels == 3)
-            static_cast<stbi_uc*>(result->Pixels)[pixelIndex * totalChannels + outputChannel] = 0;
+            static_cast<stbi_uc*>(result->Pixels)[pixelIndex * 4 + 3] = 0;
     }
 
     for (size_t i = 0; i < loadedFiles.size(); ++i)

@@ -478,9 +478,9 @@ namespace RHIConstants
     
     static const std::vector<std::vector<uint8_t>> DefaultMetalnessRoughnessOcclusion = 
     {
-        { 255 },
-        { 255 },
-        { 255 }
+        { 0 },
+        { 128 },
+        { 0 }
     };
     
     inline constexpr ImageUsage DefaultUploadImageUsage

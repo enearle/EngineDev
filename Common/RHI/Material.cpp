@@ -100,7 +100,7 @@ Material::Material(std::string name, MaterialFormat materialFormat) : Name(name)
         CachedTextures.push_back(emissiveCache);
         
         break;
-    
+        
     default:
         throw std::runtime_error("Invalid MaterialFormat");       
     }

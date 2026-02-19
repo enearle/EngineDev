@@ -28,6 +28,7 @@ float metallic;
 float ambientOcclusion;
 vec3 viewVector;
 vec2 screenPos;
+vec3 materialData;
 
 // Initialize variables from G-buffer
 void init()
@@ -40,14 +41,14 @@ void init()
     normal = normalize(texture(subNormal, screenPos).rgb);
     fragPosition = texture(subPosition, screenPos).rgb;
 
-    vec3 materialData = texture(subMetalicRoughnessAO, screenPos).rgb;
+    materialData = texture(subMetalicRoughnessAO, screenPos).rgb;
     metallic = materialData.r;
     roughness = max(materialData.g, 0.04);
     roughness = max(roughness * roughness, 0.001); // Square and clamp
     ambientOcclusion = materialData.b;
 
     // Camera is at origin for this test (adjust as needed)
-    vec3 camPosition = vec3(0.0, 10, 8);
+    vec3 camPosition = vec3(0.0, 10, -8);
     viewVector = normalize(camPosition - fragPosition);
 }
 
@@ -55,7 +56,7 @@ void init()
 float NormalDistribution(vec3 inHalfwayVector)
 {
     float roughness2 = roughness * roughness;
-    float nDotH2 = max(dot(normal, inHalfwayVector), 0.0);
+    float nDotH2 = max(dot(normal, inHalfwayVector), 0.0001);
     nDotH2 *= nDotH2;
     float denominator = nDotH2 * (roughness2 - 1) + 1;
     denominator = max(denominator * denominator * PI, 0.0001);
@@ -141,13 +142,8 @@ void main()
     // Calculate lighting
     vec3 outGoingLight = LightPBR(light);
 
-    // Add ambient term (very simple ambient occlusion)
-    //vec3 ambient = vec3(0.03) * albedo * ambientOcclusion;
-    //outGoingLight += ambient;
-
     // Output final color (no clamp needed, handled by render target)
     outColour = vec4(outGoingLight, 1.0);
-    //outColour = vec4(normal, 1);
     
     
 }

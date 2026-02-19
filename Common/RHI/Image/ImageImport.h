@@ -20,7 +20,7 @@ class ImageImport
 
 public:
     ImageImport(const std::string& fileName, bool is16Bit = false, bool forceNotEmpty = true);
-    ImageImport(const std::vector<std::string>& fileNames, std::vector<std::vector<uint8_t>> imagecChannelDefaults = std::vector<std::vector<uint8_t>>(4, std::vector<uint8_t>(4, 0)));
+    ImageImport(const std::vector<std::string>& fileNames, std::vector<std::vector<uint8_t>> imagecChannelDefaults = {{0}, {0}, {0}, {0}});
 
     ~ImageImport();
 

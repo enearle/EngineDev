@@ -22,19 +22,16 @@ void main() {
     vec3 albedo = texture(albedoMap, inUV).rgb;
 
     // Sample and decode normal map
-    vec3 tangentNormal = texture(normalMap, inUV);
-    
-    vec3 normal = normalize(inNormal);
-    vec3 tang = normalize(inTangent - dot(tangentNormal, normal) * normal);
+    vec3 tangentNormal = texture(normalMap, inUV).rgb * 2 - 1;
 
     // Build TBN matrix - use TRANSPOSE if columns are wrong
     mat3 TBN = mat3(
-    tang,
     normalize(inBinormal),
-    normal
+    normalize(inTangent),
+    normalize(inNormal)
     );
 
-    vec3 worldNormal = normalize(tangentNormal * TBN);
+    vec3 worldNormal = normalize(TBN * tangentNormal);
 
     vec3 metallicRoughnessAO = texture(metallicRoughnessMap, inUV).rgb;
 

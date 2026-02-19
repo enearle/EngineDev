@@ -77,8 +77,8 @@ RootNode GeometryImport::CreateMeshGroup(std::string filePath, const std::string
 {
     Assimp::Importer importer;
     const aiScene* scene = importer.ReadFile("Meshes/" + filePath, 
-        aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_JoinIdenticalVertices | 
-        aiProcess_CalcTangentSpace | aiProcess_GenSmoothNormals);
+        aiProcess_Triangulate | aiProcess_JoinIdenticalVertices | 
+        aiProcess_CalcTangentSpace | aiProcess_GenSmoothNormals | aiProcess_ConvertToLeftHanded);
     if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode)
         throw std::runtime_error("Failed to load model: " + filePath);
     
