@@ -1,48 +1,44 @@
 struct VSInput
 {
-    float3 Position : POSITION;
-    float3 Normal   : NORMAL;
-    float3 Tangent  : TANGENT;
-    float3 Binormal : BINORMAL;
-    float2 UV       : TEXCOORD;
+    float3 position     : POSITION;
+    float3 normal       : NORMAL;
+    float3 tangent      : TANGENT;
+    float3 bitangent    : BINORMAL;
+    float2 UV           : TEXCOORD;
 };
 
 struct VSOutput
 {
-    float4 PositionCS : SV_Position;
-    float3 NormalWS   : TEXCOORD0;
-    float3 TangentWS  : TEXCOORD1;
-    float3 BinormalWS : TEXCOORD2;
-    float2 UV         : TEXCOORD3;
+    float4 position     : SV_Position;
+    float3 worldPos     : TEXCOORD0;
+    float3 normal       : TEXCOORD1;
+    float3 tangent      : TEXCOORD2;
+    float3 bitangent    : TEXCOORD3;
+    float2 uv           : TEXCOORD4;
 };
 
-cbuffer CameraCB : register(b0)
+cbuffer VPData : register(b0)
 {
-    float4x4 gViewProj;
-    float3   gCameraPosWS;
-    float    _pad0;
-};
-
-cbuffer ObjectCB : register(b1)
-{
-    float4x4 gModel;
+    float4x4 model;
+    float4x4 normal;
+    float4x4 viewProjection;
+    float4 cameraPos;
 };
 
 VSOutput main(VSInput input)
 {
-    VSOutput o;
+    VSOutput output;
+    
+    float4 worldPos = mul(float4(input.position, 1), model);
+    output.worldPos = worldPos.xyz;
+    output.position = mul(worldPos, viewProjection);
+    
+    float3x3 normalMatrix = (float3x3)normal;
+    
+    output.normal   = mul(input.normal, normalMatrix);
+    output.tangent  = mul(input.tangent, normalMatrix);
+    output.bitangent = mul(input.bitangent, normalMatrix);
 
-    float4 posWS = mul(float4(input.Position, 1.0f), gModel);
-    o.PositionCS = mul(posWS, gViewProj);
-
-    // Transform basis vectors to world space.
-    // NOTE: This assumes gModel has no non-uniform scale. If it does, you want inverse-transpose for normals.
-    float3x3 m3 = (float3x3)gModel;
-
-    o.NormalWS   = mul(input.Normal,   m3);
-    o.TangentWS  = mul(input.Tangent,  m3);
-    o.BinormalWS = mul(input.Binormal, m3);
-
-    o.UV = input.UV;
-    return o;
+    output.uv = input.UV;
+    return output;
 }

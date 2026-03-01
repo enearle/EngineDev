@@ -161,7 +161,7 @@ void D3DRenderPassExecutor::IssueImageMemoryBarrier(const ImageMemoryBarrier& ba
     cmdList->ResourceBarrier(1, &d3dBarrier);
 }
 
-void D3DRenderPassExecutor::DrawSceneNode(const SceneNode& node, std::vector<uint64_t>& perItemDrawSets, const DirectX::XMFLOAT4X4& camera)
+void D3DRenderPassExecutor::DrawSceneNode(const SceneNode& node, std::vector<uint64_t>& perItemDrawSets, const DirectX::XMFLOAT4X4& camera, const DirectX::XMFLOAT4 camPos)
 {
 }
 
@@ -357,7 +357,7 @@ void VulkanRenderPassExecutor::IssueImageMemoryBarrier(const ImageMemoryBarrier&
     );
 }
 
-void VulkanRenderPassExecutor::DrawSceneNode(const SceneNode& node, std::vector<uint64_t>& perItemDrawSets, const DirectX::XMFLOAT4X4& camera)
+void VulkanRenderPassExecutor::DrawSceneNode(const SceneNode& node, std::vector<uint64_t>& perItemDrawSets, const DirectX::XMFLOAT4X4& camera, const DirectX::XMFLOAT4 camPos)
 {
     VkCommandBuffer cmdBuffer = GetCommandBuffer();
     BufferAllocator* bufferAlloc = BufferAllocator::GetInstance();
@@ -368,15 +368,18 @@ void VulkanRenderPassExecutor::DrawSceneNode(const SceneNode& node, std::vector<
         const Mesh* mesh = node.GetMesh(i);
         uint32_t materialIndex = mesh->GetLocalMaterialIndex();
         
+        DirectX::XMMATRIX modelMatrix = node.GetModelMatrix();
         DirectX::XMFLOAT4X4 model;
-        DirectX::XMStoreFloat4x4(&model, node.GetModelMatrix());
+        DirectX::XMStoreFloat4x4(&model, modelMatrix);
+
+        DirectX::XMFLOAT4X4 normal;
+        DirectX::XMMATRIX inverseTranspose = XMMatrixTranspose(XMMatrixInverse(nullptr, modelMatrix));
+        DirectX::XMStoreFloat4x4(&normal, inverseTranspose);
         
         std::vector<uint64_t> descriptorSets = {perItemDrawSets[materialIndex]};
         BindDescriptorSets(&descriptorSets);
         
-        RHIConstants::MVPData mvpData {camera, model};
-        
-
+        RHIConstants::MVPData mvpData { model, normal, camera, camPos };
         
         vkCmdPushConstants(cmdBuffer, CurrentPipeline->GetPipelineLayout(),
             VK_SHADER_STAGE_VERTEX_BIT,
@@ -405,7 +408,7 @@ void VulkanRenderPassExecutor::DrawSceneNode(const SceneNode& node, std::vector<
     std::vector<SceneNode> children = node.GetChildren();
     for (const SceneNode& child : children)
     {
-        DrawSceneNode(child, perItemDrawSets, camera);
+        DrawSceneNode(child, perItemDrawSets, camera, camPos);
     }
 }
 

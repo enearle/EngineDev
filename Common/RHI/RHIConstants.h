@@ -207,9 +207,11 @@ namespace RHIConstants
     }
     
     struct MVPData {
+        DirectX::XMFLOAT4X4 ModelMatrix;
+        DirectX::XMFLOAT4X4 NormalMatrix;
         DirectX::XMFLOAT4X4 ViewProjection;
-        DirectX::XMFLOAT4X4 Model;
-    }; 
+        DirectX::XMFLOAT4 CameraPosition;
+    };
     
     static Pipeline* PBRGeometryPipeline()
     {

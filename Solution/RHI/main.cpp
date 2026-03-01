@@ -35,14 +35,12 @@ int main()
         std::vector<IOResource> inputResources = {*PBRGeometryPipe->GetOutputResource()};
         Pipeline* PBRLightingPipe = DeferredLightingPipeline(&inputResources);
         
-        CameraUBO cameraData;
-        
-        DirectX::XMMATRIX view = DirectX::XMMatrixLookAtLH(DirectX::XMVectorSet(0.0, 10, -8, 1), DirectX::XMVectorSet(0.0f, 0.0f, 0.0f, 1), DirectX::XMVectorSet(0.0f, 1.0f, 0.0f, 1));
+        DirectX::XMFLOAT4 cameraPosition = {0.0, 10, -8, 1};
+        DirectX::XMFLOAT4X4 viewProj;
+        DirectX::XMMATRIX view = DirectX::XMMatrixLookAtLH(DirectX::XMLoadFloat4(&cameraPosition), DirectX::XMVectorSet(0.0f, 0.0f, 0.0f, 1), DirectX::XMVectorSet(0.0f, 1.0f, 0.0f, 1));
         DirectX::XMMATRIX projection = DirectX::XMMatrixPerspectiveFovLH(DirectX::XM_PIDIV2, 1280.0f / 720.0f, 0.1f, 100.0f);
         DirectX::XMMATRIX vp = view * projection;
-        DirectX::XMStoreFloat4x4(&cameraData.ViewProjection, vp);
-        
-        std::vector<uint64_t> pbrUniformBuffers {};
+        DirectX::XMStoreFloat4x4(&viewProj, vp);
         
         std::vector<Material> materials;
         materials.push_back(Material("shells_0", Material::PBR));
@@ -105,7 +103,7 @@ int main()
             executor->IssueImageMemoryBarrier(readToAttachmentBarrier);
             
             executor->Begin(PBRGeometryPipe, {}, nullptr, window->GetWidth(), window->GetHeight(), clearColors, 1.0);
-            executor->DrawSceneNode(meshRoot.GetSceneNode(), materialDescriptorSets, cameraData.ViewProjection);
+            executor->DrawSceneNode(meshRoot.GetSceneNode(), materialDescriptorSets, viewProj, cameraPosition);
             executor->End();
             
             ImageMemoryBarrier gBufferBarrier = ATTACHMENT_TO_READ_BARRIER;

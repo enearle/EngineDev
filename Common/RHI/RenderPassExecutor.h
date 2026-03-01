@@ -25,7 +25,7 @@ public:
     virtual void IssueMemoryBarrier(const RHIStructures::MemoryBarrier& barrier) = 0;
     virtual void IssueImageMemoryBarrier(const ImageMemoryBarrier& barrier) = 0;
     
-    virtual void DrawSceneNode(const SceneNode& node, std::vector<uint64_t>& perItemDrawSets, const DirectX::XMFLOAT4X4& camera) = 0;
+    virtual void DrawSceneNode(const SceneNode& node, std::vector<uint64_t>& perItemDrawSets, const DirectX::XMFLOAT4X4& viewProjX4, const DirectX::XMFLOAT4 camPos) = 0;
     virtual void DrawQuad(std::vector<uint64_t>* descriptorSets = nullptr) = 0;
 };
 
@@ -44,7 +44,7 @@ public:
     void End() override;
     void IssueMemoryBarrier(const RHIStructures::MemoryBarrier& barrier) override;
     void IssueImageMemoryBarrier(const ImageMemoryBarrier& barrier) override;
-    void DrawSceneNode(const SceneNode& node, std::vector<uint64_t>& perItemDrawSets, const DirectX::XMFLOAT4X4& camera) override;
+    void DrawSceneNode(const SceneNode& node, std::vector<uint64_t>& perItemDrawSets, const DirectX::XMFLOAT4X4& viewProjX4, const DirectX::XMFLOAT4 camPos) override;
     void DrawQuad(std::vector<uint64_t>* descriptorSets = nullptr) override;
     
 private:
@@ -67,7 +67,7 @@ public:
     void End() override;
     void IssueMemoryBarrier(const RHIStructures::MemoryBarrier& barrier) override;
     void IssueImageMemoryBarrier(const ImageMemoryBarrier& barrier) override;
-    void DrawSceneNode(const SceneNode& node, std::vector<uint64_t>& perItemDrawSets, const DirectX::XMFLOAT4X4& camera) override;
+    void DrawSceneNode(const SceneNode& node, std::vector<uint64_t>& perItemDrawSets, const DirectX::XMFLOAT4X4& viewProjX4, const DirectX::XMFLOAT4 camPos) override;
     void DrawQuad(std::vector<uint64_t>* descriptorSets = nullptr) override;
     void BindDescriptorSets(std::vector<uint64_t>* descriptorSets);
 

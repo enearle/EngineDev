@@ -9,8 +9,10 @@ layout(location = 4) in vec2 inUV;
 
 // Uniform buffers
 layout(push_constant, row_major) uniform MVPData {
-    mat4 viewProjection;
     mat4 model;
+    mat4 normal;
+    mat4 viewProjection;
+    vec4 cameraPosition;
 } mvpData;
 
 // Outputs to fragment shader
@@ -23,14 +25,14 @@ layout(location = 4) out vec2 outUV;
 
 void main() {
     vec4 worldPosition = vec4(inPosition, 1.0) * mvpData.model;
-    outWorldPosition = worldPosition.xyz;
-
-    mat3 normalMatrix = mat3(inverse(mvpData.model));
+    
+    mat3 normalMatrix = mat3(mvpData.normal);
     
     gl_Position = worldPosition * mvpData.viewProjection;
-    outNormal   = normalize(normalMatrix * inNormal);
-    outTangent  = normalize(normalMatrix * inTangent);
-    outBinormal = normalize(normalMatrix * inBinormal);
+    outWorldPosition = worldPosition.xyz;
+    outNormal   = normalize(inNormal * normalMatrix);
+    outTangent  = normalize(inTangent * normalMatrix);
+    outBinormal = normalize(inBinormal * normalMatrix);
 
     outUV = inUV;
 }

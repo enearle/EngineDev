@@ -153,6 +153,8 @@
     <Content Include="..\..\Common\DirectX12\Shaders\vs_quad.hlsl" />
     <Content Include="..\..\Common\DirectX12\Shaders\ps_pbr.hlsl" />
     <Content Include="..\..\Common\DirectX12\Shaders\vs_pbr.hlsl" />
+    <Content Include="..\..\Common\DirectX12\Shaders\ps_lighting.hlsl" />
+    <Content Include="..\..\Common\DirectX12\Shaders\vs_lighting.hlsl" />
     <ClCompile Include="..\..\Common\Input\InputState.cpp" />
     <ClCompile Include="..\..\Common\MetaData.cpp" />
     <ClCompile Include="..\..\Common\RHI\BufferAllocator.cpp" />

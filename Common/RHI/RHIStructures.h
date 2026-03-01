@@ -22,7 +22,6 @@ namespace RHIStructures
     //  ----------  Universal  ----------  //
     //=====================================//
     
-#pragma pack(push, 1)
     struct Vertex
     {
         DirectX::XMFLOAT3 Position = {0,0,0};
@@ -31,7 +30,6 @@ namespace RHIStructures
         DirectX::XMFLOAT3 Bitangent = {0,0,0};
         DirectX::XMFLOAT2 TexCoord = {0,0};
     };
-#pragma pack(pop)
     
     class Mask
     {
@@ -605,18 +603,6 @@ namespace RHIStructures
     {
         std::vector<DescriptorSetBinding> Bindings;
         ResourceLayout Layout;
-    };
-    
-    //===================================//
-    //  ------  Uniform Buffers  ------  //
-    //===================================//
-    
-    struct CameraUBO {
-        DirectX::XMFLOAT4X4 ViewProjection;
-    };
-
-    struct ModelUBO {
-        DirectX::XMFLOAT4X4 Model;
     };
 
 }

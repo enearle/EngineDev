@@ -33,10 +33,8 @@ vec3 materialData;
 // Initialize variables from G-buffer
 void init()
 {
-    // Screen position in 0-1 range
     screenPos = gl_FragCoord.xy / textureSize(subNormal, 0);
-
-    // Sample G-buffers
+    
     albedo = texture(subBaseColour, screenPos).rgb;
     normal = normalize(texture(subNormal, screenPos).rgb);
     fragPosition = texture(subPosition, screenPos).rgb;
@@ -46,8 +44,7 @@ void init()
     roughness = max(materialData.g, 0.04);
     roughness = max(roughness * roughness, 0.001); // Square and clamp
     ambientOcclusion = materialData.b;
-
-    // Camera is at origin for this test (adjust as needed)
+    
     vec3 camPosition = vec3(0.0, 10, -8);
     viewVector = normalize(camPosition - fragPosition);
 }
@@ -134,10 +131,10 @@ void main()
     
     // Define a simple point light in the scene
     Light light;
-    light.Position = vec3(20.0, 20.0, 20.0);   // Light position in world space
-    light.Colour = vec3(1.0, 1.0, 1.0);         // White light
-    light.Intensity = 20.0;                     // Light intensity
-    light.Radius = 50.0;                        // Light radius
+    light.Position = vec3(-20.0, 20.0, -20.0);      // Light position in world space
+    light.Colour = vec3(1.0, 1.0, 1.0);             // White light
+    light.Intensity = 20.0;                         // Light intensity
+    light.Radius = 50.0;                            // Light radius
 
     // Calculate lighting
     vec3 outGoingLight = LightPBR(light);
