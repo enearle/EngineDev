@@ -1,8 +1,13 @@
 ﻿#include "../../Common/RHI/BufferAllocator.h"
 #include "D3DRootSignatureBuilder.h"
+
+#include <algorithm>
+
 #include "../Windows/Win32ErrorHandler.h"
 #include <stdexcept>
 #include <d3dcompiler.h>
+#include <iostream>
+
 #include "D3DCore.h"
 
 using namespace Win32ErrorHandler;
@@ -33,6 +38,7 @@ ComPtr<ID3D12RootSignature> D3DRootSignatureBuilder::BuildRootSignature(uint32_t
     samplers[0].ComparisonFunc = D3D12_COMPARISON_FUNC_NEVER;
     samplers[0].BorderColor = D3D12_STATIC_BORDER_COLOR_OPAQUE_WHITE;
     samplers[0].MinLOD = 0.0f;
+    samplers[0].MaxLOD = D3D12_FLOAT32_MAX;
     samplers[0].ShaderRegister = 0;
     samplers[0].RegisterSpace = 0;
     samplers[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
@@ -131,6 +137,38 @@ void D3DRootSignatureBuilder::CreateRootParameters(uint32_t pipelineID, const st
                 
                 uavRanges.push_back(range);
             }
+        }
+        
+        if (!srvRanges.empty())
+        {
+            // Sort ranges by base shader register
+            std::sort(srvRanges.begin(), srvRanges.end(), 
+                [](const D3D12_DESCRIPTOR_RANGE& a, const D3D12_DESCRIPTOR_RANGE& b) {
+                    return a.BaseShaderRegister < b.BaseShaderRegister;
+                });
+    
+            // Consolidate contiguous ranges
+            std::vector<D3D12_DESCRIPTOR_RANGE> consolidatedRanges;
+            for (size_t i = 0; i < srvRanges.size(); ) {
+                D3D12_DESCRIPTOR_RANGE range = srvRanges[i];
+                size_t j = i + 1;
+        
+                // Merge contiguous bindings
+                while (j < srvRanges.size() && 
+                       srvRanges[j].BaseShaderRegister == range.BaseShaderRegister + range.NumDescriptors) {
+                    range.NumDescriptors += srvRanges[j].NumDescriptors;
+                    j++;
+                       }
+        
+                // First range starts at 0, others append
+                range.OffsetInDescriptorsFromTableStart = 
+                    consolidatedRanges.empty() ? 0 : D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+        
+                consolidatedRanges.push_back(range);
+                i = j;
+            }
+    
+            srvRanges = consolidatedRanges;
         }
         
         if (!srvRanges.empty())

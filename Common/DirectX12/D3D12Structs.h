@@ -11,7 +11,7 @@ namespace D3D12Structs
 
     struct DX12BufferData
     {
-        ID3D12Resource* Buffer = nullptr;
+        ComPtr<ID3D12Resource> Buffer;  // Changed from ID3D12Resource*
         D3D12_GPU_VIRTUAL_ADDRESS GPUAddress = 0;
     };
     

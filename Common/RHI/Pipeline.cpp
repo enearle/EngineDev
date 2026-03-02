@@ -43,7 +43,8 @@ D3DPipeline::D3DPipeline(uint32_t pipelineID, const PipelineDesc& desc, std::vec
         for (uint32_t i = desc.UseOwnResourceLayout ? 1 : 0; i < resourceLayouts.size(); i++)
         {
             uint32_t inputIndex = desc.UseOwnResourceLayout ? i - 1 : i;
-            uint64_t descriptorSetID = BufferAllocator::GetInstance()->AllocateDescriptorSet(pipelineID, i, inputIOResources->at(inputIndex).Bindings);
+            uint64_t descriptorSetID = BufferAllocator::GetInstance()->AllocateDescriptorSet(
+                pipelineID, i, inputIOResources->at(inputIndex).Bindings);
             PipelineInputDescriptorSetIDs.push_back(descriptorSetID);
         }
     
@@ -52,7 +53,7 @@ D3DPipeline::D3DPipeline(uint32_t pipelineID, const PipelineDesc& desc, std::vec
     // in compute shaders and only use graphics pipelines for a purely rasterized process.
     D3D12_STREAM_OUTPUT_DESC streamOutputDesc = {};
     streamOutputDesc.NumEntries = 0;
-
+    
     D3D12_BLEND_DESC blendDesc = {};
     blendDesc.AlphaToCoverageEnable = desc.MultisampleState.SampleCount > 1 ? desc.MultisampleState.AlphaToCoverageEnable : FALSE;
     blendDesc.IndependentBlendEnable = desc.BlendAttachmentStates.size() > 1;
@@ -128,7 +129,7 @@ D3DPipeline::D3DPipeline(uint32_t pipelineID, const PipelineDesc& desc, std::vec
         D3D12_INPUT_ELEMENT_DESC element = {};
         const char* semanticName = SemanticNameString(attr.SemanticName);
         element.SemanticName = !semanticName ? "TEXCOORD" : semanticName;
-        element.SemanticIndex = attr.Location;
+        element.SemanticIndex = attr.SemanticIndex;
         element.Format = DXFormat(attr.Format);
         element.InputSlot = attr.Binding;
         element.AlignedByteOffset = attr.Offset;
@@ -218,10 +219,11 @@ D3DPipeline::D3DPipeline(uint32_t pipelineID, const PipelineDesc& desc, std::vec
     device->CreateGraphicsPipelineState(&pipelineStateDesc, IID_PPV_ARGS(&PipelineState)) >> ERROR_HANDLER;
     
     BufferAllocator* alloc = BufferAllocator::GetInstance();
+    DirectX12BufferAllocator* dxAlloc = static_cast<DirectX12BufferAllocator*>(alloc);
     
     // Create depth image
-    DescriptorSetBinding bindingData{};
-    if (desc.CreateDepthAttachment)
+    DescriptorSetBinding depthBindingData{};
+    if (desc.CreateDepthImage)
     {
         D3D12_RESOURCE_DESC depthResourceDesc = {};
         depthResourceDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
@@ -234,35 +236,32 @@ D3DPipeline::D3DPipeline(uint32_t pipelineID, const PipelineDesc& desc, std::vec
         depthResourceDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
         depthResourceDesc.SampleDesc.Count = 1;
         depthResourceDesc.SampleDesc.Quality = 0;
-        
+    
         D3D12_HEAP_PROPERTIES heapProps = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
         device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &depthResourceDesc, 
-            D3D12_RESOURCE_STATE_DEPTH_WRITE, nullptr, IID_PPV_ARGS(&OwnedDepthResource)) >> ERROR_HANDLER;
-        
+            D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&OwnedDepthResource)) >> ERROR_HANDLER;
+    
         D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc = {};
         dsvDesc.Format = DXFormat(desc.DepthStencilFormat);
         dsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
         dsvDesc.Flags = D3D12_DSV_FLAG_NONE;
         dsvDesc.Texture2D.MipSlice = 0;
+          
+        OwnedDSV = dxAlloc->AllocateDescriptor(DirectX12BufferAllocator::DescriptorType::DSV);
         device->CreateDepthStencilView(OwnedDepthResource.Get(), &dsvDesc, OwnedDSV);
-        
-        DescriptorBinding binding{};
-        binding.Type = DescriptorType::SampledImage;
-        binding.Count = 1;
-        binding.Set = desc.OutputDescriptorSetIndex;
-        binding.Slot = static_cast<uint32_t>(desc.RenderTargetFormats.size());
-        PipelineOutputResource->Layout.Bindings.push_back(binding);
-
-        // Create shader resource view descriptor for sampling the depth buffer
+    
+        // Cache depth image for next pipeline
         DX12ImageData* depthImageData = new DX12ImageData();
-        depthImageData->Image = OwnedDepthResource.Get();
-
+        depthImageData->Image = OwnedDepthResource;
+    
         ImageAllocation depthAllocation;
         depthAllocation.Image = depthImageData;
-
-        
-        bindingData.Binding = binding.Slot;
-        bindingData.ResourceID = alloc->CacheImage(depthAllocation);
+        depthAllocation.Desc.Format = desc.DepthStencilFormat;
+        depthAllocation.Desc.Width = desc.AttachmentWidth;
+        depthAllocation.Desc.Height = desc.AttachmentHeight;
+    
+        depthBindingData.Binding = static_cast<uint32_t>(desc.RenderTargetFormats.size());
+        depthBindingData.ResourceID = alloc->CacheImage(depthAllocation);
     }
     
     if (!desc.CreateOwnAttachments) return;
@@ -270,6 +269,8 @@ D3DPipeline::D3DPipeline(uint32_t pipelineID, const PipelineDesc& desc, std::vec
     
     OwnedRTVs.resize(desc.RenderTargetFormats.size());
     OwnedColorResources.resize(desc.RenderTargetFormats.size());
+    
+    PipelineOutputResource->Layout.VisibleStages.SetFragment(true);
     
     for (size_t i = 0; i < desc.RenderTargetFormats.size(); i++)
     {
@@ -297,15 +298,18 @@ D3DPipeline::D3DPipeline(uint32_t pipelineID, const PipelineDesc& desc, std::vec
         resourceDesc.MipLevels = 1;
         resourceDesc.Format = DXFormat(desc.RenderTargetFormats[i]);
         resourceDesc.SampleDesc = sampleDesc;
+        resourceDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
         
         D3D12_HEAP_PROPERTIES heapProps = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
         device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &resourceDesc, 
-            D3D12_RESOURCE_STATE_RENDER_TARGET, nullptr, IID_PPV_ARGS(&OwnedColorResources[i])) >> ERROR_HANDLER;
+            D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&OwnedColorResources[i])) >> ERROR_HANDLER;
 
         D3D12_RENDER_TARGET_VIEW_DESC rtvDesc = {};
         rtvDesc.Format = DXFormat(desc.RenderTargetFormats[i]);
         rtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
         rtvDesc.Texture2D.MipSlice = 0;
+        
+        OwnedRTVs[i] = dxAlloc->AllocateDescriptor(DirectX12BufferAllocator::DescriptorType::RTV);
         device->CreateRenderTargetView(OwnedColorResources[i].Get(), &rtvDesc, OwnedRTVs[i]);
     
         DescriptorBinding binding{};
@@ -314,8 +318,7 @@ D3DPipeline::D3DPipeline(uint32_t pipelineID, const PipelineDesc& desc, std::vec
         binding.Set = desc.OutputDescriptorSetIndex;
         binding.Slot = static_cast<uint32_t>(i);
         PipelineOutputResource->Layout.Bindings.push_back(binding);
-    
-        // Create shader resource view descriptor for sampling this render target
+        
         D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
         srvDesc.Format = DXFormat(desc.RenderTargetFormats[i]);
         srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
@@ -324,11 +327,14 @@ D3DPipeline::D3DPipeline(uint32_t pipelineID, const PipelineDesc& desc, std::vec
         srvDesc.Texture2D.MostDetailedMip = 0;
 
         DX12ImageData* imageData = new DX12ImageData();
-        imageData->Image = OwnedColorResources[i].Get();
-        // If your DX12ImageData has an SRV field, you'd create/store the descriptor here
-    
+        imageData->Image = OwnedColorResources[i];
+        if (!imageData->Image.Get())
+            throw std::runtime_error("Render target resource is NULL!");
         ImageAllocation imageAllocation;
         imageAllocation.Image = imageData;
+        imageAllocation.Desc.Format = desc.RenderTargetFormats[i];
+        imageAllocation.Desc.Width = desc.AttachmentWidth;
+        imageAllocation.Desc.Height = desc.AttachmentHeight;
     
         DescriptorSetBinding bindingData{};
         bindingData.Binding = binding.Slot;
@@ -338,7 +344,18 @@ D3DPipeline::D3DPipeline(uint32_t pipelineID, const PipelineDesc& desc, std::vec
     
     if (desc.CreateDepthAttachment && desc.CreateDepthImage)
     {
-        PipelineOutputResource->Bindings.push_back(bindingData);
+        PipelineOutputResource->Bindings.push_back(depthBindingData);
+    }
+    
+    if (PipelineOutputResource)
+    {
+        char buf[512];
+        sprintf_s(buf, "=== GEOMETRY PIPELINE: PipelineOutputResource created ===\n");
+        OutputDebugStringA(buf);
+        sprintf_s(buf, "Bindings.size() = %zu\n", PipelineOutputResource->Bindings.size());
+        OutputDebugStringA(buf);
+        sprintf_s(buf, "Layout.Bindings.size() = %zu\n", PipelineOutputResource->Layout.Bindings.size());
+        OutputDebugStringA(buf);
     }
 }
 

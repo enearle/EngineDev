@@ -1,22 +1,23 @@
-﻿#include "RenderPassExecutor.h"
+﻿#include "PipelineExecutor.h"
 #include "../DirectX12/D3DCore.h"
 #include "../Vulkan/VulkanCore.h"
 #include "../GraphicsSettings.h"
 #include <DirectXMath.h>
-
+#include "../DirectX12/D3D12Structs.h"
 #include "BufferAllocator.h"
 #include "RHIConstants.h"
 
+using namespace D3D12Structs;
 
-RenderPassExecutor* RenderPassExecutor::Create()
+PipelineExecutor* PipelineExecutor::Create()
 {
     if (GRAPHICS_SETTINGS.APIToUse == Vulkan)
     {
-        return new VulkanRenderPassExecutor();
+        return new VulkanPipelineExecutor();
     }
     else if (GRAPHICS_SETTINGS.APIToUse == DirectX12)
     {
-        return new D3DRenderPassExecutor();
+        return new D3DPipelineExecutor();
     }
     else
     {
@@ -28,10 +29,10 @@ RenderPassExecutor* RenderPassExecutor::Create()
 // DirectX 12                                     //
 //================================================//
 
-D3DRenderPassExecutor::D3DRenderPassExecutor() = default;
-D3DRenderPassExecutor::~D3DRenderPassExecutor() = default;
+D3DPipelineExecutor::D3DPipelineExecutor() = default;
+D3DPipelineExecutor::~D3DPipelineExecutor() = default;
 
-void D3DRenderPassExecutor::Begin(Pipeline* pipeline,
+void D3DPipelineExecutor::Begin(Pipeline* pipeline,
                                    const std::vector<void*>& colorViews,
                                    void* depthView,
                                    uint32_t width, uint32_t height,
@@ -39,49 +40,61 @@ void D3DRenderPassExecutor::Begin(Pipeline* pipeline,
                                    float clearDepth)
 {
     ID3D12GraphicsCommandList* cmdList = GetCommandList();
-    D3DPipeline* d3dPipeline = static_cast<D3DPipeline*>(pipeline);
+    CurrentPipeline = static_cast<D3DPipeline*>(pipeline);
     
     // Set root signature and pipeline state
-    cmdList->SetGraphicsRootSignature(d3dPipeline->GetRootSignature());
-    cmdList->SetPipelineState(d3dPipeline->GetPipelineState());
+    cmdList->SetGraphicsRootSignature(CurrentPipeline->GetRootSignature());
+    cmdList->SetPipelineState(CurrentPipeline->GetPipelineState());
+    
+    BufferAllocator* bufferAlloc = BufferAllocator::GetInstance();
+    DirectX12BufferAllocator* dxAlloc = static_cast<DirectX12BufferAllocator*>(bufferAlloc);
+    ID3D12DescriptorHeap* heaps[] = { dxAlloc->GetShaderResourceHeap().Get() };
+    cmdList->SetDescriptorHeaps(1, heaps);
     
     // Convert view handles to D3D12 format
     std::vector<D3D12_CPU_DESCRIPTOR_HANDLE> rtvHandles;
-    D3D12_CPU_DESCRIPTOR_HANDLE dsvHandle;
+    D3D12_CPU_DESCRIPTOR_HANDLE dsvHandle = {};
+    D3D12_CPU_DESCRIPTOR_HANDLE* pDsvHandle = nullptr;
+
     if (!colorViews.empty() || depthView)
     {
         for (const auto& colorView : colorViews)
         {
             D3D12_CPU_DESCRIPTOR_HANDLE handle;
-            handle.ptr = reinterpret_cast<SIZE_T>(colorView);  // Reconstruct from the value
+            handle.ptr = reinterpret_cast<SIZE_T>(colorView);
             rtvHandles.push_back(handle);
         }
-    
-        D3D12_CPU_DESCRIPTOR_HANDLE* pDsvHandle = nullptr;
+
         if (depthView)
         {
             dsvHandle = *reinterpret_cast<D3D12_CPU_DESCRIPTOR_HANDLE*>(depthView);
             pDsvHandle = &dsvHandle;
         }
-    
-        cmdList->OMSetRenderTargets(
-            static_cast<UINT>(rtvHandles.size()),
-            rtvHandles.data(),
-            FALSE,
-            pDsvHandle
-        );
     }
     else
     {
-        rtvHandles = d3dPipeline->GetOwnedRTVs();
-        dsvHandle = d3dPipeline->GetOwnedDSV();
-        
-        if (!dsvHandle.ptr || rtvHandles.empty())
+        rtvHandles = CurrentPipeline->GetOwnedRTVs();
+        dsvHandle = CurrentPipeline->GetOwnedDSV();
+    
+        if (dsvHandle.ptr != 0)
+        {
+            pDsvHandle = &dsvHandle;
+        }
+    
+        if (rtvHandles.empty() && !pDsvHandle)
             throw std::runtime_error("No attachments provided.");
     }
-    
+
+    // Set render targets (for both external and owned attachments)
+    cmdList->OMSetRenderTargets(
+        static_cast<UINT>(rtvHandles.size()),
+        rtvHandles.empty() ? nullptr : rtvHandles.data(),
+        FALSE,
+        pDsvHandle
+    );
+
     // Clear render targets
-    for (size_t i = 0; i < colorViews.size(); ++i)
+    for (size_t i = 0; i < rtvHandles.size() && i < clearColors.size(); ++i)
     {
         float clearColor[] = {
             clearColors[i].x,
@@ -91,14 +104,14 @@ void D3DRenderPassExecutor::Begin(Pipeline* pipeline,
         };
         cmdList->ClearRenderTargetView(rtvHandles[i], clearColor, 0, nullptr);
     }
-    
-    if (depthView)
+
+    if (pDsvHandle)
     {
         cmdList->ClearDepthStencilView(
-            dsvHandle,
+            *pDsvHandle,
             D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL,
             clearDepth,
-            0,  // stencil clear value
+            0,
             0,
             nullptr
         );
@@ -123,13 +136,13 @@ void D3DRenderPassExecutor::Begin(Pipeline* pipeline,
     cmdList->RSSetScissorRects(1, &scissor);
 }
 
-void D3DRenderPassExecutor::End()
+void D3DPipelineExecutor::End()
 {
     // Empty atm
 
 }
 
-void D3DRenderPassExecutor::IssueMemoryBarrier(const RHIStructures::MemoryBarrier& barrier)
+void D3DPipelineExecutor::IssueMemoryBarrier(const RHIStructures::MemoryBarrier& barrier)
 {
     ID3D12GraphicsCommandList* cmdList = GetCommandList();
     
@@ -141,7 +154,7 @@ void D3DRenderPassExecutor::IssueMemoryBarrier(const RHIStructures::MemoryBarrie
     cmdList->ResourceBarrier(1, &d3dBarrier);
 }
 
-void D3DRenderPassExecutor::IssueImageMemoryBarrier(const ImageMemoryBarrier& barrier)
+void D3DPipelineExecutor::IssueImageMemoryBarrier(const ImageMemoryBarrier& barrier)
 {
     ID3D12GraphicsCommandList* cmdList = GetCommandList();
     ID3D12Resource* resource = reinterpret_cast<ID3D12Resource*>(barrier.ImageResource);
@@ -161,17 +174,110 @@ void D3DRenderPassExecutor::IssueImageMemoryBarrier(const ImageMemoryBarrier& ba
     cmdList->ResourceBarrier(1, &d3dBarrier);
 }
 
-void D3DRenderPassExecutor::DrawSceneNode(const SceneNode& node, std::vector<uint64_t>& perItemDrawSets, const DirectX::XMFLOAT4X4& camera, const DirectX::XMFLOAT4 camPos)
+void D3DPipelineExecutor::DrawSceneNode(const SceneNode& node, std::vector<uint64_t>& perItemDrawSets, const DirectX::XMFLOAT4X4& camera, const DirectX::XMFLOAT4 camPos)
 {
+    // Render meshes on this node
+    for (size_t i = 0; i < node.GetMeshCount(); i++)
+    {
+        const Mesh* mesh = node.GetMesh(i);
+        uint32_t materialIndex = mesh->GetLocalMaterialIndex();
+        
+        DirectX::XMMATRIX modelMatrix = node.GetModelMatrix();
+        DirectX::XMFLOAT4X4 model;
+        DirectX::XMStoreFloat4x4(&model, modelMatrix);
+
+        DirectX::XMFLOAT4X4 normal;
+        DirectX::XMMATRIX inverseTranspose = XMMatrixTranspose(XMMatrixInverse(nullptr, modelMatrix));
+        DirectX::XMStoreFloat4x4(&normal, inverseTranspose);
+        
+        std::vector<uint64_t> descriptorSets = {perItemDrawSets[materialIndex]};
+        BindDescriptorSets(&descriptorSets, true);
+        
+        RHIConstants::MVPData mvpData { model, normal, camera, camPos };
+        DrawIndexed(mesh->GetVertexBufferID(), mesh->GetVertexCount(), mesh->GetIndexBufferID(), mesh->GetIndexCount(), 
+            &mvpData, sizeof(RHIConstants::MVPData));
+    }
+
+    std::vector<SceneNode> children = node.GetChildren();
+    for (const SceneNode& child : children)
+    {
+        DrawSceneNode(child, perItemDrawSets, camera, camPos);
+    }
 }
 
-void D3DRenderPassExecutor::DrawQuad(std::vector<uint64_t>* descriptorSets)
+void D3DPipelineExecutor::DrawIndexed(uint64_t vertBufferID, uint32_t vertCount, uint64_t indexBufferID, 
+    uint32_t indexCount, void* pushConstant, size_t pushConstantSize)
 {
     ID3D12GraphicsCommandList* cmdList = GetCommandList();
+    BufferAllocator* bufferAlloc = BufferAllocator::GetInstance();
+    
+    if (pushConstant && pushConstantSize > 0)
+    {
+        uint32_t num32BitValues = static_cast<uint32_t>(pushConstantSize / 4);
+        cmdList->SetGraphicsRoot32BitConstants(0, num32BitValues, pushConstant, 0);
+    }
+    
+    BufferAllocation vertAlloc = bufferAlloc->GetBufferAllocation(vertBufferID);
+    BufferAllocation indexAlloc = bufferAlloc->GetBufferAllocation(indexBufferID);
+    
+    // Get GPU virtual addresses from the buffer data
+    DX12BufferData* vertBufferData = DXBuffer(vertAlloc);
+    DX12BufferData* indexBufferData = DXBuffer(indexAlloc);
+    
+    // Reconstructing views per draw call
+    D3D12_VERTEX_BUFFER_VIEW vbv = {};
+    vbv.BufferLocation = vertBufferData->GPUAddress;
+    vbv.SizeInBytes = static_cast<UINT>(vertAlloc.Size);
+    vbv.StrideInBytes = static_cast<UINT>(vertAlloc.Size / vertCount);  // Calculate stride
+    
+    D3D12_INDEX_BUFFER_VIEW ibv = {};
+    ibv.BufferLocation = indexBufferData->GPUAddress;
+    ibv.SizeInBytes = static_cast<UINT>(indexAlloc.Size);
+    ibv.Format = DXGI_FORMAT_R32_UINT;
+
+    cmdList->IASetVertexBuffers(0, 1, &vbv);
+    cmdList->IASetIndexBuffer(&ibv);
+    cmdList->DrawIndexedInstanced(indexCount, 1, 0, 0, 0);
+}
+
+void D3DPipelineExecutor::DrawQuad(std::vector<uint64_t>* descriptorSets)
+{
+    ID3D12GraphicsCommandList* cmdList = GetCommandList();
+    BindDescriptorSets(descriptorSets);
     cmdList->DrawInstanced(6, 1, 0, 0);
 }
 
-ID3D12GraphicsCommandList* D3DRenderPassExecutor::GetCommandList()
+void D3DPipelineExecutor::BindDescriptorSets(std::vector<uint64_t>* descriptorSets, bool hasPushConstant)
+{
+    ID3D12GraphicsCommandList* cmdList = GetCommandList();
+    BufferAllocator* bufferAlloc = BufferAllocator::GetInstance();
+    
+    uint32_t rootParamIndex = hasPushConstant ? 1 : 0;
+    
+    if (descriptorSets)
+    {
+        for (size_t i = 0; i < descriptorSets->size(); i++)
+        {
+            uint64_t descriptorSetID = descriptorSets->at(i);
+            DescriptorSetAllocation allocation = bufferAlloc->GetDescriptorSet(descriptorSetID);
+            
+            D3D12_GPU_DESCRIPTOR_HANDLE handle;
+            handle.ptr = allocation.DescriptorAddress;
+            
+            cmdList->SetGraphicsRootDescriptorTable(rootParamIndex++, handle);
+        }
+    }
+    
+    for (uint64_t descriptorSetID : CurrentPipeline->GetInputDescriptorSetIDs())
+    {
+        DescriptorSetAllocation allocation = bufferAlloc->GetDescriptorSet(descriptorSetID);
+        D3D12_GPU_DESCRIPTOR_HANDLE handle;
+        handle.ptr = allocation.DescriptorAddress;
+        cmdList->SetGraphicsRootDescriptorTable(rootParamIndex++, handle);
+    }
+}
+
+ID3D12GraphicsCommandList* D3DPipelineExecutor::GetCommandList()
 {
     return D3DCore::GetInstance().GetCommandList().Get();
 }
@@ -180,16 +286,16 @@ ID3D12GraphicsCommandList* D3DRenderPassExecutor::GetCommandList()
 // Vulkan                                         //
 //================================================//
 
-VulkanRenderPassExecutor::VulkanRenderPassExecutor()
+VulkanPipelineExecutor::VulkanPipelineExecutor()
 {
 }
 
-VulkanRenderPassExecutor::~VulkanRenderPassExecutor()
+VulkanPipelineExecutor::~VulkanPipelineExecutor()
 {
     
 }
 
-void VulkanRenderPassExecutor::Begin(Pipeline* pipeline,
+void VulkanPipelineExecutor::Begin(Pipeline* pipeline,
                                      const std::vector<void*>& colorViews,
                                      void* depthView,
                                      uint32_t width, uint32_t height,
@@ -293,13 +399,13 @@ void VulkanRenderPassExecutor::Begin(Pipeline* pipeline,
     vkCmdSetScissor(cmdBuffer, 0, 1, &scissor);
 }
 
-void VulkanRenderPassExecutor::End()
+void VulkanPipelineExecutor::End()
 {
     VkCommandBuffer cmdBuffer = GetCommandBuffer();
     vkCmdEndRendering(cmdBuffer);
 }
 
-void VulkanRenderPassExecutor::IssueMemoryBarrier(const RHIStructures::MemoryBarrier& barrier)
+void VulkanPipelineExecutor::IssueMemoryBarrier(const RHIStructures::MemoryBarrier& barrier)
 {
     VkMemoryBarrier memBarrier{};
     memBarrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
@@ -317,7 +423,7 @@ void VulkanRenderPassExecutor::IssueMemoryBarrier(const RHIStructures::MemoryBar
     );
 }
 
-void VulkanRenderPassExecutor::IssueImageMemoryBarrier(const ImageMemoryBarrier& barrier)
+void VulkanPipelineExecutor::IssueImageMemoryBarrier(const ImageMemoryBarrier& barrier)
 {
     VkCommandBuffer cmdBuffer = GetCommandBuffer();
     
@@ -357,11 +463,8 @@ void VulkanRenderPassExecutor::IssueImageMemoryBarrier(const ImageMemoryBarrier&
     );
 }
 
-void VulkanRenderPassExecutor::DrawSceneNode(const SceneNode& node, std::vector<uint64_t>& perItemDrawSets, const DirectX::XMFLOAT4X4& camera, const DirectX::XMFLOAT4 camPos)
+void VulkanPipelineExecutor::DrawSceneNode(const SceneNode& node, std::vector<uint64_t>& perItemDrawSets, const DirectX::XMFLOAT4X4& camera, const DirectX::XMFLOAT4 camPos)
 {
-    VkCommandBuffer cmdBuffer = GetCommandBuffer();
-    BufferAllocator* bufferAlloc = BufferAllocator::GetInstance();
-
     // Render meshes on this node
     for (size_t i = 0; i < node.GetMeshCount(); i++)
     {
@@ -377,32 +480,11 @@ void VulkanRenderPassExecutor::DrawSceneNode(const SceneNode& node, std::vector<
         DirectX::XMStoreFloat4x4(&normal, inverseTranspose);
         
         std::vector<uint64_t> descriptorSets = {perItemDrawSets[materialIndex]};
-        BindDescriptorSets(&descriptorSets);
+        BindDescriptorSets(&descriptorSets, true);
         
         RHIConstants::MVPData mvpData { model, normal, camera, camPos };
-        
-        vkCmdPushConstants(cmdBuffer, CurrentPipeline->GetPipelineLayout(),
-            VK_SHADER_STAGE_VERTEX_BIT,
-            0,
-            sizeof(RHIConstants::MVPData),
-            &mvpData);
-        
-        BufferAllocation vertexBufferAlloc = bufferAlloc->GetBufferAllocation(mesh->GetVertexBufferID());
-        VkBuffer vertexBuffer = static_cast<VulkanBufferData*>(vertexBufferAlloc.Buffer)->Buffer;
-        VkDeviceSize offset = 0;
-        vkCmdBindVertexBuffers(cmdBuffer, 0, 1, &vertexBuffer, &offset);
-        
-        if (mesh->GetIndexCount() > 0)
-        {
-            BufferAllocation indexBufferAlloc = bufferAlloc->GetBufferAllocation(mesh->GetIndexBufferID());
-            VkBuffer indexBuffer = static_cast<VulkanBufferData*>(indexBufferAlloc.Buffer)->Buffer;
-            vkCmdBindIndexBuffer(cmdBuffer, indexBuffer, 0, VK_INDEX_TYPE_UINT32);
-            vkCmdDrawIndexed(cmdBuffer, mesh->GetIndexCount(), 1, 0, 0, 0);
-        }
-        else
-        {
-            vkCmdDraw(cmdBuffer, mesh->GetVertexCount(), 1, 0, 0);
-        }
+        DrawIndexed(mesh->GetVertexBufferID(), mesh->GetVertexCount(), mesh->GetIndexBufferID(), mesh->GetIndexCount(), 
+            &mvpData, sizeof(RHIConstants::MVPData));
     }
 
     std::vector<SceneNode> children = node.GetChildren();
@@ -412,17 +494,45 @@ void VulkanRenderPassExecutor::DrawSceneNode(const SceneNode& node, std::vector<
     }
 }
 
-
-void VulkanRenderPassExecutor::DrawQuad(std::vector<uint64_t>* descriptorSets)
+void VulkanPipelineExecutor::DrawIndexed(uint64_t vertBufferID, uint32_t vertCount, uint64_t indexBufferID, 
+    uint32_t indexCount, void* pushConstant, size_t pushConstantSize)
 {
     VkCommandBuffer cmdBuffer = GetCommandBuffer();
+    BufferAllocator* bufferAlloc = BufferAllocator::GetInstance();
     
+    vkCmdPushConstants(cmdBuffer, CurrentPipeline->GetPipelineLayout(),
+    VK_SHADER_STAGE_VERTEX_BIT,
+    0,
+    pushConstantSize,
+    pushConstant);
+        
+    BufferAllocation vertexBufferAlloc = bufferAlloc->GetBufferAllocation(vertBufferID);
+    VkBuffer vertexBuffer = static_cast<VulkanBufferData*>(vertexBufferAlloc.Buffer)->Buffer;
+    VkDeviceSize offset = 0;
+    vkCmdBindVertexBuffers(cmdBuffer, 0, 1, &vertexBuffer, &offset);
+        
+    if (indexCount > 0)
+    {
+        BufferAllocation indexBufferAlloc = bufferAlloc->GetBufferAllocation(indexBufferID);
+        VkBuffer indexBuffer = static_cast<VulkanBufferData*>(indexBufferAlloc.Buffer)->Buffer;
+        vkCmdBindIndexBuffer(cmdBuffer, indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+        vkCmdDrawIndexed(cmdBuffer, indexCount, 1, 0, 0, 0);
+    }
+    else
+    {
+        vkCmdDraw(cmdBuffer, vertCount, 1, 0, 0);
+    }
+}
+
+
+void VulkanPipelineExecutor::DrawQuad(std::vector<uint64_t>* descriptorSets)
+{
+    VkCommandBuffer cmdBuffer = GetCommandBuffer();
     BindDescriptorSets(descriptorSets);
-    
     vkCmdDraw(cmdBuffer, 6, 1, 0, 0);
 }
 
-void VulkanRenderPassExecutor::BindDescriptorSets(std::vector<uint64_t>* descriptorSets)
+void VulkanPipelineExecutor::BindDescriptorSets(std::vector<uint64_t>* descriptorSets, bool hasPushConstant)
 {
     VkCommandBuffer cmdBuffer = GetCommandBuffer();
     BufferAllocator* bufferAlloc = BufferAllocator::GetInstance();
@@ -455,7 +565,7 @@ void VulkanRenderPassExecutor::BindDescriptorSets(std::vector<uint64_t>* descrip
     );
 }
 
-VkCommandBuffer VulkanRenderPassExecutor::GetCommandBuffer()
+VkCommandBuffer VulkanPipelineExecutor::GetCommandBuffer()
 {
     return VulkanCore::GetInstance().GetCommandBuffer();
 }

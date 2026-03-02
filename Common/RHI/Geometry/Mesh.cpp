@@ -41,7 +41,7 @@ Mesh::Mesh(std::vector<Vertex>* vertices, std::vector<uint32_t>* indices, uint32
         vertexBufferDesc.Access = memoryAccess;
         vertexBufferDesc.InitialData = vertices->data();
         
-        VertexBufferID = bufferAlloc->CreateBuffer(vertexBufferDesc, false);
+        VertexBufferID = bufferAlloc->CreateBuffer(vertexBufferDesc);
     }
     
     if (IndexCount > 0)
@@ -57,7 +57,7 @@ Mesh::Mesh(std::vector<Vertex>* vertices, std::vector<uint32_t>* indices, uint32
         indexBufferDesc.Access = memoryAccess;
         indexBufferDesc.InitialData = indices->data();
         
-        IndexBufferID = bufferAlloc->CreateBuffer(indexBufferDesc, false);
+        IndexBufferID = bufferAlloc->CreateBuffer(indexBufferDesc);
     }
 }
 

@@ -13,6 +13,7 @@ public:
     static Pipeline* Create(uint32_t pipelineID, const PipelineDesc& desc, std::vector<IOResource>* inputIOResources = nullptr);
     virtual ~Pipeline() = default;
     
+    std::vector<uint64_t> GetInputDescriptorSetIDs() const { return PipelineInputDescriptorSetIDs; }
     IOResource* GetOutputResource() const { return PipelineOutputResource; }
     virtual void* GetOwnedImage(uint32_t index) = 0;
     virtual void* GetOwnedDepthImage() = 0;
@@ -67,7 +68,6 @@ public:
     VkImage GetOwnedDepthImage() const { return OwnedDepthImage; }
     VkDeviceMemory GetOwnedDepthImageMemory() const { return OwnedDepthImageMemory; }
     VkImageView GetOwnedDepthImageView() const { return OwnedDepthImageView; }
-    std::vector<uint64_t> GetInputDescriptorSetIDs() const { return PipelineInputDescriptorSetIDs; }
     void* GetOwnedDepthImage() override { return OwnedDepthImage; }
     
     std::vector<VkAttachmentDescription> GetAttachmentDescriptions() const { return AttachmentDescriptions; }

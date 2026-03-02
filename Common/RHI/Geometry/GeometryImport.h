@@ -1,6 +1,6 @@
 #pragma once
 #include "Mesh.h"
-#include "../RenderPassExecutor.h"
+#include "../PipelineExecutor.h"
 
 class GeometryImport
 {

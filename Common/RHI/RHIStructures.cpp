@@ -11,6 +11,7 @@
 
 using namespace Win32ErrorHandler;
 using namespace VulkanStructs;
+using namespace D3D12Structs;
 
 namespace RHIStructures
 {
@@ -779,9 +780,9 @@ namespace RHIStructures
         return static_cast<VulkanBufferData*>(bufferAllocation.Buffer);
     }
 
-    ID3D12Resource* DXBuffer(const BufferAllocation& bufferAllocation)
+    DX12BufferData* DXBuffer(const BufferAllocation& bufferAllocation)
     {
-        return static_cast<ID3D12Resource*>(bufferAllocation.Buffer);
+        return static_cast<DX12BufferData*>(bufferAllocation.Buffer);
     }
 
     D3D12_CPU_DESCRIPTOR_HANDLE DXDescriptor(const BufferAllocation& bufferAllocation)

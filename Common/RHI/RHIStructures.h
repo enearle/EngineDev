@@ -15,6 +15,10 @@ namespace VulkanStructs
     struct VulkanBufferData;
 }
 
+namespace D3D12Structs
+{
+    struct DX12BufferData;
+}
 
 namespace RHIStructures
 {
@@ -114,6 +118,7 @@ namespace RHIStructures
         Format Format;
         uint32_t Offset;
         SemanticName SemanticName;
+        uint32_t SemanticIndex;
     };
 
     struct VertexBinding
@@ -550,7 +555,7 @@ namespace RHIStructures
     };
     UINT GetBufferDeviceAddress(const BufferAllocation& bufferAllocation);
     VulkanStructs::VulkanBufferData* VulkanBuffer(const BufferAllocation& bufferAllocation);
-    ID3D12Resource* DXBuffer(const BufferAllocation& bufferAllocation);
+    D3D12Structs::DX12BufferData* DXBuffer(const BufferAllocation& bufferAllocation);
     D3D12_CPU_DESCRIPTOR_HANDLE DXDescriptor(const BufferAllocation& bufferAllocation);
 
     struct ImageDesc

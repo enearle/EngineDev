@@ -4,12 +4,12 @@
 #include "Geometry/Mesh.h"
 
 namespace DirectX { struct XMFLOAT4; }
-class RenderPassExecutor
+class PipelineExecutor
 {
 public:
-    static RenderPassExecutor* Create();
+    static PipelineExecutor* Create();
     
-    virtual ~RenderPassExecutor() = default;
+    virtual ~PipelineExecutor() = default;
     
     // Begin a rendering operation with a pipeline and its attachments
     virtual void Begin(Pipeline* pipeline,
@@ -26,14 +26,16 @@ public:
     virtual void IssueImageMemoryBarrier(const ImageMemoryBarrier& barrier) = 0;
     
     virtual void DrawSceneNode(const SceneNode& node, std::vector<uint64_t>& perItemDrawSets, const DirectX::XMFLOAT4X4& viewProjX4, const DirectX::XMFLOAT4 camPos) = 0;
+    virtual void DrawIndexed(uint64_t vertBufferID, uint32_t vertCount, uint64_t indexBufferID, uint32_t indexCount, 
+        void* pushConstants = nullptr, size_t pushConstantsSize = 0) = 0;
     virtual void DrawQuad(std::vector<uint64_t>* descriptorSets = nullptr) = 0;
 };
 
-class D3DRenderPassExecutor : public RenderPassExecutor
+class D3DPipelineExecutor : public PipelineExecutor
 {
 public:
-    D3DRenderPassExecutor();
-    ~D3DRenderPassExecutor() override;
+    D3DPipelineExecutor();
+    ~D3DPipelineExecutor() override;
     
     void Begin(Pipeline* pipeline,
                const std::vector<void*>& colorViews,
@@ -45,18 +47,21 @@ public:
     void IssueMemoryBarrier(const RHIStructures::MemoryBarrier& barrier) override;
     void IssueImageMemoryBarrier(const ImageMemoryBarrier& barrier) override;
     void DrawSceneNode(const SceneNode& node, std::vector<uint64_t>& perItemDrawSets, const DirectX::XMFLOAT4X4& viewProjX4, const DirectX::XMFLOAT4 camPos) override;
+    void DrawIndexed(uint64_t vertBufferID, uint32_t vertCount, uint64_t indexBufferID, uint32_t indexCount, 
+        void* pushConstant, size_t pushConstantSize) override;
     void DrawQuad(std::vector<uint64_t>* descriptorSets = nullptr) override;
+    void BindDescriptorSets(std::vector<uint64_t>* descriptorSets, bool hasPushConstant = false);
     
 private:
     ID3D12GraphicsCommandList* GetCommandList();
     D3DPipeline* CurrentPipeline;
 };
 
-class VulkanRenderPassExecutor : public RenderPassExecutor
+class VulkanPipelineExecutor : public PipelineExecutor
 {
 public:
-    VulkanRenderPassExecutor();
-    ~VulkanRenderPassExecutor() override;
+    VulkanPipelineExecutor();
+    ~VulkanPipelineExecutor() override;
     
     void Begin(Pipeline* pipeline,
                const std::vector<void*>& colorViews,
@@ -68,8 +73,10 @@ public:
     void IssueMemoryBarrier(const RHIStructures::MemoryBarrier& barrier) override;
     void IssueImageMemoryBarrier(const ImageMemoryBarrier& barrier) override;
     void DrawSceneNode(const SceneNode& node, std::vector<uint64_t>& perItemDrawSets, const DirectX::XMFLOAT4X4& viewProjX4, const DirectX::XMFLOAT4 camPos) override;
+    void DrawIndexed(uint64_t vertBufferID, uint32_t vertCount, uint64_t indexBufferID, uint32_t indexCount, 
+        void* pushConstant, size_t pushConstantSize) override;
     void DrawQuad(std::vector<uint64_t>* descriptorSets = nullptr) override;
-    void BindDescriptorSets(std::vector<uint64_t>* descriptorSets);
+    void BindDescriptorSets(std::vector<uint64_t>* descriptorSets, bool hasPushConstant = false);
 
 private:
     

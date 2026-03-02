@@ -1,12 +1,12 @@
-struct VS_OUTPUT
+struct VSOutput
 {
     float4 position : SV_POSITION;
     float2 txCoords : TEXCOORD;
 };
 
-VS_OUTPUT main(uint vertexID : SV_VertexID)
+VSOutput main(uint vertexID : SV_VertexID)
 {
-    VS_OUTPUT output;
+    VSOutput output;
     
     float3 positions[6] = 
     {

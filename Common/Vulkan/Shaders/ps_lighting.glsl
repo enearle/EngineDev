@@ -1,16 +1,16 @@
 #version 450
 
-// G-buffer inputs (matching your pipeline bindings)
-layout(set = 0, binding = 0) uniform sampler2D subBaseColour;           // Albedo
-layout(set = 0, binding = 1) uniform sampler2D subNormal;               // Normal
-layout(set = 0, binding = 2) uniform sampler2D subMetalicRoughnessAO;   // Material
-layout(set = 0, binding = 3) uniform sampler2D subPosition;             // Position
+layout(location = 0) in vec2 inUV;
+
+layout(set = 0, binding = 0) uniform sampler2D subAlbedo;
+layout(set = 0, binding = 1) uniform sampler2D subNormal;
+layout(set = 0, binding = 2) uniform sampler2D subMetalicRoughnessAO;
+layout(set = 0, binding = 3) uniform sampler2D subPosition;
 
 layout(location = 0) out vec4 outColour;
 
 #define PI 3.14159265358979323846
 
-// Define a simple point light
 struct Light
 {
     vec3 Position;
@@ -19,7 +19,6 @@ struct Light
     float Radius;
 };
 
-// Variables
 vec3 albedo;
 vec3 normal;
 vec3 fragPosition;
@@ -27,19 +26,15 @@ float roughness;
 float metallic;
 float ambientOcclusion;
 vec3 viewVector;
-vec2 screenPos;
 vec3 materialData;
 
-// Initialize variables from G-buffer
 void init()
 {
-    screenPos = gl_FragCoord.xy / textureSize(subNormal, 0);
+    albedo = texture(subAlbedo, inUV).rgb;
+    normal = texture(subNormal, inUV).rgb;
+    materialData = texture(subMetalicRoughnessAO, inUV).rgb;
+    fragPosition = texture(subPosition, inUV).rgb;
     
-    albedo = texture(subBaseColour, screenPos).rgb;
-    normal = normalize(texture(subNormal, screenPos).rgb);
-    fragPosition = texture(subPosition, screenPos).rgb;
-
-    materialData = texture(subMetalicRoughnessAO, screenPos).rgb;
     metallic = materialData.r;
     roughness = max(materialData.g, 0.04);
     roughness = max(roughness * roughness, 0.001); // Square and clamp
@@ -60,7 +55,6 @@ float NormalDistribution(vec3 inHalfwayVector)
 
     return roughness2 / denominator;
 }
-
 
 // Schlick-Beckman geometry shadowing
 float GeomertryShadowingSupport(vec3 inVector)
@@ -87,7 +81,7 @@ vec3 Fresnel(vec3 inHalfwayVector)
 
     vec3 F0 = mix(vec3(0.04), albedo, metallic);
 
-    return F0 + (vec3(1.0) - F0) * f5;
+    return F0 + (vec3(1) - F0) * f5;
 }
 
 // Attenuation for point light
@@ -129,7 +123,6 @@ void main()
 {
     init();
     
-    // Define a simple point light in the scene
     Light light;
     light.Position = vec3(-20.0, 20.0, -20.0);      // Light position in world space
     light.Colour = vec3(1.0, 1.0, 1.0);             // White light

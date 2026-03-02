@@ -30,12 +30,10 @@ public:
     uint64_t MakeKey(uint32_t pipelineID, uint32_t setIndex) { return (static_cast<uint64_t>(pipelineID) << 32) | setIndex; }
     static BufferAllocator* GetInstance();
     uint64_t CacheImage(ImageAllocation imageAllocation) {AllocatedImages[NextImageID] = imageAllocation; return NextImageID++;}
-    virtual uint64_t CreateBuffer(BufferDesc bufferDesc, bool createDescriptor = false) = 0;
-    virtual uint64_t CreateImage(ImageDesc imageDesc, bool createDescriptor = false) = 0;
+    virtual uint64_t CreateBuffer(BufferDesc bufferDesc) = 0;
+    virtual uint64_t CreateImage(ImageDesc imageDesc) = 0;
     
     virtual ~BufferAllocator() = default;
-    virtual void FreeBuffer(uint64_t id) = 0;
-    virtual void FreeImage(uint64_t id) = 0;
     
     virtual void RegisterDescriptorSetLayout(uint32_t pipelineID, const ResourceLayout& layout) = 0;
     virtual uint64_t AllocateDescriptorSet(uint32_t pipelineID, uint32_t setIndex, 
@@ -51,19 +49,15 @@ class VulkanBufferAllocator : public BufferAllocator
 {
 public:
     
-    uint64_t CreateBuffer(BufferDesc bufferDesc, bool createDescriptor = false) override;
-    uint64_t CreateImage(ImageDesc imageDesc, bool createDescriptor = false) override;
+    uint64_t CreateBuffer(BufferDesc bufferDesc) override;
+    uint64_t CreateImage(ImageDesc imageDesc) override;
     VulkanBufferAllocator();
     ~VulkanBufferAllocator() override;
-    void FreeBuffer(uint64_t id) override;
-    void FreeImage(uint64_t id) override;
     
     void RegisterDescriptorSetLayout(uint32_t pipelineID, const ResourceLayout& layout) override;
     uint64_t AllocateDescriptorSet(uint32_t pipelineID, uint32_t setIndex, 
                                            const std::vector<DescriptorSetBinding>& bindings) override;
     void FreeDescriptorSet(uint64_t setID) override;
-    
-    uint64_t GetDescriptorBufferAddress() { return DescriptorBufferAddress; }
 
     enum DescriptorType : uint8_t { SampledImage, StorageImage, UniformBuffer, StorageBuffer};
     
@@ -71,28 +65,11 @@ public:
     
 private:
     
-    // Descriptor buffer for individual descriptors
-    VkBuffer DescriptorBuffer;
-    VkDeviceMemory DescriptorBufferMemory;
-    void* DescriptorBufferMapped;
-    VkDeviceAddress DescriptorBufferAddress = 0;
-    
     static constexpr uint16_t SampledImagePoolSize = 4096;
     static constexpr uint16_t StorageImagePoolSize = 1024;
     static constexpr uint16_t UniformBufferPoolSize = 2048;
     static constexpr uint16_t StorageBufferPoolSize = 1024;
-    
-    size_t SampledImageStride;
-    size_t StorageImageStride;
-    size_t UniformBufferStride;
-    size_t StorageBufferStride;
-    
-    BitPool* SampledImagePool;
-    BitPool* StorageImagePool;
-    BitPool* UniformBufferPool;
-    BitPool* StorageBufferPool;
-    
-    // Descriptor pools for descriptor sets (traditional Vulkan approach)
+
     struct DescriptorSetLayoutInfo
     {
         VkDescriptorSetLayout Layout;
@@ -100,9 +77,6 @@ private:
         std::vector<DescriptorBinding> Bindings;
     };
     std::map<uint64_t, DescriptorSetLayoutInfo> DescriptorSetLayouts;
-    
-    VkDeviceAddress AllocateDescriptor(VkDescriptorGetInfoEXT* descriptorInfo, DescriptorType type);
-    void FreeDescriptor(VkDeviceAddress address, DescriptorType type);
     
     static VkImage CreateVulkanImage(ImageDesc imageDesc, VkDeviceMemory* imageMemory);
     static VkImageView CreateVulkanImageView(VkImage image, ImageDesc imageDesc);
@@ -115,26 +89,23 @@ private:
 class DirectX12BufferAllocator : public BufferAllocator
 {
 public:
-    uint64_t CreateBuffer(BufferDesc bufferDesc, bool createDescriptor = false) override;
-    uint64_t CreateImage(ImageDesc imageDesc, bool createDescriptor = false) override;
+    uint64_t CreateBuffer(BufferDesc bufferDesc) override;
+    uint64_t CreateImage(ImageDesc imageDesc) override;
     DirectX12BufferAllocator();
     ~DirectX12BufferAllocator() override;
-    void FreeBuffer(uint64_t id) override;
-    void FreeImage(uint64_t id) override;
 
     void RegisterDescriptorSetLayout(uint32_t pipelineID, const ResourceLayout& layout) override;
     uint64_t AllocateDescriptorSet(uint32_t pipelineID, uint32_t setIndex, 
                                            const std::vector<DescriptorSetBinding>& bindings) override;
     void FreeDescriptorSet(uint64_t setID) override;
-
-    enum DescriptorType : uint8_t { SRV, CBV, UAV, RTV, DSV };
     
+    enum DescriptorType : uint8_t {CBV, SRV, UAV, RTV, DSV};
     D3D12_CPU_DESCRIPTOR_HANDLE AllocateDescriptor(DescriptorType type);
     D3D12_CPU_DESCRIPTOR_HANDLE GetHandle(size_t index, DescriptorType type);
-    void FreeDescriptor(D3D12_CPU_DESCRIPTOR_HANDLE handle, DescriptorType type);
     
     ComPtr<ID3D12DescriptorHeap> GetShaderResourceHeap() const { return ShaderResourceHeap; }
 
+    
 private:
     struct DescriptorSetLayoutInfo
     {
@@ -157,11 +128,11 @@ private:
     UINT RenderTargetOffset = 0;
     UINT DepthStencilOffset = 0;
     
-    BitPool* SRVAllocator;
-    BitPool* CBVAllocator;
-    BitPool* UAVAllocator;
-    BitPool* RTVAllocator;
-    BitPool* DSVAllocator;
+    uint32_t NextSRVIndex = 0;
+    uint32_t NextCBVIndex = 0;
+    uint32_t NextUAVIndex = 0;
+    uint32_t NextRTVIndex = 0;
+    uint32_t NextDSVIndex = 0;
     
     static constexpr UINT MaxSRVs = 8192;
     static constexpr UINT MaxCBVs = 2048;

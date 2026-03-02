@@ -1,59 +1,52 @@
 struct VSOutput
 {
-    float4 PositionCS : SV_Position;
-    float3 NormalWS   : TEXCOORD0;
-    float3 TangentWS  : TEXCOORD1;
-    float3 BinormalWS: TEXCOORD2;
-    float2 UV         : TEXCOORD3;
+    float4 position         : SV_Position;
+    float3 worldPosition    : TEXCOORD0;
+    float3 normal           : TEXCOORD1;
+    float3 tangent          : TEXCOORD2;
+    float3 bitangent        : TEXCOORD3;
+    float2 uv               : TEXCOORD4;
 };
 
 struct PSOutput
 {
-    float4 GBuffer0_Albedo : SV_Target0;
-    float4 GBuffer1_Normal : SV_Target1;
-    float4 GBuffer2_MRA    : SV_Target2;
+    float4 albedo   : SV_Target0;
+    float4 normal   : SV_Target1;
+    float4 MRA      : SV_Target2;
+    float4 position : SV_Target3;
 };
 
-Texture2D gDiffuseTex              : register(t0);
-Texture2D gNormalTex               : register(t1);
-Texture2D gMetalRoughAOTex         : register(t2);
-SamplerState gSamplerLinearWrap    : register(s0);
+Texture2D albedoMap                 : register(t0);
+Texture2D normalMap                 : register(t1);
+Texture2D metallicRoughnessAOMap    : register(t2);
+SamplerState linearSampler          : register(s0);
+SamplerState pointSampler           : register(s1);
 
-static float3x3 MakeTBN(float3 n, float3 t, float3 b)
+PSOutput main(VSOutput input)
 {
-    // Orthonormalize a bit to reduce artifacts from imperfect vertex tangents.
-    n = normalize(n);
-    t = normalize(t - n * dot(n, t));
-    b = normalize(b - n * dot(n, b));
-    return float3x3(t, b, n); // columns are T, B, N for mul(TBN, normalTS)
-}
+    PSOutput output;
 
-static float3 UNormToNorm(float3 normalSample)
-{
-    float3 n = normalSample * 2.0f - 1.0f;
-    return normalize(n);
-}
-
-static float3 NormToUNorm(float3 n)
-{
-    return n * 0.5f + 0.5f;
-}
-
-PSOutput main(VSOutput i)
-{
-    PSOutput o;
-
-    float3 albedo = gDiffuseTex.Sample(gSamplerLinearWrap, i.UV).rgb;
+    float3 albedo = albedoMap.Sample(linearSampler, input.uv).rgb;
+    float3 tangentNormal = normalMap.Sample(linearSampler, input.uv).rgb * 2.0 - 1.0;
+    float3 mra = metallicRoughnessAOMap.Sample(linearSampler, input.uv).rgb;
     
-    float3 normalTS = UNormToNorm(gNormalTex.Sample(gSamplerLinearWrap, i.UV).rgb);
-    float3x3 TBN = MakeTBN(i.NormalWS, i.TangentWS, i.BinormalWS);
-    float3 normalWS = normalize(mul(normalTS, TBN));
+    float3x3 TBN = float3x3(
+        normalize(input.tangent), 
+        normalize(input.bitangent), 
+        normalize(input.normal)
+    );
+    
+    float3 worldNormal = normalize(mul(TBN, tangentNormal));
 
-    float3 mra = gMetalRoughAOTex.Sample(gSamplerLinearWrap, i.UV).rgb;
+    //output.albedo   = float4(albedo, 1.0f);
+    //output.normal   = float4(worldNormal, 1.0f);
+    //output.MRA      = float4(mra, 1.0f);
+    //output.position = float4(input.worldPosition, 1);
+    
+    output.albedo = float4(1, 0, 0, 1);  // Red
+    output.normal = float4(0, 1, 0, 1);  // Green  
+    output.MRA = float4(0, 0, 1, 1);     // Blue
+    output.position = float4(1, 1, 0, 1); // Yellow
 
-    o.GBuffer0_Albedo = float4(albedo, 1.0f);
-    o.GBuffer1_Normal = float4(NormToUNorm(normalWS), 1.0f);
-    o.GBuffer2_MRA    = float4(mra, 1.0f);
-
-    return o;
+    return output;
 }

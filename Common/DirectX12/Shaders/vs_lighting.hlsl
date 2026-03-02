@@ -1,36 +1,25 @@
-struct VS_OUTPUT
+struct VSOutput
 {
     float4 position : SV_POSITION;
-    float2 txCoords : TEXCOORD;
+    float2 uv       : TEXCOORD;
 };
 
-VS_OUTPUT main(uint vertexID : SV_VertexID)
+static float3 positions[6] = 
 {
-    VS_OUTPUT output;
-    
-    float3 positions[6] = 
-    {
-        float3(-0.5f, 0.5f, 0.0f),
-        float3(-0.5f, -0.5f, 0.0f),
-        float3(0.5f, -0.5f, 0.0f),
-        float3(-0.5f, 0.5f, 0.0f),
-        float3(0.5f, -0.5f, 0.0f),
-        float3(0.5f, 0.5f, 0.0f)
-    };
-    
-    float2 uvs[6] =
-    {
-        float2(0.0f, 0.0f),
-        float2(0.0f, 1.0f),
-        float2(1.0f, 1.0f),
+    float3(-1.0f, 1.0f, 0.0f),
+    float3(-1.0f, -1.0f, 0.0f),
+    float3(1.0f, -1.0f, 0.0f),
+    float3(-1.0f, 1.0f, 0.0f),
+    float3(1.0f, -1.0f, 0.0f),
+    float3(1.0f, 1.0f, 0.0f)
+};
 
-        float2(0.0f, 0.0f),
-        float2(1.0f, 1.0f),
-        float2(1.0f, 0.0f)
-    };
+VSOutput main(uint vertexID : SV_VertexID)
+{
+    VSOutput output;
     
     output.position = float4(positions[vertexID], 1.0f);
-    output.txCoords = uvs[vertexID];
+    output.uv = (positions[vertexID] * float2(1, -1) + float2(1,1)) * 0.5f;
     
     return output;
 }

@@ -241,11 +241,11 @@ namespace RHIConstants
         };
         
         PBRDescGeometry.VertexAttributes = {
-            VertexAttribute{.Binding = 0, .Location = 0, .Format = Format::R32G32B32_FLOAT, .Offset = 0,   .SemanticName = SemanticName::Position   },
-            VertexAttribute{.Binding = 0, .Location = 1, .Format = Format::R32G32B32_FLOAT, .Offset = 12,  .SemanticName = SemanticName::Normal     },
-            VertexAttribute{.Binding = 0, .Location = 2, .Format = Format::R32G32B32_FLOAT, .Offset = 24,  .SemanticName = SemanticName::Tangent    },
-            VertexAttribute{.Binding = 0, .Location = 3, .Format = Format::R32G32B32_FLOAT, .Offset = 36,  .SemanticName = SemanticName::Binormal   },
-            VertexAttribute{.Binding = 0, .Location = 4, .Format = Format::R32G32_FLOAT,    .Offset = 48,  .SemanticName = SemanticName::TexCoord   }
+            VertexAttribute{ .Binding = 0, .Location = 0, .Format = Format::R32G32B32_FLOAT, .Offset = 0,   .SemanticName = SemanticName::Position,  .SemanticIndex = 0 },
+            VertexAttribute{ .Binding = 0, .Location = 1, .Format = Format::R32G32B32_FLOAT, .Offset = 12,  .SemanticName = SemanticName::Normal,    .SemanticIndex = 0 },
+            VertexAttribute{ .Binding = 0, .Location = 2, .Format = Format::R32G32B32_FLOAT, .Offset = 24,  .SemanticName = SemanticName::Tangent,   .SemanticIndex = 0 },
+            VertexAttribute{ .Binding = 0, .Location = 3, .Format = Format::R32G32B32_FLOAT, .Offset = 36,  .SemanticName = SemanticName::Binormal,  .SemanticIndex = 0 },
+            VertexAttribute{ .Binding = 0, .Location = 4, .Format = Format::R32G32_FLOAT,    .Offset = 48,  .SemanticName = SemanticName::TexCoord,  .SemanticIndex = 0 }
         };
 
         // 3. Primitive topology

@@ -1,0 +1,148 @@
+struct VSOutput
+{
+    float4 position : SV_POSITION;
+    float2 uv       : TEXCOORD;
+};
+
+#define PI 3.14159265358979323846
+
+Texture2D inAlbedo                : register(t0);
+Texture2D inNormal                : register(t1);
+Texture2D inMetallicRoughnessAO   : register(t2);
+Texture2D inPosition              : register(t3);
+SamplerState linearSampler        : register(s0);
+SamplerState pointSampler         : register(s1);
+
+struct Light
+{
+    float3 Position;
+    float3 Colour;
+    float Intensity;
+    float Radius;
+};
+
+static float3 albedo;
+static float3 normal;
+static float3 fragPosition;
+static float roughness;
+static float metallic;
+static float ambientOcclusion;
+static float3 viewVector;
+static float3 materialData;
+
+void init(VSOutput input)
+{
+    albedo = inAlbedo.Sample(linearSampler, input.uv).rgb;
+    normal = inNormal.Sample(linearSampler, input.uv).rgb;
+    materialData = inMetallicRoughnessAO.Sample(linearSampler, input.uv).rgb;
+    fragPosition = inPosition.Sample(linearSampler, input.uv).rgb;
+    
+    metallic = materialData.r;
+    roughness = max(materialData.g, 0.04);
+    roughness = max(roughness * roughness, 0.001);
+    ambientOcclusion = materialData.b;
+    
+    float3 camPosition =float3(0.0, 10, -8);
+    viewVector = normalize(camPosition - fragPosition);
+}
+
+// GGX/Throwbridge-Reitz normal distribution
+float NormalDistribution(float3 inHalfwayVector)
+{
+    float roughness2 = roughness * roughness;
+    float nDotH2 = max(dot(normal, inHalfwayVector), 0.0001);
+    nDotH2 *= nDotH2;
+    float denominator = nDotH2 * (roughness2 - 1) + 1;
+    denominator = max(denominator * denominator * PI, 0.0001);
+
+    return roughness2 / denominator;
+}
+
+// Schlick-Beckman geometry shadowing
+float GeomertryShadowingSupport(float3 inVector)
+{
+    float nDotV = max(dot(normal, inVector), 0.0001);
+
+    float halfRoughness = roughness * 0.5;
+    float denominator = nDotV * (1.0 - halfRoughness) + halfRoughness;
+    denominator = max(denominator, 0.0001);
+
+    return nDotV / denominator;
+}
+
+float GeometryShadowing(float3 lightVector)
+{
+    return GeomertryShadowingSupport(viewVector) * GeomertryShadowingSupport(lightVector);
+}
+
+// Fresnel
+float3 Fresnel(float3 inHalfwayVector)
+{
+    float f5 = 1 - max(dot(viewVector, inHalfwayVector), 0.0);
+    f5 = f5 * f5 * f5 * f5 * f5;
+
+    float3 F0 = lerp(float3(0.04f, 0.04f, 0.04f), albedo, metallic);
+
+    return F0 + (float3(1,1,1) - F0) * f5;
+}
+
+// Attenuation for point light
+float3 AttenuateLight(Light light)
+{
+    
+    float3 lightVector = light.Position - fragPosition;
+    float distance = length(lightVector);
+
+    // Smooth attenuation
+    float attenuation = 1.0 - clamp(distance / light.Radius, 0.0, 1.0);
+    attenuation = attenuation * attenuation * light.Intensity;
+
+    return attenuation * light.Colour;
+}
+
+// PBR lighting calculation
+float3 LightPBR(Light light)
+{
+    float3 lightColour = AttenuateLight(light);
+
+    float3 lightDirection = normalize(light.Position.xyz - fragPosition);
+    float3 halfwayVector = normalize(lightDirection + viewVector);
+
+    float3 fresnel = Fresnel(halfwayVector);
+    float3 lambert = albedo / PI;
+
+    float3 cookTorranceNumerator = NormalDistribution(halfwayVector) * GeometryShadowing(lightDirection) * fresnel;
+    float cookTorranceDenominator = 4.0 * max(dot(viewVector, normal), 0.0001) * max(dot(lightDirection, normal), 0.0001);
+    cookTorranceDenominator = max(cookTorranceDenominator, 0.0001);
+    float3 cookTorrance = cookTorranceNumerator / cookTorranceDenominator;
+
+    float3 bRDF = ((float3(1,1,1) - fresnel) * (1.0 - metallic)) * lambert + cookTorrance;
+
+    return  bRDF * lightColour * max(dot(lightDirection, normal), 0.0001);
+}
+
+float4 main(VSOutput input) : SV_TARGET
+{
+    init(input);
+    
+    Light light;
+    light.Position = float3(-20.0, 20.0, -20.0);    // Light position in world space
+    light.Colour = float3(1.0, 1.0, 1.0);           // White light
+    light.Intensity = 20.0;                         // Light intensity
+    light.Radius = 50.0;                            // Light radius
+    
+    // Calculate lighting
+    float3 outGoingLight = LightPBR(light);
+
+    // Output final color (no clamp needed, handled by render target)
+    //return float4(outGoingLight, 1.0);
+    return float4(inAlbedo.Sample(linearSampler, input.uv).rgb, 1.0);
+    
+    //return float4(inNormal.Sample(linearSampler, input.uv).rgb, 1.0); <- black
+    //return float4(inPosition.Sample(linearSampler, input.uv).rgb, 1.0); <- black
+    //return float4(inAlbedo.Sample(linearSampler, input.uv).rgb, 1.0); <- black
+    //return float4(inMetallicRoughnessAO.Sample(linearSampler, input.uv).rgb, 1.0); <- black
+    
+    //return float4(input.uv, 0, 1); <- works
+    //return float4(0,1,0,1); <- works
+}

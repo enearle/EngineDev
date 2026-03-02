@@ -6,6 +6,7 @@
 #include <stdexcept>
 #include "../GraphicsSettings.h"
 #include "../RHI/Renderer.h"
+#include "../RHI/BufferAllocator.h"
 
 using namespace Win32ErrorHandler;
 
@@ -113,7 +114,6 @@ void D3DCore::InitDebugLayer()
     {
         if (SUCCEEDED(debugController->QueryInterface(IID_PPV_ARGS(&debugController1))))
         {
-            debugController->EnableDebugLayer();
             debugController->EnableDebugLayer();
             debugController->Release();
             debugController1->SetEnableGPUBasedValidation(true);

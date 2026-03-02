@@ -10,7 +10,7 @@ struct VSInput
 struct VSOutput
 {
     float4 position     : SV_Position;
-    float3 worldPos     : TEXCOORD0;
+    float3 worldPosition     : TEXCOORD0;
     float3 normal       : TEXCOORD1;
     float3 tangent      : TEXCOORD2;
     float3 bitangent    : TEXCOORD3;
@@ -29,9 +29,9 @@ VSOutput main(VSInput input)
 {
     VSOutput output;
     
-    float4 worldPos = mul(float4(input.position, 1), model);
-    output.worldPos = worldPos.xyz;
-    output.position = mul(worldPos, viewProjection);
+    float4 worldPosition = mul(float4(input.position, 1), model);
+    output.worldPosition = worldPosition.xyz;
+    output.position = mul(worldPosition, viewProjection);
     
     float3x3 normalMatrix = (float3x3)normal;
     
