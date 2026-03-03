@@ -66,6 +66,7 @@ void D3DCore::Reset()
         CommandLists[i].Reset();
         CommandAllocators[i].Reset();
     }
+    TransferCommandAllocator.Reset();
     CommandQueue.Reset();
     SwapChain.Reset();
     Device.Reset();

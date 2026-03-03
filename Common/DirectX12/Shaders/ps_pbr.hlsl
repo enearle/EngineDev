@@ -32,21 +32,16 @@ PSOutput main(VSOutput input)
     
     float3x3 TBN = float3x3(
         normalize(input.tangent), 
-        normalize(input.bitangent), 
+        -normalize(input.bitangent), 
         normalize(input.normal)
     );
     
-    float3 worldNormal = normalize(mul(TBN, tangentNormal));
+    float3 worldNormal = normalize(mul(tangentNormal, TBN));
 
-    //output.albedo   = float4(albedo, 1.0f);
-    //output.normal   = float4(worldNormal, 1.0f);
-    //output.MRA      = float4(mra, 1.0f);
-    //output.position = float4(input.worldPosition, 1);
-    
-    output.albedo = float4(1, 0, 0, 1);  // Red
-    output.normal = float4(0, 1, 0, 1);  // Green  
-    output.MRA = float4(0, 0, 1, 1);     // Blue
-    output.position = float4(1, 1, 0, 1); // Yellow
+    output.albedo   = float4(albedo, 1.0f);
+    output.normal   = float4(worldNormal, 1.0f);
+    output.MRA      = float4(mra, 1.0f);
+    output.position = float4(input.worldPosition, 1);
 
     return output;
 }

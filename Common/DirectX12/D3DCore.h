@@ -73,6 +73,8 @@ public:
     ComPtr<ID3D12CommandQueue> GetCommandQueue() const { return CommandQueue; }
     ComPtr<ID3D12GraphicsCommandList> GetCommandList() const { return CommandLists[CurrentFrameIndex]; }
     ComPtr<ID3D12GraphicsCommandList> GetTransferCommandList() const { return TransferCommandList; }
+    ComPtr<ID3D12CommandAllocator> GetTransferCommandAllocator() const { return TransferCommandAllocator; }
+    ComPtr<ID3D12Fence> GetTransferFence() const { return TransferFence; }
     uint32_t GetCurrentFrameIndex() const { return CurrentFrameIndex; }
     ComPtr<ID3D12DescriptorHeap> GetRenderTargetDescriptorHeap() const { return RenderTargetDescriptorHeap; }
     ComPtr<ID3D12DescriptorHeap> GetDepthStencilDescriptorHeap() const { return DepthStencilDescriptorHeap; }

@@ -189,7 +189,7 @@ void D3DPipelineExecutor::DrawSceneNode(const SceneNode& node, std::vector<uint6
         DirectX::XMFLOAT4X4 normal;
         DirectX::XMMATRIX inverseTranspose = XMMatrixTranspose(XMMatrixInverse(nullptr, modelMatrix));
         DirectX::XMStoreFloat4x4(&normal, inverseTranspose);
-        
+
         std::vector<uint64_t> descriptorSets = {perItemDrawSets[materialIndex]};
         BindDescriptorSets(&descriptorSets, true);
         
@@ -228,7 +228,7 @@ void D3DPipelineExecutor::DrawIndexed(uint64_t vertBufferID, uint32_t vertCount,
     D3D12_VERTEX_BUFFER_VIEW vbv = {};
     vbv.BufferLocation = vertBufferData->GPUAddress;
     vbv.SizeInBytes = static_cast<UINT>(vertAlloc.Size);
-    vbv.StrideInBytes = static_cast<UINT>(vertAlloc.Size / vertCount);  // Calculate stride
+    vbv.StrideInBytes = sizeof(Vertex);
     
     D3D12_INDEX_BUFFER_VIEW ibv = {};
     ibv.BufferLocation = indexBufferData->GPUAddress;

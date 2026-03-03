@@ -21,8 +21,8 @@ void main() {
     vec3 metallicRoughnessAO = texture(metallicRoughnessMap, inUV).rgb;
     
     mat3 TBN = mat3(
-        normalize(inBitangent),
         normalize(inTangent),
+        -normalize(inBitangent),
         normalize(inNormal)
     );
 

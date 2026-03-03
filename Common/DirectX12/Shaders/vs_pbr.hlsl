@@ -29,15 +29,15 @@ VSOutput main(VSInput input)
 {
     VSOutput output;
     
-    float4 worldPosition = mul(float4(input.position, 1), model);
+    float4 worldPosition = mul(model, float4(input.position, 1));
+    output.position = mul(viewProjection, worldPosition);
     output.worldPosition = worldPosition.xyz;
-    output.position = mul(worldPosition, viewProjection);
     
     float3x3 normalMatrix = (float3x3)normal;
     
-    output.normal   = mul(input.normal, normalMatrix);
-    output.tangent  = mul(input.tangent, normalMatrix);
-    output.bitangent = mul(input.bitangent, normalMatrix);
+    output.normal    = mul(normalMatrix, input.normal);
+    output.tangent   = mul(normalMatrix, input.tangent);
+    output.bitangent = mul(normalMatrix, input.bitangent);
 
     output.uv = input.UV;
     return output;

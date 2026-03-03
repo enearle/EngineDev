@@ -749,8 +749,7 @@ uint64_t DirectX12BufferAllocator::CreateBuffer(BufferDesc bufferDesc)
         IID_PPV_ARGS(uploadBuffer.GetAddressOf())) >> ERROR_HANDLER;
     
     D3DCore::GetInstance().DeferUploadBufferRelease(uploadBuffer);
-
-    // Copy initial data if provided
+    
     if (bufferDesc.InitialData != nullptr)
     {
         void* mappedData = nullptr;
@@ -763,6 +762,16 @@ uint64_t DirectX12BufferAllocator::CreateBuffer(BufferDesc bufferDesc)
         subResourceData.RowPitch = bufferDesc.Size;
         subResourceData.SlicePitch = bufferDesc.Size;
 
+        // Transfer allocator needs to be reset before the first upload
+        // Messy, but I will have to rework this into an asynchronous 
+        // ring buffer anyway.
+        static bool firstUse = true;
+        if (firstUse)
+        {
+            cmdList->Reset(D3DCore::GetInstance().GetTransferCommandAllocator().Get(), nullptr);
+            firstUse = false;
+        }
+        
         CD3DX12_RESOURCE_BARRIER transition1 = CD3DX12_RESOURCE_BARRIER::Transition(
             defaultBuffer.Get(), 
             D3D12_RESOURCE_STATE_COMMON, 
@@ -776,6 +785,27 @@ uint64_t DirectX12BufferAllocator::CreateBuffer(BufferDesc bufferDesc)
             D3D12_RESOURCE_STATE_COPY_DEST, 
             D3D12_RESOURCE_STATE_GENERIC_READ);
         cmdList->ResourceBarrier(1, &transition2);
+        cmdList->Close();
+        
+        ID3D12CommandQueue* commandQueue = D3DCore::GetInstance().GetCommandQueue().Get();
+        ComPtr<ID3D12Fence> transferFence = D3DCore::GetInstance().GetTransferFence();
+        
+        ID3D12CommandList* ppCommandLists[] = { cmdList };
+        commandQueue->ExecuteCommandLists(1, ppCommandLists);
+        
+        static UINT64 transferFenceValue = 0;
+        transferFenceValue++;
+        commandQueue->Signal(transferFence.Get(), transferFenceValue);
+        if (transferFence->GetCompletedValue() < transferFenceValue)
+        {
+            HANDLE eventHandle = CreateEventEx(nullptr, nullptr, 0, EVENT_ALL_ACCESS);
+            transferFence->SetEventOnCompletion(transferFenceValue, eventHandle);
+            WaitForSingleObject(eventHandle, INFINITE);
+            CloseHandle(eventHandle);
+        }
+        
+        D3DCore::GetInstance().GetTransferCommandAllocator()->Reset();
+        cmdList->Reset(D3DCore::GetInstance().GetTransferCommandAllocator().Get(), nullptr);
     }
 
     D3D12_GPU_VIRTUAL_ADDRESS gpuAddress = defaultBuffer->GetGPUVirtualAddress();
@@ -792,7 +822,7 @@ uint64_t DirectX12BufferAllocator::CreateBuffer(BufferDesc bufferDesc)
     allocation.Access = bufferDesc.Access;
     allocation.Type = bufferDesc.Type;
     allocation.IsMapped = false;
-
+    
     return CacheBuffer(allocation);
 }
 

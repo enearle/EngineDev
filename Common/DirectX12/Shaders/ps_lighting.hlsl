@@ -135,14 +135,6 @@ float4 main(VSOutput input) : SV_TARGET
     float3 outGoingLight = LightPBR(light);
 
     // Output final color (no clamp needed, handled by render target)
-    //return float4(outGoingLight, 1.0);
-    return float4(inAlbedo.Sample(linearSampler, input.uv).rgb, 1.0);
-    
-    //return float4(inNormal.Sample(linearSampler, input.uv).rgb, 1.0); <- black
-    //return float4(inPosition.Sample(linearSampler, input.uv).rgb, 1.0); <- black
-    //return float4(inAlbedo.Sample(linearSampler, input.uv).rgb, 1.0); <- black
-    //return float4(inMetallicRoughnessAO.Sample(linearSampler, input.uv).rgb, 1.0); <- black
-    
-    //return float4(input.uv, 0, 1); <- works
-    //return float4(0,1,0,1); <- works
+    return float4(outGoingLight, 1.0);
+
 }
