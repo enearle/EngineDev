@@ -1,4 +1,4 @@
-#include "../../Common/RHI/Renderer.h"
+#include "Renderer.h"
 #include "../../Common/Window.h"
 #include "../../Common/RHI/Pipeline.h"
 #include "../../Common/RHI/RHIConstants.h"
@@ -6,7 +6,6 @@
 #include <DirectXMath.h>
 #include <iostream>
 #include "../../Common/RHI/Uniform.h"
-#include "../../Common/GraphicsSettings.h"
 #include "../../Common/DirectX12/D3DCore.h"
 #include "../../Common/Vulkan/VulkanCore.h"
 #include "../../Common/RHI/BufferAllocator.h"
@@ -16,7 +15,7 @@
 
 using namespace RHIConstants;
 
-int main()
+int Renderer::run()
 {
     try
     {
@@ -28,8 +27,7 @@ int main()
         data.SwapchainMSAA = false;
         data.SwapchainMSAASamples = 1;
         
-        Renderer::StartRender(window, data);
-        PipelineExecutor* executor = PipelineExecutor::Create();
+        PipelineExecutor* executor = PipelineExecutor::Create(window, data);
         BufferAllocator* bufferAlloc = BufferAllocator::GetInstance();
         Pipeline* PBRGeometryPipe = PBRGeometryPipeline();
         std::vector<IOResource> inputResources = {*PBRGeometryPipe->GetOutputResource()};
@@ -59,7 +57,7 @@ int main()
         
         while (!window->PeekMessages())
         {
-            Renderer::BeginFrame();
+            executor->BeginFrame();
             
             if (!initialized)
             {
@@ -83,7 +81,7 @@ int main()
                 initialized = true;
             }
             
-            Renderer::GetSwapChainRenderTargets(backBufferView, backBuffer);
+            executor->GetSwapChainRenderTargets(backBufferView, backBuffer);
             
             ImageMemoryBarrier preBarrier = PRE_BARRIER;
             preBarrier.ImageResource = backBuffer;
@@ -99,9 +97,9 @@ int main()
             readToAttachmentBarrier.ImageResource = PBRGeometryPipe->GetOwnedImage(3);
             executor->IssueImageMemoryBarrier(readToAttachmentBarrier);
             
-            executor->Begin(PBRGeometryPipe, {}, nullptr, window->GetWidth(), window->GetHeight(), clearColors, 1.0);
+            executor->BeginPipeline(PBRGeometryPipe, {}, nullptr, window->GetWidth(), window->GetHeight(), clearColors, 1.0);
             executor->DrawSceneNode(meshRoot.GetSceneNode(), materialDescriptorSets, viewProj, cameraPosition);
-            executor->End();
+            executor->EndPipeline();
 
             ImageMemoryBarrier gBufferBarrier = ATTACHMENT_TO_READ_BARRIER;
             gBufferBarrier.ImageResource = PBRGeometryPipe->GetOwnedImage(0);
@@ -113,28 +111,24 @@ int main()
             gBufferBarrier.ImageResource = PBRGeometryPipe->GetOwnedImage(3);
             executor->IssueImageMemoryBarrier(gBufferBarrier);
             
-            executor->Begin(PBRLightingPipe, {backBufferView}, nullptr, window->GetWidth(), window->GetHeight(), {{0, 0, 0, 1}}, 0);
+            executor->BeginPipeline(PBRLightingPipe, {backBufferView}, nullptr, window->GetWidth(), window->GetHeight(), {{0, 0, 0, 1}}, 0);
             executor->DrawQuad(); // Internally references geometry descriptors, no argument needed
-            executor->End();
+            executor->EndPipeline();
             
             ImageMemoryBarrier postBarrier = POST_BARRIER;
             postBarrier.ImageResource = backBuffer;
             executor->IssueImageMemoryBarrier(postBarrier);
             
-            Renderer::EndFrame();
+            executor->EndFrame();
         }
 
-        Renderer::Wait();
-        // Delete pipelines FIRST (before buffer allocator)
+        executor->Wait();
+
         delete PBRGeometryPipe;
         delete PBRLightingPipe;
-        delete executor;
-
-        // Delete buffer allocator LAST
+        
         delete bufferAlloc;
-        //delete TrianglePipe;
-        //delete texturedQuadPipe;
-        Renderer::EndRender();
+        delete executor;
         delete window;
 
         return 0;

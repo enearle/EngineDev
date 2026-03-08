@@ -9,15 +9,15 @@
 
 using namespace D3D12Structs;
 
-PipelineExecutor* PipelineExecutor::Create()
+PipelineExecutor* PipelineExecutor::Create(Window* window, CoreInitData data)
 {
     if (GRAPHICS_SETTINGS.APIToUse == Vulkan)
     {
-        return new VulkanPipelineExecutor();
+        return new VulkanPipelineExecutor(window, data);
     }
     else if (GRAPHICS_SETTINGS.APIToUse == DirectX12)
     {
-        return new D3DPipelineExecutor();
+        return new D3DPipelineExecutor(window, data);
     }
     else
     {
@@ -29,15 +29,55 @@ PipelineExecutor* PipelineExecutor::Create()
 // DirectX 12                                     //
 //================================================//
 
-D3DPipelineExecutor::D3DPipelineExecutor() = default;
-D3DPipelineExecutor::~D3DPipelineExecutor() = default;
+D3DPipelineExecutor::D3DPipelineExecutor(Window* window, CoreInitData data)
+{
+    StartRender(window, data);
+}
 
-void D3DPipelineExecutor::Begin(Pipeline* pipeline,
-                                   const std::vector<void*>& colorViews,
-                                   void* depthView,
-                                   uint32_t width, uint32_t height,
-                                   const std::vector<DirectX::XMFLOAT4>& clearColors,
-                                   float clearDepth)
+D3DPipelineExecutor::~D3DPipelineExecutor()
+{
+    EndRender();
+}
+
+void D3DPipelineExecutor::StartRender(Window* window, CoreInitData data)
+{
+    D3DCore::GetInstance().InitDirect3D(window, data);
+}
+
+void D3DPipelineExecutor::EndRender()
+{
+    D3DCore::GetInstance().Reset();
+}
+
+void D3DPipelineExecutor::BeginFrame()
+{
+    D3DCore::GetInstance().BeginFrame();
+}
+
+void D3DPipelineExecutor::EndFrame()
+{
+    D3DCore::GetInstance().EndFrame();
+}
+
+void D3DPipelineExecutor::GetSwapChainRenderTargets(void*& outBackBufferView, void*& outBackBuffer)
+{
+    D3D12_CPU_DESCRIPTOR_HANDLE rtvHandle = D3DCore::GetInstance().GetRenderTargetDescriptor();
+    ID3D12Resource* backBuffer = D3DCore::GetInstance().GetCurrentBackBuffer();
+    outBackBufferView = reinterpret_cast<void*>(rtvHandle.ptr);
+    outBackBuffer = backBuffer;
+}
+
+void D3DPipelineExecutor::Wait()
+{
+    D3DCore::GetInstance().WaitForGPU();
+}
+
+void D3DPipelineExecutor::BeginPipeline(Pipeline* pipeline,
+                                        const std::vector<void*>& colorViews,
+                                        void* depthView,
+                                        uint32_t width, uint32_t height,
+                                        const std::vector<DirectX::XMFLOAT4>& clearColors,
+                                        float clearDepth)
 {
     ID3D12GraphicsCommandList* cmdList = GetCommandList();
     CurrentPipeline = static_cast<D3DPipeline*>(pipeline);
@@ -136,7 +176,7 @@ void D3DPipelineExecutor::Begin(Pipeline* pipeline,
     cmdList->RSSetScissorRects(1, &scissor);
 }
 
-void D3DPipelineExecutor::End()
+void D3DPipelineExecutor::EndPipeline()
 {
     // Empty atm
 
@@ -286,21 +326,55 @@ ID3D12GraphicsCommandList* D3DPipelineExecutor::GetCommandList()
 // Vulkan                                         //
 //================================================//
 
-VulkanPipelineExecutor::VulkanPipelineExecutor()
+VulkanPipelineExecutor::VulkanPipelineExecutor(Window* window, CoreInitData data)
 {
+    StartRender(window, data);
 }
 
 VulkanPipelineExecutor::~VulkanPipelineExecutor()
 {
-    
+    EndRender();
 }
 
-void VulkanPipelineExecutor::Begin(Pipeline* pipeline,
-                                     const std::vector<void*>& colorViews,
-                                     void* depthView,
-                                     uint32_t width, uint32_t height,
-                                     const std::vector<DirectX::XMFLOAT4>& clearColors,
-                                     float clearDepth)
+void VulkanPipelineExecutor::StartRender(Window* window, CoreInitData data)
+{
+    VulkanCore::GetInstance().InitVulkan(window, data);
+}
+
+void VulkanPipelineExecutor::EndRender()
+{
+    VulkanCore::GetInstance().Cleanup();
+}
+
+void VulkanPipelineExecutor::BeginFrame()
+{
+    VulkanCore::GetInstance().BeginFrame();
+}
+
+void VulkanPipelineExecutor::EndFrame()
+{
+    VulkanCore::GetInstance().EndFrame();
+}
+
+void VulkanPipelineExecutor::GetSwapChainRenderTargets(void*& outBackBufferView, void*& outBackBuffer)
+{
+    VkImageView swapchainImageView = VulkanCore::GetInstance().GetCurrentSwapchainImageView();
+    VkImage vkImage = VulkanCore::GetInstance().GetCurrentSwapchainImage();
+    outBackBufferView = swapchainImageView;
+    outBackBuffer = reinterpret_cast<void*>(vkImage);
+}
+
+void VulkanPipelineExecutor::Wait()
+{
+    VulkanCore::GetInstance().WaitForGPU();
+}
+
+void VulkanPipelineExecutor::BeginPipeline(Pipeline* pipeline,
+                                           const std::vector<void*>& colorViews,
+                                           void* depthView,
+                                           uint32_t width, uint32_t height,
+                                           const std::vector<DirectX::XMFLOAT4>& clearColors,
+                                           float clearDepth)
 {
     CurrentPipeline = static_cast<VulkanPipeline*>(pipeline);
     VkCommandBuffer cmdBuffer = GetCommandBuffer();
@@ -399,7 +473,7 @@ void VulkanPipelineExecutor::Begin(Pipeline* pipeline,
     vkCmdSetScissor(cmdBuffer, 0, 1, &scissor);
 }
 
-void VulkanPipelineExecutor::End()
+void VulkanPipelineExecutor::EndPipeline()
 {
     VkCommandBuffer cmdBuffer = GetCommandBuffer();
     vkCmdEndRendering(cmdBuffer);

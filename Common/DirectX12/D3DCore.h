@@ -4,7 +4,7 @@
 #include <dxgi1_6.h>
 #include <d3d12.h>
 #include <vector>
-
+#include "../RHI/RHIStructures.h"
 #include "d3dx12.h"
 
 #pragma comment(lib,"d3dcompiler.lib")
@@ -62,7 +62,7 @@ public:
     ~D3DCore() = default;
     static D3DCore& GetInstance();
     
-    void InitDirect3D(Window* window, struct CoreInitData data);
+    void InitDirect3D(Window* window, RHIStructures::CoreInitData data);
     void WaitForGPU();
     void Reset();
     void BeginFrame();

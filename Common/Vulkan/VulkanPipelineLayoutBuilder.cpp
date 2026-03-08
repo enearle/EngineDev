@@ -4,6 +4,8 @@
 #include <stdexcept>
 #include "VulkanCore.h"
 
+using namespace RHIStructures;
+
 VkPipelineLayout VulkanPipelineLayoutBuilder::BuildPipelineLayout(uint32_t pipelineID,
     const std::vector<ResourceLayout>& layouts, std::vector<VkDescriptorSetLayout>& descriptorSetLayouts, const std::vector<PipelineConstant>& constants)
 {

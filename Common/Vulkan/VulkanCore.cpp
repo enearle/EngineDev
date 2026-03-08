@@ -1,11 +1,14 @@
 ﻿#include "VulkanCore.h"
+
+#include <iostream>
+#include <set>
 #include "VulkanResource.h"
 #include "../Window.h"
 #include "../Windows/Win32ErrorHandler.h"
 #include "../MetaData.h"
-#include "../RHI/Renderer.h"
 
 using namespace Win32ErrorHandler;
+using namespace RHIStructures;
 
 VulkanCore& VulkanCore::GetInstance()
 {

@@ -1,11 +1,7 @@
 ﻿#pragma once
 #include "../Windows/WindowsHeaders.h"
-#include <algorithm>
-#include <limits>
 #include <vector>
-#include <iostream>
-#include <set>
-
+#include "../RHI/RHIStructures.h"
 #include "VulkanPipelineLayoutBuilder.h"
 #include "../Vulkan/VulkanStructs.h"
 
@@ -75,7 +71,7 @@ public:
 
     static VulkanCore& GetInstance();
     
-    void InitVulkan(Window* window, struct CoreInitData data);
+    void InitVulkan(Window* window, RHIStructures::CoreInitData data);
     void Cleanup();
     void BeginFrame();
     void EndFrame();

@@ -25,6 +25,11 @@ namespace RHIStructures
     //=====================================//
     //  ----------  Universal  ----------  //
     //=====================================//
+    struct CoreInitData
+    {
+        bool SwapchainMSAA = false;
+        bool SwapchainMSAASamples = 1;
+    };
     
     struct Vertex
     {

@@ -5,11 +5,11 @@
 #include <iostream>
 #include <stdexcept>
 #include "../GraphicsSettings.h"
-#include "../RHI/Renderer.h"
 #include "../RHI/BufferAllocator.h"
 
-using namespace Win32ErrorHandler;
 
+using namespace Win32ErrorHandler;
+using namespace RHIStructures;
 
 D3DCore& D3DCore::GetInstance()
 {
