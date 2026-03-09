@@ -1,8 +1,11 @@
 #pragma once
 #include "Mesh.h"
 #include "../PipelineExecutor.h"
-
-class GeometryImport
+#include "../../../Solution/RHI/RHI_API_Macro.h"
+struct aiNode;
+struct aiScene;
+struct aiMesh;
+class RHI_API GeometryImport
 {
 public:
     static SceneNode LoadNode(aiNode* node, const aiScene* scene, const DirectX::XMMATRIX& transform);

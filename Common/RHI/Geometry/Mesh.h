@@ -5,13 +5,13 @@
 #include <DirectXMath.h>
 #include <string>
 #include <vector>
-#include <assimp/scene.h>
 #include "../RHIStructures.h"
+#include "../../../Solution/RHI/RHI_API_Macro.h"
 
 struct aiScene;
 struct DirectX::XMMATRIX;
 
-class Mesh
+class RHI_API Mesh
 {
 public:
     
@@ -39,7 +39,7 @@ private:
     
 };
 
-struct SceneNode
+struct RHI_API SceneNode
 {
     SceneNode() = default;
     SceneNode(std::vector<Mesh>&& meshes, const DirectX::XMMATRIX modelMatrix, const std::string& name, uint32_t numMaterials) : Name(name), Meshes(std::move(meshes)), Model(modelMatrix), NumMaterials(numMaterials) {}
@@ -64,7 +64,7 @@ private:
     DirectX::XMMATRIX Model;
 };
 
-struct RootNode
+struct RHI_API RootNode
 {
     RootNode() = default;
     RootNode(SceneNode&& sceneNode, uint32_t numMaterials) : SceneNode(std::move(sceneNode)), NumMaterials(numMaterials) {}

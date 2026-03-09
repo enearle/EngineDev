@@ -1,14 +1,16 @@
 ﻿#pragma once
 #include <cstdint>
-#include <array>
-#include <bit>
 #include <d3d12.h>
 #include <dxgiformat.h>
 #include <string>
 #include <vector>
+#include "../../Solution/RHI/RHI_API_Macro.h"
 #include "../Windows/WindowsHeaders.h"
 #include <DirectXMath.h>
 #include <stdexcept>
+
+class Mesh;
+class Pipeline;
 
 namespace VulkanStructs
 {
@@ -98,7 +100,7 @@ namespace RHIStructures
         const char* EntryPoint = nullptr;
     };
     
-    ShaderStage ImportShader(const std::string& filename, const char* entryPoint);
+    RHI_API ShaderStage ImportShader(const std::string& filename, const char* entryPoint);
     VkShaderModule VulkanShaderModule(ShaderStage shaderStage);
     D3D12_SHADER_BYTECODE DXShaderBytecode(ShaderStage shaderStage);
 
@@ -613,9 +615,21 @@ namespace RHIStructures
     //  ----------  Renderer  ----------  //
     //====================================//
     
+    struct IndexedDraw
+    {
+        Mesh* Mesh = nullptr;
+        void* PushConstants = nullptr;
+        size_t PushConstantSize = 0;
+        uint64_t DescriptorSetIndex = 0;
+    };
+    
+    // Must also create a method for instanced draws here
+    
     struct PipelineFrameContext
     {
-        
+        Pipeline* ContextPipeline = nullptr;
+        bool IsQuad = false;
+        std::vector<IndexedDraw> IndexedDraws;
     };
 
 }

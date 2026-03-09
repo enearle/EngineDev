@@ -902,7 +902,29 @@ uint64_t DirectX12BufferAllocator::CreateImage(ImageDesc imageDesc)
         imageResource.Get(),
         D3D12_RESOURCE_STATE_COPY_DEST,
         D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+    
     cmdList->ResourceBarrier(1, &toShaderRead);
+    cmdList->Close();
+
+    ID3D12CommandQueue* commandQueue = D3DCore::GetInstance().GetCommandQueue().Get();
+    ComPtr<ID3D12Fence> transferFence = D3DCore::GetInstance().GetTransferFence();
+
+    ID3D12CommandList* ppCommandLists[] = { cmdList };
+    commandQueue->ExecuteCommandLists(1, ppCommandLists);
+
+    static UINT64 transferFenceValue = 0;
+    transferFenceValue++;
+    commandQueue->Signal(transferFence.Get(), transferFenceValue);
+    if (transferFence->GetCompletedValue() < transferFenceValue)
+    {
+        HANDLE eventHandle = CreateEventEx(nullptr, nullptr, 0, EVENT_ALL_ACCESS);
+        transferFence->SetEventOnCompletion(transferFenceValue, eventHandle);
+        WaitForSingleObject(eventHandle, INFINITE);
+        CloseHandle(eventHandle);
+    }
+
+    D3DCore::GetInstance().GetTransferCommandAllocator()->Reset();
+    cmdList->Reset(D3DCore::GetInstance().GetTransferCommandAllocator().Get(), nullptr);
     
     D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
     srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;

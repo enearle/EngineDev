@@ -1,5 +1,6 @@
 ﻿#pragma once
 #include "RHIStructures.h"
+#include "../../Solution/RHI/RHI_API_Macro.h"
 
 using namespace RHIStructures;
 using Microsoft::WRL::ComPtr;
@@ -12,7 +13,7 @@ protected:
     std::vector<DirectX::XMFLOAT4> clearColors;
     float depthClearValue = 1;
 public:
-    static Pipeline* Create(uint32_t pipelineID, const PipelineDesc& desc, std::vector<IOResource>* inputIOResources = nullptr);
+    static RHI_API Pipeline* Create(uint32_t pipelineID, const PipelineDesc& desc, std::vector<IOResource>* inputIOResources = nullptr);
     virtual ~Pipeline() = default;
     
     std::vector<DirectX::XMFLOAT4> GetClearColors() const { return clearColors; }

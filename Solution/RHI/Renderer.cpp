@@ -6,8 +6,6 @@
 #include <DirectXMath.h>
 #include <iostream>
 #include "../../Common/RHI/Uniform.h"
-#include "../../Common/DirectX12/D3DCore.h"
-#include "../../Common/Vulkan/VulkanCore.h"
 #include "../../Common/RHI/BufferAllocator.h"
 #include "../../Common/RHI/Material.h"
 #include "../../Common/RHI/Geometry/Mesh.h"
@@ -19,6 +17,7 @@ PipelineExecutor* Renderer::executor;
 BufferAllocator* Renderer::bufferAlloc;
 Window* Renderer::window;
 bool Renderer::initialized = false;
+std::vector<PipelineFrameContext> Renderer::PipelineFrameContexts;
 
 // temp
 Pipeline* Renderer::PBRGeometryPipe;
@@ -53,13 +52,13 @@ int Renderer::Run()
         DirectX::XMMATRIX vp = view * projection;
         DirectX::XMStoreFloat4x4(&viewProj, vp);
         
-        std::vector<Material> materials;
-        materials.push_back(Material("shells_0", Material::PBR));
-        materials.push_back(Material("shells_1", Material::PBR));
-        
+        std::vector<uint64_t> materials;
+        materials.push_back(Material("shells_0", Material::PBR).LoadMaterial(0,0));
+        materials.push_back(Material("shells_1", Material::PBR).LoadMaterial(0,0));
+
         RootNode meshRoot = GeometryImport::CreateMeshGroup("shells.fbx", "Shells", DirectX::XMMatrixIdentity());
         
-        std::vector<uint64_t> materialDescriptorSets;
+
         Uniform uniform;
         
         while (!window->PeekMessages())
@@ -76,8 +75,6 @@ int Renderer::Run()
             // Load/unload time
             if (!initialized)
             {
-                materialDescriptorSets.push_back(materials[0].LoadMaterial(0, 0));
-                materialDescriptorSets.push_back(materials[1].LoadMaterial(0, 0));
                 
                 ImageMemoryBarrier initBarrier = INIT_BARRIER;
                 for (int i = 0; i < PBRGeometryPipe->GetOwnedImageCount(); i++)
@@ -98,7 +95,7 @@ int Renderer::Run()
             }
             
             executor->BeginPipeline(PBRGeometryPipe, {}, nullptr, window->GetWidth(), window->GetHeight());
-            executor->DrawSceneNode(meshRoot.GetSceneNode(), materialDescriptorSets, viewProj, cameraPosition);
+            executor->DrawSceneNode(meshRoot.GetSceneNode(), materials, viewProj, cameraPosition);
             executor->EndPipeline();
             
             ImageMemoryBarrier gBufferBarrier = ATTACHMENT_TO_READ_BARRIER;
@@ -145,4 +142,18 @@ int Renderer::End()
     delete window;
 
     return 0;
+}
+
+uint32_t Renderer::CreatePipelineFrameContext(Pipeline* pipeline, bool isQuad)
+{
+    PipelineFrameContext context;
+    context.ContextPipeline = pipeline;
+    context.IsQuad = isQuad;
+    PipelineFrameContexts.push_back(context);
+    return PipelineFrameContexts.size() - 1;
+}
+
+void Renderer::AddIndexedDrawToContext(uint32_t contextIndex, RHIStructures::IndexedDraw draw)
+{
+    PipelineFrameContexts[contextIndex].IndexedDraws.push_back(draw);
 }
