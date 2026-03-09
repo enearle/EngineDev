@@ -294,6 +294,7 @@
     <ClInclude Include="..\..\Common\Windows\Win32Window.h" />
     <ClInclude Include="..\..\Common\Windows\WindowsHeaders.h" />
     <ClInclude Include="Renderer.h" />
+    <ClInclude Include="RHI_API_Macro.h" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="..\..\Common\CompileShaders.bat" />

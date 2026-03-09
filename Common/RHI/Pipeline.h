@@ -15,6 +15,7 @@ public:
     
     std::vector<uint64_t> GetInputDescriptorSetIDs() const { return PipelineInputDescriptorSetIDs; }
     IOResource* GetOutputResource() const { return PipelineOutputResource; }
+    virtual size_t GetOwnedImageCount() const = 0;
     virtual void* GetOwnedImage(uint32_t index) = 0;
     virtual void* GetOwnedDepthImage() = 0;
 };
@@ -24,12 +25,14 @@ class D3DPipeline : public Pipeline
 public:
     
     D3DPipeline(uint32_t pipelineID, const PipelineDesc& desc, std::vector<IOResource>* inputIOResources = nullptr);
+    ~D3DPipeline() override = default;
+    
     ID3D12PipelineState* GetPipelineState() const { return PipelineState.Get(); }
     ID3D12RootSignature* GetRootSignature() const { return RootSignature.Get(); }
     D3D12_PRIMITIVE_TOPOLOGY GetTopology() const { return Topology; }
     
     void* GetOwnedImage(uint32_t index) override { return OwnedColorResources[index].Get(); }
-    
+    size_t GetOwnedImageCount() const override { return OwnedColorResources.size(); }
     std::vector<ComPtr<ID3D12Resource>> GetOwnedColorResources() const { return OwnedColorResources; }
     std::vector<D3D12_CPU_DESCRIPTOR_HANDLE> GetOwnedRTVs() const { return OwnedRTVs; }
     ComPtr<ID3D12Resource> GetOwnedDepthResource() const { return OwnedDepthResource; }
@@ -53,15 +56,14 @@ class VulkanPipeline : public Pipeline
 public:
     
     VulkanPipeline(uint32_t pipelineID, const PipelineDesc& desc, std::vector<IOResource>* inputIOResources = nullptr);
-    ~VulkanPipeline();
+    ~VulkanPipeline() override;
     
     VkPipeline GetVulkanPipeline() const { return Pipeline; }
     VkPipelineLayout GetPipelineLayout() const { return PipelineLayout; }
     VkRenderPass GetRenderPass() const { return RenderPass; }
     
     void* GetOwnedImage(uint32_t index) override { return OwnedImages[index]; }
-    
-    // Owned images are tracked in buffer allocator and do not need cleanup in pipeline
+    size_t GetOwnedImageCount() const override { return OwnedImages.size(); }
     std::vector<VkImage> GetOwnedImages() const { return OwnedImages; }
     std::vector<VkImageView> GetOwnedImageViews() const { return OwnedImageViews; }
     std::vector<VkDeviceMemory> GetOwnedImageMemory() const { return OwnedImageMemory; }
@@ -74,7 +76,7 @@ public:
     VkAttachmentDescription GetDepthAttachmentDescription() const { return DepthAttachmentDescription; }
 
 private:
-    
+    // Owned images are tracked in buffer allocator and do not need cleanup in pipeline
     std::vector<VkImage> OwnedImages;
     std::vector<VkImageView> OwnedImageViews;
     std::vector<VkDeviceMemory> OwnedImageMemory;

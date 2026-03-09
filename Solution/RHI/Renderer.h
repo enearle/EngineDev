@@ -1,13 +1,19 @@
 #pragma once
+#include "RHI_API_Macro.h"
 
-#ifdef RHI_EXPORTS
-#define RHI_API __declspec(dllexport)
-#else
-#define RHI_API __declspec(dllimport)
-#endif
 
 class RHI_API Renderer
 {
 public:
-    static int run();
+    static void Start(class Window* mainWindow);
+    static int Run();
+    static int End();
+    
+private:
+    static class PipelineExecutor* executor;
+    static class BufferAllocator* bufferAlloc;
+    static class Window* window;
+    static bool initialized;
+    static class Pipeline* PBRGeometryPipe;
+    static class Pipeline* PBRLightingPipe;
 };

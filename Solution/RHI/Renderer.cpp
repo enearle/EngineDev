@@ -15,23 +15,36 @@
 
 using namespace RHIConstants;
 
-int Renderer::run()
+PipelineExecutor* Renderer::executor;
+BufferAllocator* Renderer::bufferAlloc;
+Window* Renderer::window;
+bool Renderer::initialized = false;
+
+// temp
+Pipeline* Renderer::PBRGeometryPipe;
+Pipeline* Renderer::PBRLightingPipe;
+
+void Renderer::Start(Window* mainWindow)
+{
+    window = mainWindow;
+    
+    CoreInitData data;
+    data.SwapchainMSAA = false;
+    data.SwapchainMSAASamples = 1;
+    
+    executor = PipelineExecutor::Create(window, data);
+    bufferAlloc = BufferAllocator::GetInstance();
+    
+    ShowWindow(window->GetWindowHandle(), 5);
+}
+
+int Renderer::Run()
 {
     try
     {
-        Window* window = new Window(L"MyWindow", Win32, 1280, 720);
-
-        ShowWindow(window->GetWindowHandle(), 5);
-        
-        CoreInitData data;
-        data.SwapchainMSAA = false;
-        data.SwapchainMSAASamples = 1;
-        
-        PipelineExecutor* executor = PipelineExecutor::Create(window, data);
-        BufferAllocator* bufferAlloc = BufferAllocator::GetInstance();
-        Pipeline* PBRGeometryPipe = PBRGeometryPipeline();
+        PBRGeometryPipe = PBRGeometryPipeline();
         std::vector<IOResource> inputResources = {*PBRGeometryPipe->GetOutputResource()};
-        Pipeline* PBRLightingPipe = DeferredLightingPipeline(&inputResources);
+        PBRLightingPipe = DeferredLightingPipeline(&inputResources);
         
         DirectX::XMFLOAT4 cameraPosition = {0.0, 10, -8, 1};
         DirectX::XMFLOAT4X4 viewProj;
@@ -46,18 +59,20 @@ int Renderer::run()
         
         RootNode meshRoot = GeometryImport::CreateMeshGroup("shells.fbx", "Shells", DirectX::XMMatrixIdentity());
         
-        void* backBufferView;
-        void* backBuffer;
-
         std::vector<DirectX::XMFLOAT4> clearColors {{0,0,0,1}, {0,0,0,1}, {0,0,0,1}, {0,0,0,1}};
-        bool initialized = false;
         
         std::vector<uint64_t> materialDescriptorSets;
         Uniform uniform;
         
         while (!window->PeekMessages())
         {
+            void* backBufferView;
+            void* backBuffer;
             executor->BeginFrame();
+            executor->GetSwapChainRenderTargets(backBufferView, backBuffer);
+            ImageMemoryBarrier preBarrier = PRE_BARRIER;
+            preBarrier.ImageResource = backBuffer;
+            executor->IssueImageMemoryBarrier(preBarrier);
             
             if (!initialized)
             {
@@ -65,54 +80,36 @@ int Renderer::run()
                 materialDescriptorSets.push_back(materials[1].LoadMaterial(0, 0));
                 
                 ImageMemoryBarrier initBarrier = INIT_BARRIER;
-                initBarrier.ImageResource = PBRGeometryPipe->GetOwnedImage(0);
-                executor->IssueImageMemoryBarrier(initBarrier);
-                initBarrier.ImageResource = PBRGeometryPipe->GetOwnedImage(1);
-                executor->IssueImageMemoryBarrier(initBarrier);
-                initBarrier.ImageResource = PBRGeometryPipe->GetOwnedImage(2);
-                executor->IssueImageMemoryBarrier(initBarrier);
-                initBarrier.ImageResource = PBRGeometryPipe->GetOwnedImage(3);
-                executor->IssueImageMemoryBarrier(initBarrier);
-                
-                ImageMemoryBarrier intDepthBarrier = INIT_DEPTH_BARRIER;
-                intDepthBarrier.ImageResource = PBRGeometryPipe->GetOwnedDepthImage();
-                executor->IssueImageMemoryBarrier(intDepthBarrier);
+                for (int i = 0; i < PBRGeometryPipe->GetOwnedImageCount(); i++)
+                {
+                    initBarrier.ImageResource = PBRGeometryPipe->GetOwnedImage(i);
+                    executor->IssueImageMemoryBarrier(initBarrier);
+                }
                 
                 initialized = true;
             }
             
-            executor->GetSwapChainRenderTargets(backBufferView, backBuffer);
-            
-            ImageMemoryBarrier preBarrier = PRE_BARRIER;
-            preBarrier.ImageResource = backBuffer;
-            executor->IssueImageMemoryBarrier(preBarrier);
-            
             ImageMemoryBarrier readToAttachmentBarrier = READ_TO_ATTACHMENT_BARRIER;
-            readToAttachmentBarrier.ImageResource = PBRGeometryPipe->GetOwnedImage(0);
-            executor->IssueImageMemoryBarrier(readToAttachmentBarrier);
-            readToAttachmentBarrier.ImageResource = PBRGeometryPipe->GetOwnedImage(1);
-            executor->IssueImageMemoryBarrier(readToAttachmentBarrier);
-            readToAttachmentBarrier.ImageResource = PBRGeometryPipe->GetOwnedImage(2);
-            executor->IssueImageMemoryBarrier(readToAttachmentBarrier);
-            readToAttachmentBarrier.ImageResource = PBRGeometryPipe->GetOwnedImage(3);
-            executor->IssueImageMemoryBarrier(readToAttachmentBarrier);
+            for (int i = 0; i < PBRGeometryPipe->GetOwnedImageCount(); i++)
+            {
+                readToAttachmentBarrier.ImageResource = PBRGeometryPipe->GetOwnedImage(i);
+                executor->IssueImageMemoryBarrier(readToAttachmentBarrier);
+            }
             
             executor->BeginPipeline(PBRGeometryPipe, {}, nullptr, window->GetWidth(), window->GetHeight(), clearColors, 1.0);
             executor->DrawSceneNode(meshRoot.GetSceneNode(), materialDescriptorSets, viewProj, cameraPosition);
             executor->EndPipeline();
-
+            
             ImageMemoryBarrier gBufferBarrier = ATTACHMENT_TO_READ_BARRIER;
-            gBufferBarrier.ImageResource = PBRGeometryPipe->GetOwnedImage(0);
-            executor->IssueImageMemoryBarrier(gBufferBarrier);
-            gBufferBarrier.ImageResource = PBRGeometryPipe->GetOwnedImage(1);
-            executor->IssueImageMemoryBarrier(gBufferBarrier);
-            gBufferBarrier.ImageResource = PBRGeometryPipe->GetOwnedImage(2);
-            executor->IssueImageMemoryBarrier(gBufferBarrier);
-            gBufferBarrier.ImageResource = PBRGeometryPipe->GetOwnedImage(3);
-            executor->IssueImageMemoryBarrier(gBufferBarrier);
+            for (int i = 0; i < PBRGeometryPipe->GetOwnedImageCount(); i++)
+            {
+                
+                gBufferBarrier.ImageResource = PBRGeometryPipe->GetOwnedImage(i);
+                executor->IssueImageMemoryBarrier(gBufferBarrier);
+            }
             
             executor->BeginPipeline(PBRLightingPipe, {backBufferView}, nullptr, window->GetWidth(), window->GetHeight(), {{0, 0, 0, 1}}, 0);
-            executor->DrawQuad(); // Internally references geometry descriptors, no argument needed
+            executor->DrawQuad(); 
             executor->EndPipeline();
             
             ImageMemoryBarrier postBarrier = POST_BARRIER;
@@ -122,16 +119,6 @@ int Renderer::run()
             executor->EndFrame();
         }
 
-        executor->Wait();
-
-        delete PBRGeometryPipe;
-        delete PBRLightingPipe;
-        
-        delete bufferAlloc;
-        delete executor;
-        delete window;
-
-        return 0;
 
     }
     catch (const std::exception& e)
@@ -145,4 +132,17 @@ int Renderer::run()
         return 1;
     }
 
+}
+
+int Renderer::End()
+{
+    executor->Wait();
+
+    delete PBRGeometryPipe;
+    delete PBRLightingPipe;
+    delete bufferAlloc;
+    delete executor;
+    delete window;
+
+    return 0;
 }

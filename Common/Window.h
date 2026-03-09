@@ -4,6 +4,7 @@
 #include <mutex>
 #include "Data/Event.h"
 #include "Windows/WindowsHeaders.h"
+#include "../Solution/RHI/RHI_API_Macro.h"
 
 enum WindowType
 {
@@ -11,7 +12,7 @@ enum WindowType
     GLFW
 };
 
-class Window
+class RHI_API Window
 {
     HINSTANCE InstanceHandle;
     HWND WindowHandle;
