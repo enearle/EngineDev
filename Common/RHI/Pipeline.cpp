@@ -26,6 +26,9 @@ Pipeline* Pipeline::Create(uint32_t pipelineID, const PipelineDesc& desc, std::v
 
 D3DPipeline::D3DPipeline(uint32_t pipelineID, const PipelineDesc& desc, std::vector<IOResource>* inputIOResources)
 {
+    clearColors = desc.AttachmentClearValues;
+    depthClearValue = desc.DepthClearValue;
+    
     ComPtr<ID3D12Device> device = D3DCore::GetInstance().GetDevice();
     Topology = DXPrimitiveTopology(desc.PrimitiveTopology);
     
@@ -365,6 +368,8 @@ D3DPipeline::D3DPipeline(uint32_t pipelineID, const PipelineDesc& desc, std::vec
 
 VulkanPipeline::VulkanPipeline(uint32_t pipelineID, const PipelineDesc& desc, std::vector<IOResource>* inputIOResources)
 {
+    clearColors = desc.AttachmentClearValues;
+    depthClearValue = desc.DepthClearValue;
     // Cache shader modules for cleanup
     // All shaders will allways be loaded. This is meh, but for my engine probably fine.
     std::vector<VkPipelineShaderStageCreateInfo> shaderStages;

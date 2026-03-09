@@ -9,9 +9,14 @@ class Pipeline
 protected:
     std::vector<uint64_t> PipelineInputDescriptorSetIDs;
     IOResource* PipelineOutputResource;
+    std::vector<DirectX::XMFLOAT4> clearColors;
+    float depthClearValue = 1;
 public:
     static Pipeline* Create(uint32_t pipelineID, const PipelineDesc& desc, std::vector<IOResource>* inputIOResources = nullptr);
     virtual ~Pipeline() = default;
+    
+    std::vector<DirectX::XMFLOAT4> GetClearColors() const { return clearColors; }
+    float GetDepthClearValue() const { return depthClearValue; }
     
     std::vector<uint64_t> GetInputDescriptorSetIDs() const { return PipelineInputDescriptorSetIDs; }
     IOResource* GetOutputResource() const { return PipelineOutputResource; }

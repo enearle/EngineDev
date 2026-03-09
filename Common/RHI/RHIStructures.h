@@ -358,17 +358,21 @@ namespace RHIStructures
         std::vector<VertexBinding> VertexBindings = {};
         PrimitiveTopology PrimitiveTopology = PrimitiveTopology::TriangleList;
         RasterizerState RasterizerState = {};
-        DepthStencilState DepthStencilState;
+        
         std::vector<BlendAttachmentState> BlendAttachmentStates = {};
         std::vector<Format> RenderTargetFormats = {};
-        Format DepthStencilFormat = Format::Unknown;
-        MultisampleState MultisampleState = {};
+        std::vector<SamplerType> AttachmentSamplers = {};
+        std::vector<DirectX::XMFLOAT4> AttachmentClearValues = {};
         
+        DepthStencilState DepthStencilState;
+        Format DepthStencilFormat = Format::Unknown;
+        float DepthClearValue = 1.0f;
+        
+        MultisampleState MultisampleState = {};
         std::vector<PipelineConstant> Constants = {};
         ResourceLayout ResourceLayout = {};
         std::vector<AttachmentLoadOp> ColorLoadOps = {};
         std::vector<AttachmentStoreOp> ColorStoreOps = {};
-        std::vector<SamplerType> AttachmentSamplers = {};
         AttachmentLoadOp DepthLoadOp = AttachmentLoadOp::DontCare;
         AttachmentStoreOp DepthStoreOp = AttachmentStoreOp::DontCare;
         
@@ -404,16 +408,6 @@ namespace RHIStructures
         ImageLayout FinalLayout;
         float ClearDepth = 1.0f;
         uint32_t ClearStencil = 0;
-    };
-
-    struct RenderPassDesc
-    {
-        std::string Name;                           // For debugging
-        std::vector<RenderTargetAttachment> ColorAttachments;
-        DepthStencilAttachment* DepthAttachment = nullptr;
-        uint32_t Width;
-        uint32_t Height;
-        uint32_t Layers = 1;
     };
 
     //===================================//
@@ -613,6 +607,15 @@ namespace RHIStructures
     {
         std::vector<DescriptorSetBinding> Bindings;
         ResourceLayout Layout;
+    };
+    
+    //====================================//
+    //  ----------  Renderer  ----------  //
+    //====================================//
+    
+    struct PipelineFrameContext
+    {
+        
     };
 
 }

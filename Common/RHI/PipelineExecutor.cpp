@@ -75,9 +75,7 @@ void D3DPipelineExecutor::Wait()
 void D3DPipelineExecutor::BeginPipeline(Pipeline* pipeline,
                                         const std::vector<void*>& colorViews,
                                         void* depthView,
-                                        uint32_t width, uint32_t height,
-                                        const std::vector<DirectX::XMFLOAT4>& clearColors,
-                                        float clearDepth)
+                                        uint32_t width, uint32_t height)
 {
     ID3D12GraphicsCommandList* cmdList = GetCommandList();
     CurrentPipeline = static_cast<D3DPipeline*>(pipeline);
@@ -134,13 +132,13 @@ void D3DPipelineExecutor::BeginPipeline(Pipeline* pipeline,
     );
 
     // Clear render targets
-    for (size_t i = 0; i < rtvHandles.size() && i < clearColors.size(); ++i)
+    for (size_t i = 0; i < rtvHandles.size() && i < CurrentPipeline->GetClearColors().size(); ++i)
     {
         float clearColor[] = {
-            clearColors[i].x,
-            clearColors[i].y,
-            clearColors[i].z,
-            clearColors[i].w
+            CurrentPipeline->GetClearColors()[i].x,
+            CurrentPipeline->GetClearColors()[i].y,
+            CurrentPipeline->GetClearColors()[i].z,
+            CurrentPipeline->GetClearColors()[i].w
         };
         cmdList->ClearRenderTargetView(rtvHandles[i], clearColor, 0, nullptr);
     }
@@ -150,7 +148,7 @@ void D3DPipelineExecutor::BeginPipeline(Pipeline* pipeline,
         cmdList->ClearDepthStencilView(
             *pDsvHandle,
             D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL,
-            clearDepth,
+            CurrentPipeline->GetDepthClearValue(),
             0,
             0,
             nullptr
@@ -234,8 +232,7 @@ void D3DPipelineExecutor::DrawSceneNode(const SceneNode& node, std::vector<uint6
         BindDescriptorSets(&descriptorSets, true);
         
         RHIConstants::MVPData mvpData { model, normal, camera, camPos };
-        DrawIndexed(mesh->GetVertexBufferID(), mesh->GetVertexCount(), mesh->GetIndexBufferID(), mesh->GetIndexCount(), 
-            &mvpData, sizeof(RHIConstants::MVPData));
+        DrawIndexed(mesh, &mvpData, sizeof(RHIConstants::MVPData));
     }
 
     std::vector<SceneNode> children = node.GetChildren();
@@ -278,6 +275,12 @@ void D3DPipelineExecutor::DrawIndexed(uint64_t vertBufferID, uint32_t vertCount,
     cmdList->IASetVertexBuffers(0, 1, &vbv);
     cmdList->IASetIndexBuffer(&ibv);
     cmdList->DrawIndexedInstanced(indexCount, 1, 0, 0, 0);
+}
+
+void D3DPipelineExecutor::DrawIndexed(const Mesh* mesh, void* pushConstants, size_t pushConstantsSize)
+{
+    DrawIndexed(mesh->GetVertexBufferID(), mesh->GetVertexCount(), mesh->GetIndexBufferID(), mesh->GetIndexCount(), 
+            pushConstants, pushConstantsSize);
 }
 
 void D3DPipelineExecutor::DrawQuad(std::vector<uint64_t>* descriptorSets)
@@ -372,9 +375,7 @@ void VulkanPipelineExecutor::Wait()
 void VulkanPipelineExecutor::BeginPipeline(Pipeline* pipeline,
                                            const std::vector<void*>& colorViews,
                                            void* depthView,
-                                           uint32_t width, uint32_t height,
-                                           const std::vector<DirectX::XMFLOAT4>& clearColors,
-                                           float clearDepth)
+                                           uint32_t width, uint32_t height)
 {
     CurrentPipeline = static_cast<VulkanPipeline*>(pipeline);
     VkCommandBuffer cmdBuffer = GetCommandBuffer();
@@ -401,21 +402,8 @@ void VulkanPipelineExecutor::BeginPipeline(Pipeline* pipeline,
     if (colourAttachmentViews.empty() && depthStencilView == VK_NULL_HANDLE)
         throw std::runtime_error("No attachments provided.");
     
-    if (clearColors.size() != colourAttachmentViews.size())
+    if (CurrentPipeline->GetClearColors().size() != colourAttachmentViews.size())
         throw std::runtime_error("Number of clear colors does not match number of attachments.");
-    
-    std::vector<VkClearValue> clearValues;
-    VkClearValue depthClear{};
-    for (size_t i = 0; i < clearColors.size(); ++i)
-    {
-        VkClearValue clearValue{};
-        clearValue.color = {clearColors[i].x, clearColors[i].y, clearColors[i].z, clearColors[i].w};
-        clearValues.push_back(clearValue);
-    }
-    if (depthStencilView)
-    {
-        depthClear.depthStencil = {clearDepth, 0};
-    }
     
     std::vector<VkAttachmentDescription> attachmentDescs = CurrentPipeline->GetAttachmentDescriptions();
     VkAttachmentDescription depthStencilDesc = {};  // Initialize to zero
@@ -432,7 +420,7 @@ void VulkanPipelineExecutor::BeginPipeline(Pipeline* pipeline,
         attachment.loadOp = attachmentDescs[i].loadOp;
         attachment.storeOp = attachmentDescs[i].storeOp;
         attachment.imageLayout = attachmentDescs[i].finalLayout;
-        attachment.clearValue.color = {clearColors[i].x, clearColors[i].y, clearColors[i].z, clearColors[i].w};
+        attachment.clearValue.color = {CurrentPipeline->GetClearColors()[i].x, CurrentPipeline->GetClearColors()[i].y, CurrentPipeline->GetClearColors()[i].z, CurrentPipeline->GetClearColors()[i].w};
         colourAttachments.push_back(attachment);
     }
     
@@ -447,7 +435,7 @@ void VulkanPipelineExecutor::BeginPipeline(Pipeline* pipeline,
         depthAttachment.loadOp = depthStencilDesc.loadOp;
         depthAttachment.storeOp = depthStencilDesc.storeOp;
         depthAttachment.imageLayout = depthStencilDesc.finalLayout;
-        depthAttachment.clearValue.depthStencil = {clearDepth, 0};
+        depthAttachment.clearValue.depthStencil = {CurrentPipeline->GetDepthClearValue(), 0};
         renderingInfo.pDepthAttachment = &depthAttachment;
     }
     
@@ -557,8 +545,7 @@ void VulkanPipelineExecutor::DrawSceneNode(const SceneNode& node, std::vector<ui
         BindDescriptorSets(&descriptorSets, true);
         
         RHIConstants::MVPData mvpData { model, normal, camera, camPos };
-        DrawIndexed(mesh->GetVertexBufferID(), mesh->GetVertexCount(), mesh->GetIndexBufferID(), mesh->GetIndexCount(), 
-            &mvpData, sizeof(RHIConstants::MVPData));
+        DrawIndexed(mesh, &mvpData, sizeof(RHIConstants::MVPData));
     }
 
     std::vector<SceneNode> children = node.GetChildren();
@@ -598,6 +585,11 @@ void VulkanPipelineExecutor::DrawIndexed(uint64_t vertBufferID, uint32_t vertCou
     }
 }
 
+void VulkanPipelineExecutor::DrawIndexed(const Mesh* mesh, void* pushConstants, size_t pushConstantsSize)
+{
+    DrawIndexed(mesh->GetVertexBufferID(), mesh->GetVertexCount(), mesh->GetIndexBufferID(), mesh->GetIndexCount(), 
+            pushConstants, pushConstantsSize);
+}
 
 void VulkanPipelineExecutor::DrawQuad(std::vector<uint64_t>* descriptorSets)
 {

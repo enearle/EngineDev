@@ -59,13 +59,12 @@ int Renderer::Run()
         
         RootNode meshRoot = GeometryImport::CreateMeshGroup("shells.fbx", "Shells", DirectX::XMMatrixIdentity());
         
-        std::vector<DirectX::XMFLOAT4> clearColors {{0,0,0,1}, {0,0,0,1}, {0,0,0,1}, {0,0,0,1}};
-        
         std::vector<uint64_t> materialDescriptorSets;
         Uniform uniform;
         
         while (!window->PeekMessages())
         {
+            // Start of Frame
             void* backBufferView;
             void* backBuffer;
             executor->BeginFrame();
@@ -74,6 +73,7 @@ int Renderer::Run()
             preBarrier.ImageResource = backBuffer;
             executor->IssueImageMemoryBarrier(preBarrier);
             
+            // Load/unload time
             if (!initialized)
             {
                 materialDescriptorSets.push_back(materials[0].LoadMaterial(0, 0));
@@ -89,6 +89,7 @@ int Renderer::Run()
                 initialized = true;
             }
             
+            // Pipeline/Draw time
             ImageMemoryBarrier readToAttachmentBarrier = READ_TO_ATTACHMENT_BARRIER;
             for (int i = 0; i < PBRGeometryPipe->GetOwnedImageCount(); i++)
             {
@@ -96,7 +97,7 @@ int Renderer::Run()
                 executor->IssueImageMemoryBarrier(readToAttachmentBarrier);
             }
             
-            executor->BeginPipeline(PBRGeometryPipe, {}, nullptr, window->GetWidth(), window->GetHeight(), clearColors, 1.0);
+            executor->BeginPipeline(PBRGeometryPipe, {}, nullptr, window->GetWidth(), window->GetHeight());
             executor->DrawSceneNode(meshRoot.GetSceneNode(), materialDescriptorSets, viewProj, cameraPosition);
             executor->EndPipeline();
             
@@ -108,18 +109,17 @@ int Renderer::Run()
                 executor->IssueImageMemoryBarrier(gBufferBarrier);
             }
             
-            executor->BeginPipeline(PBRLightingPipe, {backBufferView}, nullptr, window->GetWidth(), window->GetHeight(), {{0, 0, 0, 1}}, 0);
+            executor->BeginPipeline(PBRLightingPipe, {backBufferView}, nullptr, window->GetWidth(), window->GetHeight());
             executor->DrawQuad(); 
             executor->EndPipeline();
             
+            
+            // End of Frame
             ImageMemoryBarrier postBarrier = POST_BARRIER;
             postBarrier.ImageResource = backBuffer;
             executor->IssueImageMemoryBarrier(postBarrier);
-            
             executor->EndFrame();
         }
-
-
     }
     catch (const std::exception& e)
     {

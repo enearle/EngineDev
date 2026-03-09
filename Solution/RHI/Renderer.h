@@ -14,6 +14,9 @@ private:
     static class BufferAllocator* bufferAlloc;
     static class Window* window;
     static bool initialized;
+    
+    
+    // temp
     static class Pipeline* PBRGeometryPipe;
     static class Pipeline* PBRLightingPipe;
 };

@@ -32,8 +32,8 @@ namespace RHIConstants
             throw std::runtime_error("Failed to load fragment shader!");
         
         // 2. Vertex input layout
-        rainbowTrianglePipeline.VertexAttributes = {}; // Empty - shader uses SV_VertexID
-        rainbowTrianglePipeline.VertexBindings = {};   // Empty - no bindings needed
+        rainbowTrianglePipeline.VertexAttributes = {};  // Empty - shader uses SV_VertexID
+        rainbowTrianglePipeline.VertexBindings = {};    // Empty - no bindings needed
 
         // 3. Primitive topology
         rainbowTrianglePipeline.PrimitiveTopology = PrimitiveTopology::TriangleList;
@@ -79,7 +79,7 @@ namespace RHIConstants
 
         // 7. Render target format
         rainbowTrianglePipeline.RenderTargetFormats = {
-            Format::R8G8B8A8_UNORM               // Standard RGBA color format
+            Format::R8G8B8A8_UNORM                  // Standard RGBA color format
         };
 
         // 8. No depth stencil
@@ -167,9 +167,9 @@ namespace RHIConstants
 
         // 7. Render target format
         TexturedQuadDesc.RenderTargetFormats = {
-            Format::R8G8B8A8_UNORM               // Standard RGBA color format
+            Format::R8G8B8A8_UNORM                  // Standard RGBA color format
         };
-
+        
         // 8. No depth stencil
         TexturedQuadDesc.DepthStencilFormat = Format::Unknown;
 
@@ -277,7 +277,8 @@ namespace RHIConstants
             {CompareOp::Always, StencilOp::Keep, StencilOp::Keep, StencilOp::Keep}   // Back
         };
         
-        // 6. Blend state
+        // Will combine these later
+        // 6. Blend state 
         PBRDescGeometry.BlendAttachmentStates = {
             DisabledBlendAttachmentState,
             DisabledBlendAttachmentState,
@@ -299,10 +300,18 @@ namespace RHIConstants
             SamplerType::Linear,
             SamplerType::Linear
         };
+        
+        PBRDescGeometry.AttachmentClearValues = {
+            {0,0,0,1}, 
+            {0,0,0,1}, 
+            {0,0,0,1}, 
+            {0,0,0,1}
+        };
 
         // 8. Depth
         PBRDescGeometry.DepthStencilFormat = Format::D32_FLOAT;
-        PBRDescGeometry.CreateDepthImage = true; // <--- changing this will allow drawing without depth
+        PBRDescGeometry.CreateDepthImage = true;
+        PBRDescGeometry.DepthClearValue = 1.0f;
 
         // 9. Multisampling
         PBRDescGeometry.MultisampleState = {
@@ -329,7 +338,7 @@ namespace RHIConstants
         // 11. Attachment load/store operations
         PBRDescGeometry.ColorLoadOps = {AttachmentLoadOp::Clear, AttachmentLoadOp::Clear, AttachmentLoadOp::Clear, AttachmentLoadOp::Clear};
         PBRDescGeometry.ColorStoreOps = {AttachmentStoreOp::Store, AttachmentStoreOp::Store, AttachmentStoreOp::Store, AttachmentStoreOp::Store};
-        PBRDescGeometry.DepthLoadOp = AttachmentLoadOp::Clear;  // Changed from Load
+        PBRDescGeometry.DepthLoadOp = AttachmentLoadOp::Clear;
         PBRDescGeometry.DepthStoreOp = AttachmentStoreOp::DontCare;
         
         // 12. Constants (ViewProjection & Model Matrices)
@@ -403,8 +412,12 @@ namespace RHIConstants
             Format::R8G8B8A8_UNORM                  // Final HDR/LDR output
         };
 
+        lightingDesc.AttachmentClearValues = {{0,0,0,1}};
+        
         // 8. No depth buffer needed for lighting pass
         lightingDesc.DepthStencilFormat = Format::Unknown;
+        
+        lightingDesc.DepthClearValue = 1.0f;
 
         // 9. No multisampling
         lightingDesc.MultisampleState = {

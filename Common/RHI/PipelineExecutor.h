@@ -21,9 +21,7 @@ public:
     virtual void BeginPipeline(Pipeline* pipeline,
                       const std::vector<void*>& colorViews,
                       void* depthView,
-                      uint32_t width, uint32_t height,
-                      const std::vector<DirectX::XMFLOAT4>& clearColors,
-                      float clearDepth) = 0;
+                      uint32_t width, uint32_t height) = 0;
     
     // End current rendering operation
     virtual void EndPipeline() = 0;
@@ -34,6 +32,7 @@ public:
     virtual void DrawSceneNode(const SceneNode& node, std::vector<uint64_t>& perItemDrawSets, const DirectX::XMFLOAT4X4& viewProjX4, const DirectX::XMFLOAT4 camPos) = 0;
     virtual void DrawIndexed(uint64_t vertBufferID, uint32_t vertCount, uint64_t indexBufferID, uint32_t indexCount, 
         void* pushConstants = nullptr, size_t pushConstantsSize = 0) = 0;
+    virtual void DrawIndexed(const Mesh* mesh,  void* pushConstants = nullptr, size_t pushConstantsSize = 0) = 0;
     virtual void DrawQuad(std::vector<uint64_t>* descriptorSets = nullptr) = 0;
 };
 
@@ -53,15 +52,14 @@ public:
     void BeginPipeline(Pipeline* pipeline,
                const std::vector<void*>& colorViews,
                void* depthView,
-               uint32_t width, uint32_t height,
-               const std::vector<DirectX::XMFLOAT4>& clearColors,
-               float clearDepth) override;
+               uint32_t width, uint32_t height) override;
     void EndPipeline() override;
     void IssueMemoryBarrier(const RHIStructures::MemoryBarrier& barrier) override;
     void IssueImageMemoryBarrier(const ImageMemoryBarrier& barrier) override;
     void DrawSceneNode(const SceneNode& node, std::vector<uint64_t>& perItemDrawSets, const DirectX::XMFLOAT4X4& viewProjX4, const DirectX::XMFLOAT4 camPos) override;
     void DrawIndexed(uint64_t vertBufferID, uint32_t vertCount, uint64_t indexBufferID, uint32_t indexCount, 
         void* pushConstant, size_t pushConstantSize) override;
+    void DrawIndexed(const Mesh* mesh,  void* pushConstants = nullptr, size_t pushConstantsSize = 0) override;
     void DrawQuad(std::vector<uint64_t>* descriptorSets = nullptr) override;
     void BindDescriptorSets(std::vector<uint64_t>* descriptorSets, bool hasPushConstant = false);
     
@@ -86,15 +84,14 @@ public:
     void BeginPipeline(Pipeline* pipeline,
                const std::vector<void*>& colorViews,
                void* depthView,
-               uint32_t width, uint32_t height,
-               const std::vector<DirectX::XMFLOAT4>& clearColors,
-               float clearDepth) override;
+               uint32_t width, uint32_t height) override;
     void EndPipeline() override;
     void IssueMemoryBarrier(const RHIStructures::MemoryBarrier& barrier) override;
     void IssueImageMemoryBarrier(const ImageMemoryBarrier& barrier) override;
     void DrawSceneNode(const SceneNode& node, std::vector<uint64_t>& perItemDrawSets, const DirectX::XMFLOAT4X4& viewProjX4, const DirectX::XMFLOAT4 camPos) override;
     void DrawIndexed(uint64_t vertBufferID, uint32_t vertCount, uint64_t indexBufferID, uint32_t indexCount, 
         void* pushConstant, size_t pushConstantSize) override;
+    void DrawIndexed(const Mesh* mesh,  void* pushConstants = nullptr, size_t pushConstantsSize = 0) override;
     void DrawQuad(std::vector<uint64_t>* descriptorSets = nullptr) override;
     void BindDescriptorSets(std::vector<uint64_t>* descriptorSets, bool hasPushConstant = false);
 
