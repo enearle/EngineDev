@@ -20,7 +20,7 @@ public:
     static int End();
     static uint32_t CreatePipelineFrameContext(class Pipeline* pipeline, bool isQuad, bool isPresented);
     static void AddIndexedDrawToContext(uint32_t contextIndex, RHIStructures::IndexedDraw draw);
-    
+    static void AddDescriptorIDToContext(uint32_t contextIndex, uint64_t descriptorID);
 private:
     
     static void ExecutePipelineContext(uint32_t contextIndex);

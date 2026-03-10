@@ -255,7 +255,8 @@ namespace RHIStructures
         UniformBuffer = 0,          // CBV in D3D12, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER in Vulkan
         StorageBuffer = 1,          // SRV buffer in D3D12, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER in Vulkan
         StorageImage = 2,           // UAV in D3D12, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE in Vulkan
-        SampledImage = 3            // SRV+Sampler in D3D12, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER in Vulkan
+        SampledImage = 3,           // SRV+Sampler in D3D12, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER in Vulkan
+        DynamicUniformBuffer = 4
     };
     VkDescriptorType VulkanDescriptorType(DescriptorType descriptorType);
     D3D12_DESCRIPTOR_HEAP_TYPE DXDescriptorType(DescriptorType descriptorType);
@@ -596,6 +597,7 @@ namespace RHIStructures
     {
         uint32_t Binding;                       // Binding index
         uint64_t ResourceID;                    // Handle returned from CreateBuffer or CreateImage
+        uint32_t DynamicOffset = 0;             // Used for dynamic descriptors
     };
 
     struct DescriptorSetAllocation
@@ -603,6 +605,8 @@ namespace RHIStructures
         uint64_t DescriptorAddress = 0;         // VkDeviceAddress for Vulkan, GPU descriptor handle for DX12
         uint64_t SetKey = 0;                    // Pipeline ID << 32 + Set Index
         void* PlatformData = nullptr;           // Platform-specific data if needed
+        std::vector<uint32_t> DynamicOffsets;   // Track dynamic offsets per descriptor
+        uint32_t DynamicDescriptorCount = 0;    // Number of dynamic descriptors
     };
     
     struct IOResource

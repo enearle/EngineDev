@@ -206,11 +206,17 @@ namespace RHIConstants
         return Pipeline::Create(0,  TexturedQuadDesc);
     }
     
-    struct MVPData {
+    struct ModelData 
+    {
         DirectX::XMFLOAT4X4 ModelMatrix;
         DirectX::XMFLOAT4X4 NormalMatrix;
+    };
+    
+    struct VPData
+    {
         DirectX::XMFLOAT4X4 ViewProjection;
         DirectX::XMFLOAT4 CameraPosition;
+        uint8_t _padding[176];
     };
     
     static Pipeline* PBRGeometryPipeline()
@@ -321,9 +327,10 @@ namespace RHIConstants
         
         // 10. Binding texture
         std::vector<DescriptorBinding> bindings {
-        { .Type = DescriptorType::SampledImage,  .Slot = 0, .Set = 0, .Count = 1, .Sampler = SamplerType::Linear }, // Albedo
-        { .Type = DescriptorType::SampledImage,  .Slot = 1, .Set = 0, .Count = 1, .Sampler = SamplerType::Linear }, // Normal
-        { .Type = DescriptorType::SampledImage,  .Slot = 2, .Set = 0, .Count = 1, .Sampler = SamplerType::Linear }, // MetallicRoughness
+        { .Type = DescriptorType::SampledImage,         .Slot = 0, .Set = 0, .Count = 1, .Sampler = SamplerType::Linear }, // Albedo
+        { .Type = DescriptorType::SampledImage,         .Slot = 1, .Set = 0, .Count = 1, .Sampler = SamplerType::Linear }, // Normal
+        { .Type = DescriptorType::SampledImage,         .Slot = 2, .Set = 0, .Count = 1, .Sampler = SamplerType::Linear }, // MetallicRoughness
+        { .Type = DescriptorType::DynamicUniformBuffer, .Slot = 0, .Set = 1, .Count = 1, .Sampler = SamplerType::Linear },
         };
         
         ShaderStageMask visibleStages = ShaderStageMask(0);
@@ -346,7 +353,7 @@ namespace RHIConstants
         constantVisibleStages.SetVertex(true);
         std::vector<PipelineConstant> constants {
                 {
-                    .Size = sizeof(MVPData),
+                    .Size = sizeof(ModelData),
                     .VisibleStages = constantVisibleStages
                 }
         };
@@ -359,7 +366,7 @@ namespace RHIConstants
     {
         PipelineDesc lightingDesc = {};
 
-        lightingDesc.UseOwnResourceLayout = false;
+        lightingDesc.UseOwnResourceLayout = true;
         
         // 1. Shader stages - fullscreen quad shaders
         lightingDesc.VertexShader = ImportShader("vs_lighting", "main");
@@ -425,8 +432,19 @@ namespace RHIConstants
             false                                   // No alpha to coverage
         };
 
-        // 10. Skip resource layout because we input one from another pipeline
-
+        // 10. Resource layout - VP buffer for camera data (NEW)
+        std::vector<DescriptorBinding> bindings {
+            { .Type = DescriptorType::DynamicUniformBuffer, .Slot = 0, .Set = 0, .Count = 1, .Sampler = SamplerType::Linear }, // Camera VP data
+        };
+    
+        ShaderStageMask visibleStages = ShaderStageMask(0);
+        visibleStages.SetFragment(true);  // Lighting calculations need camera position
+    
+        lightingDesc.ResourceLayout = {
+            .Bindings = bindings,
+            .VisibleStages = visibleStages
+        };
+        
         // 11. Attachment operations - load G-buffer, output final color
         lightingDesc.ColorLoadOps = {AttachmentLoadOp::Clear};
         lightingDesc.ColorStoreOps = {AttachmentStoreOp::Store};

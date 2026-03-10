@@ -535,15 +535,16 @@ namespace RHIStructures
         return D3D12_BLEND_ZERO;
     }
 
-    VkDescriptorType VulkanDescriptorType(DescriptorType type)
+    VkDescriptorType VulkanDescriptorType(DescriptorType descriptorType)
     {
-        constexpr std::array<VkDescriptorType, 4> TYPES = {
-            VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-            VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-            VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
-            VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
-        };
-        return TYPES[static_cast<uint8_t>(type)];
+        switch(descriptorType)
+        {
+        case DescriptorType::UniformBuffer: return VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        case DescriptorType::DynamicUniformBuffer: return VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+        case DescriptorType::StorageBuffer: return VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        case DescriptorType::StorageImage: return VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+        case DescriptorType::SampledImage: return VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        }
     }
 
     D3D12_DESCRIPTOR_HEAP_TYPE DXDescriptorType(DescriptorType descriptorType)

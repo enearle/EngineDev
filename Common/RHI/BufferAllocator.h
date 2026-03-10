@@ -39,6 +39,7 @@ public:
     virtual uint64_t AllocateDescriptorSet(uint32_t pipelineID, uint32_t setIndex, 
                                            const std::vector<DescriptorSetBinding>& bindings) = 0;
     virtual void FreeDescriptorSet(uint64_t setID) = 0;
+    virtual void UpdateDescriptorSetDynamicOffsets(uint64_t setID, const std::vector<uint32_t>& offsets) = 0;
     
     ImageAllocation GetImageAllocation(uint64_t id) const { return AllocatedImages.at(id); }
     BufferAllocation GetBufferAllocation(uint64_t id) const { return AllocatedBuffers.at(id); }
@@ -58,7 +59,7 @@ public:
     uint64_t AllocateDescriptorSet(uint32_t pipelineID, uint32_t setIndex, 
                                            const std::vector<DescriptorSetBinding>& bindings) override;
     void FreeDescriptorSet(uint64_t setID) override;
-
+    void UpdateDescriptorSetDynamicOffsets(uint64_t setID, const std::vector<uint32_t>& offsets) override;
     enum DescriptorType : uint8_t { SampledImage, StorageImage, UniformBuffer, StorageBuffer};
     
     static uint32_t FindMemoryType(uint32_t allowdTypes, VkMemoryPropertyFlags flags);
@@ -98,7 +99,7 @@ public:
     uint64_t AllocateDescriptorSet(uint32_t pipelineID, uint32_t setIndex, 
                                            const std::vector<DescriptorSetBinding>& bindings) override;
     void FreeDescriptorSet(uint64_t setID) override;
-    
+    void UpdateDescriptorSetDynamicOffsets(uint64_t setID, const std::vector<uint32_t>& offsets) override;
     enum DescriptorType : uint8_t {CBV, SRV, UAV, RTV, DSV};
     D3D12_CPU_DESCRIPTOR_HANDLE AllocateDescriptor(DescriptorType type);
     D3D12_CPU_DESCRIPTOR_HANDLE GetHandle(size_t index, DescriptorType type);
@@ -118,6 +119,8 @@ private:
         D3D12_GPU_DESCRIPTOR_HANDLE BaseHandle;
         std::vector<D3D12_CPU_DESCRIPTOR_HANDLE> CpuHandles;
         std::vector<DescriptorType> DescriptorTypes;
+        std::vector<uint64_t> ResourceIDs;
+        std::vector<bool> IsDynamic;
     };
     
     ComPtr<ID3D12DescriptorHeap> ShaderResourceHeap;

@@ -99,6 +99,11 @@ void Renderer::AddIndexedDrawToContext(uint32_t contextIndex, IndexedDraw draw)
     PipelineFrameContexts[contextIndex].IndexedDraws.push_back(draw);
 }
 
+void Renderer::AddDescriptorIDToContext(uint32_t contextIndex, uint64_t descriptorID)
+{
+    PipelineFrameContexts[contextIndex].PerFrameDescriptors.push_back(descriptorID);
+}
+
 void Renderer::ExecutePipelineContext(uint32_t contextIndex)
 {
     // Pre-draw attachment barrier
@@ -128,12 +133,14 @@ void Renderer::ExecutePipelineContext(uint32_t contextIndex)
         for (int j = 0; j < PipelineFrameContexts[contextIndex].IndexedDraws.size(); j++)
         {
             executor->BindDrawDescriptorSets(&PipelineFrameContexts[contextIndex].IndexedDraws[j].PerDrawDescriptors, numFramDescs);
-            executor->DrawIndexed(PipelineFrameContexts[contextIndex].IndexedDraws[j].VertexBufferID,
+            executor->DrawIndexed(
+                PipelineFrameContexts[contextIndex].IndexedDraws[j].VertexBufferID,
                 PipelineFrameContexts[contextIndex].IndexedDraws[j].VertexCount,
                 PipelineFrameContexts[contextIndex].IndexedDraws[j].IndexBufferID,
                 PipelineFrameContexts[contextIndex].IndexedDraws[j].IndexCount,
                 PipelineFrameContexts[contextIndex].IndexedDraws[j].PushConstants,
-                PipelineFrameContexts[contextIndex].IndexedDraws[j].PushConstantSize);
+                PipelineFrameContexts[contextIndex].IndexedDraws[j].PushConstantSize
+            );
         }
     
     // End Pipeline

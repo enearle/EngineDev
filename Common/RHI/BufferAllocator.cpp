@@ -57,7 +57,7 @@ uint64_t VulkanBufferAllocator::CreateBuffer(BufferDesc bufferDesc)
     bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     bufferInfo.size = bufferDesc.Size;
     bufferInfo.usage = bufferFlags;
-    bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE; // If more than one queue family can access this resource
+    bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     
     VkResult result = vkCreateBuffer(device, &bufferInfo, nullptr, &vulkanBufferData->Buffer);
     if (result != VK_SUCCESS)
@@ -91,21 +91,24 @@ uint64_t VulkanBufferAllocator::CreateBuffer(BufferDesc bufferDesc)
     
     void* mappedAddress = nullptr;
 
-    if (bufferDesc.InitialData != nullptr)
+    if (isHostVisible)
     {
-        if (isHostVisible)
+        // Map memory persistently for CPU access
+        result = vkMapMemory(device, vulkanBufferData->Memory, 0, bufferDesc.Size, 0, &mappedAddress);
+        if (result != VK_SUCCESS)
+            throw std::runtime_error("Failed to map buffer memory.");
+        
+        // Upload initial data if provided
+        if (bufferDesc.InitialData != nullptr)
         {
-            result = vkMapMemory(device, vulkanBufferData->Memory, 0, bufferDesc.Size, 0, &mappedAddress);
-            if (result != VK_SUCCESS)
-                throw std::runtime_error("Failed to map buffer memory.");
-            
             memcpy(mappedAddress, bufferDesc.InitialData, bufferDesc.Size);
         }
-        else
-        {
-            // Staging
-            CopyToDeviceLocalBuffer(vulkanBufferData->Buffer, bufferDesc.InitialData, bufferDesc.Size);
-        }
+        // Keep mapped! Don't unmap
+    }
+    else if (bufferDesc.InitialData != nullptr)
+    {
+        // Device-local: use staging buffer
+        CopyToDeviceLocalBuffer(vulkanBufferData->Buffer, bufferDesc.InitialData, bufferDesc.Size);
     }
     
     BufferAllocation allocation;
@@ -360,6 +363,7 @@ uint64_t VulkanBufferAllocator::AllocateDescriptorSet(uint32_t pipelineID, uint3
     std::vector<VkWriteDescriptorSet> writes;
     std::vector<VkDescriptorImageInfo> imageInfos;
     std::vector<VkDescriptorBufferInfo> bufferInfos;
+    std::vector<uint32_t> dynamicOffsets;
     
     writes.reserve(layoutInfo.Bindings.size());
     imageInfos.reserve(layoutInfo.Bindings.size());
@@ -397,7 +401,8 @@ uint64_t VulkanBufferAllocator::AllocateDescriptorSet(uint32_t pipelineID, uint3
             
             write.pImageInfo = &imageInfos.back();
         }
-        else if (layoutBinding.Type == RHIStructures::DescriptorType::UniformBuffer)
+        else if (layoutBinding.Type == RHIStructures::DescriptorType::UniformBuffer ||
+                 layoutBinding.Type == RHIStructures::DescriptorType::DynamicUniformBuffer)
         {
             BufferAllocation bufferAlloc = GetBufferAllocation(bindingIt->ResourceID);
             VulkanBufferData* bufferData = static_cast<VulkanBufferData*>(bufferAlloc.Buffer);
@@ -409,6 +414,11 @@ uint64_t VulkanBufferAllocator::AllocateDescriptorSet(uint32_t pipelineID, uint3
             bufferInfos.push_back(bufferInfo);
             
             write.pBufferInfo = &bufferInfos.back();
+            
+            if (layoutBinding.Type == RHIStructures::DescriptorType::DynamicUniformBuffer)
+            {
+                dynamicOffsets.push_back(bindingIt->DynamicOffset);
+            }
         }
         
         writes.push_back(write);
@@ -421,6 +431,8 @@ uint64_t VulkanBufferAllocator::AllocateDescriptorSet(uint32_t pipelineID, uint3
     allocation.DescriptorAddress = reinterpret_cast<uint64_t>(descriptorSet);
     allocation.SetKey = MakeKey(pipelineID, setIndex);
     allocation.PlatformData = nullptr;
+    allocation.DynamicOffsets = dynamicOffsets;
+    allocation.DynamicDescriptorCount = static_cast<uint32_t>(dynamicOffsets.size());
     
     return CacheDescriptorSet(allocation);
 }
@@ -438,6 +450,34 @@ void VulkanBufferAllocator::FreeDescriptorSet(uint64_t setID)
     }
     
     AllocatedDescriptorSets.erase(setID);
+}
+
+void VulkanBufferAllocator::UpdateDescriptorSetDynamicOffsets(uint64_t setID, const std::vector<uint32_t>& offsets)
+{
+    auto it = AllocatedDescriptorSets.find(setID);
+    if (it == AllocatedDescriptorSets.end())
+        throw std::runtime_error("Invalid descriptor set ID");
+    
+    DescriptorSetAllocation& allocation = it->second;
+    
+    if (offsets.size() != allocation.DynamicDescriptorCount)
+        throw std::runtime_error("Dynamic offset count mismatch");
+    
+    VkPhysicalDevice physicalDevice = VulkanCore::GetInstance().GetPhysicalDevice();
+    VkPhysicalDeviceProperties deviceProperties;
+    vkGetPhysicalDeviceProperties(physicalDevice, &deviceProperties);
+    
+    uint32_t minAlignment = static_cast<uint32_t>(deviceProperties.limits.minUniformBufferOffsetAlignment);
+    
+    for (uint32_t offset : offsets)
+    {
+        if (offset % minAlignment != 0)
+            throw std::runtime_error("Dynamic offset " + std::to_string(offset) + 
+                                    " not aligned to " + std::to_string(minAlignment) + " bytes");
+    }
+    
+    // Update cached offsets
+    allocation.DynamicOffsets = offsets;
 }
 
 VulkanBufferAllocator::~VulkanBufferAllocator()
@@ -722,98 +762,129 @@ uint64_t DirectX12BufferAllocator::CreateBuffer(BufferDesc bufferDesc)
     ID3D12Device* device = D3DCore::GetInstance().GetDevice().Get();
     ID3D12GraphicsCommandList* cmdList = D3DCore::GetInstance().GetTransferCommandList().Get();
 
-    ComPtr<ID3D12Resource> defaultBuffer;
-    ComPtr<ID3D12Resource> uploadBuffer;
-    
-    BufferType finalType = bufferDesc.Type;
-    
-    CD3DX12_HEAP_PROPERTIES defaultHeapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
-    CD3DX12_RESOURCE_DESC bufferDesc_dx12 = CD3DX12_RESOURCE_DESC::Buffer(bufferDesc.Size);
-    
-    device->CreateCommittedResource(
-        &defaultHeapProperties,
-        D3D12_HEAP_FLAG_NONE,
-        &bufferDesc_dx12,
-        D3D12_RESOURCE_STATE_COMMON,
-        nullptr,
-        IID_PPV_ARGS(defaultBuffer.GetAddressOf())) >> ERROR_HANDLER;
+    ComPtr<ID3D12Resource> buffer;
+    void* mappedAddress = nullptr;
+    bool isHostVisible = bufferDesc.Access.GetCPUWrite();
 
-    CD3DX12_HEAP_PROPERTIES uploadHeapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
-    CD3DX12_RESOURCE_DESC uploadBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(bufferDesc.Size);
-    
-    device->CreateCommittedResource(
-        &uploadHeapProperties,
-        D3D12_HEAP_FLAG_NONE,
-        &uploadBufferDesc,
-        D3D12_RESOURCE_STATE_GENERIC_READ,
-        nullptr,
-        IID_PPV_ARGS(uploadBuffer.GetAddressOf())) >> ERROR_HANDLER;
-    
-    D3DCore::GetInstance().DeferUploadBufferRelease(uploadBuffer);
-    
-    if (bufferDesc.InitialData != nullptr)
+    if (isHostVisible)
     {
-        void* mappedData = nullptr;
-        uploadBuffer->Map(0, nullptr, &mappedData);
-        memcpy(mappedData, bufferDesc.InitialData, bufferDesc.Size);
-        uploadBuffer->Unmap(0, nullptr);
+     // Create UPLOAD heap for CPU-writable buffers (dynamic uniforms)
+     CD3DX12_HEAP_PROPERTIES uploadHeapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
+     CD3DX12_RESOURCE_DESC bufferDescDX = CD3DX12_RESOURCE_DESC::Buffer(bufferDesc.Size);
+     
+     device->CreateCommittedResource(
+         &uploadHeapProperties,
+         D3D12_HEAP_FLAG_NONE,
+         &bufferDescDX,
+         D3D12_RESOURCE_STATE_GENERIC_READ,
+         nullptr,
+         IID_PPV_ARGS(buffer.GetAddressOf())) >> ERROR_HANDLER;
+     
+     // Map persistently for dynamic updates
+     buffer->Map(0, nullptr, &mappedAddress);
+     
+     // Upload initial data if provided
+     if (bufferDesc.InitialData != nullptr)
+     {
+         memcpy(mappedAddress, bufferDesc.InitialData, bufferDesc.Size);
+     }
+    }
+    else
+    {
+     // Create DEFAULT heap for GPU-only buffers (your existing code)
+     ComPtr<ID3D12Resource> defaultBuffer;
+     ComPtr<ID3D12Resource> uploadBuffer;
+     
+     CD3DX12_HEAP_PROPERTIES defaultHeapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
+     CD3DX12_RESOURCE_DESC bufferDesc_dx12 = CD3DX12_RESOURCE_DESC::Buffer(bufferDesc.Size);
+     
+     device->CreateCommittedResource(
+         &defaultHeapProperties,
+         D3D12_HEAP_FLAG_NONE,
+         &bufferDesc_dx12,
+         D3D12_RESOURCE_STATE_COMMON,
+         nullptr,
+         IID_PPV_ARGS(defaultBuffer.GetAddressOf())) >> ERROR_HANDLER;
 
-        D3D12_SUBRESOURCE_DATA subResourceData = {};
-        subResourceData.pData = bufferDesc.InitialData;
-        subResourceData.RowPitch = bufferDesc.Size;
-        subResourceData.SlicePitch = bufferDesc.Size;
+     CD3DX12_HEAP_PROPERTIES uploadHeapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
+     CD3DX12_RESOURCE_DESC uploadBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(bufferDesc.Size);
+     
+     device->CreateCommittedResource(
+         &uploadHeapProperties,
+         D3D12_HEAP_FLAG_NONE,
+         &uploadBufferDesc,
+         D3D12_RESOURCE_STATE_GENERIC_READ,
+         nullptr,
+         IID_PPV_ARGS(uploadBuffer.GetAddressOf())) >> ERROR_HANDLER;
+     
+     D3DCore::GetInstance().DeferUploadBufferRelease(uploadBuffer);
+     
+     if (bufferDesc.InitialData != nullptr)
+     {
+         void* stagingMappedData = nullptr;
+         uploadBuffer->Map(0, nullptr, &stagingMappedData);
+         memcpy(stagingMappedData, bufferDesc.InitialData, bufferDesc.Size);
+         uploadBuffer->Unmap(0, nullptr);
 
-        D3DCore::GetInstance().GetTransferCommandAllocator()->Reset();
-        cmdList->Reset(D3DCore::GetInstance().GetTransferCommandAllocator().Get(), nullptr);
-        
-        CD3DX12_RESOURCE_BARRIER transition1 = CD3DX12_RESOURCE_BARRIER::Transition(
-            defaultBuffer.Get(), 
-            D3D12_RESOURCE_STATE_COMMON, 
-            D3D12_RESOURCE_STATE_COPY_DEST);
-        cmdList->ResourceBarrier(1, &transition1);
+         D3D12_SUBRESOURCE_DATA subResourceData = {};
+         subResourceData.pData = bufferDesc.InitialData;
+         subResourceData.RowPitch = bufferDesc.Size;
+         subResourceData.SlicePitch = bufferDesc.Size;
 
-        UpdateSubresources<1>(cmdList, defaultBuffer.Get(), uploadBuffer.Get(), 0, 0, 1, &subResourceData);
+         D3DCore::GetInstance().GetTransferCommandAllocator()->Reset();
+         cmdList->Reset(D3DCore::GetInstance().GetTransferCommandAllocator().Get(), nullptr);
+         
+         CD3DX12_RESOURCE_BARRIER transition1 = CD3DX12_RESOURCE_BARRIER::Transition(
+             defaultBuffer.Get(), 
+             D3D12_RESOURCE_STATE_COMMON, 
+             D3D12_RESOURCE_STATE_COPY_DEST);
+         cmdList->ResourceBarrier(1, &transition1);
 
-        CD3DX12_RESOURCE_BARRIER transition2 = CD3DX12_RESOURCE_BARRIER::Transition(
-            defaultBuffer.Get(),
-            D3D12_RESOURCE_STATE_COPY_DEST, 
-            D3D12_RESOURCE_STATE_GENERIC_READ);
-        cmdList->ResourceBarrier(1, &transition2);
-        cmdList->Close();
-        
-        ID3D12CommandQueue* commandQueue = D3DCore::GetInstance().GetCommandQueue().Get();
-        ComPtr<ID3D12Fence> transferFence = D3DCore::GetInstance().GetTransferFence();
-        
-        ID3D12CommandList* ppCommandLists[] = { cmdList };
-        commandQueue->ExecuteCommandLists(1, ppCommandLists);
-        
-        static UINT64 transferFenceValue = 0;
-        transferFenceValue++;
-        commandQueue->Signal(transferFence.Get(), transferFenceValue);
-        if (transferFence->GetCompletedValue() < transferFenceValue)
-        {
-            HANDLE eventHandle = CreateEventEx(nullptr, nullptr, 0, EVENT_ALL_ACCESS);
-            transferFence->SetEventOnCompletion(transferFenceValue, eventHandle);
-            WaitForSingleObject(eventHandle, INFINITE);
-            CloseHandle(eventHandle);
-        }
+         UpdateSubresources<1>(cmdList, defaultBuffer.Get(), uploadBuffer.Get(), 0, 0, 1, &subResourceData);
+
+         CD3DX12_RESOURCE_BARRIER transition2 = CD3DX12_RESOURCE_BARRIER::Transition(
+             defaultBuffer.Get(),
+             D3D12_RESOURCE_STATE_COPY_DEST, 
+             D3D12_RESOURCE_STATE_GENERIC_READ);
+         cmdList->ResourceBarrier(1, &transition2);
+         cmdList->Close();
+         
+         ID3D12CommandQueue* commandQueue = D3DCore::GetInstance().GetCommandQueue().Get();
+         ComPtr<ID3D12Fence> transferFence = D3DCore::GetInstance().GetTransferFence();
+         
+         ID3D12CommandList* ppCommandLists[] = { cmdList };
+         commandQueue->ExecuteCommandLists(1, ppCommandLists);
+         
+         static UINT64 transferFenceValue = 0;
+         transferFenceValue++;
+         commandQueue->Signal(transferFence.Get(), transferFenceValue);
+         if (transferFence->GetCompletedValue() < transferFenceValue)
+         {
+             HANDLE eventHandle = CreateEventEx(nullptr, nullptr, 0, EVENT_ALL_ACCESS);
+             transferFence->SetEventOnCompletion(transferFenceValue, eventHandle);
+             WaitForSingleObject(eventHandle, INFINITE);
+             CloseHandle(eventHandle);
+         }
+     }
+     
+     buffer = defaultBuffer;
     }
 
-    D3D12_GPU_VIRTUAL_ADDRESS gpuAddress = defaultBuffer->GetGPUVirtualAddress();
+    D3D12_GPU_VIRTUAL_ADDRESS gpuAddress = buffer->GetGPUVirtualAddress();
 
     DX12BufferData* bufferData = new DX12BufferData();
-    bufferData->Buffer = defaultBuffer;
+    bufferData->Buffer = buffer;
     bufferData->GPUAddress = gpuAddress;
 
     BufferAllocation allocation;
     allocation.Buffer = bufferData;
     allocation.Size = bufferDesc.Size;
-    allocation.Address = reinterpret_cast<void*>(gpuAddress);
+    allocation.Address = mappedAddress;  // CPU mapped address (or nullptr if not mapped)
     allocation.Usage = bufferDesc.Usage;
     allocation.Access = bufferDesc.Access;
     allocation.Type = bufferDesc.Type;
-    allocation.IsMapped = false;
-    
+    allocation.IsMapped = (mappedAddress != nullptr);
+
     return CacheBuffer(allocation);
 }
 
@@ -1006,6 +1077,8 @@ uint64_t DirectX12BufferAllocator::AllocateDescriptorSet(uint32_t pipelineID, ui
     // First pass: Pre-allocate all descriptors contiguously to reserve heap space
     std::vector<D3D12_CPU_DESCRIPTOR_HANDLE> allocatedHandles;
     std::vector<DescriptorType> descriptorTypes;
+    std::vector<uint64_t> resourceIDs;
+    std::vector<bool> isDynamic;
     
     for (const DescriptorBinding& layoutBinding : layoutInfo.Bindings)
     {
@@ -1017,7 +1090,8 @@ uint64_t DirectX12BufferAllocator::AllocateDescriptorSet(uint32_t pipelineID, ui
             dxType = SRV;
             dstHandle = AllocateDescriptor(SRV);
         }
-        else if (layoutBinding.Type == RHIStructures::DescriptorType::UniformBuffer)
+        else if (layoutBinding.Type == RHIStructures::DescriptorType::UniformBuffer ||
+                 layoutBinding.Type == RHIStructures::DescriptorType::DynamicUniformBuffer)
         {
             dxType = CBV;
             dstHandle = AllocateDescriptor(CBV);
@@ -1039,10 +1113,14 @@ uint64_t DirectX12BufferAllocator::AllocateDescriptorSet(uint32_t pipelineID, ui
         
         allocatedHandles.push_back(dstHandle);
         descriptorTypes.push_back(dxType);
+        resourceIDs.push_back(0);  // Will be set in second pass
+        isDynamic.push_back(layoutBinding.Type == RHIStructures::DescriptorType::DynamicUniformBuffer);
     }
     
     // Second pass: Create the actual descriptor views
     size_t descriptorIndex = 0;
+    std::vector<uint32_t> dynamicOffsets;
+    
     for (const DescriptorBinding& layoutBinding : layoutInfo.Bindings)
     {
         auto bindingIterator = std::find_if(bindings.begin(), bindings.end(),
@@ -1053,9 +1131,11 @@ uint64_t DirectX12BufferAllocator::AllocateDescriptorSet(uint32_t pipelineID, ui
         
         D3D12_CPU_DESCRIPTOR_HANDLE dstHandle = allocatedHandles[descriptorIndex];
         
+        // Store the resource ID
+        resourceIDs[descriptorIndex] = bindingIterator->ResourceID;
+        
         if (layoutBinding.Type == RHIStructures::DescriptorType::SampledImage)
         {
-            
             ImageAllocation imageAlloc = GetImageAllocation(bindingIterator->ResourceID);
             DX12ImageData* imageData = static_cast<DX12ImageData*>(imageAlloc.Image);
             
@@ -1069,16 +1149,24 @@ uint64_t DirectX12BufferAllocator::AllocateDescriptorSet(uint32_t pipelineID, ui
             
             device->CreateShaderResourceView(imageData->Image.Get(), &srvDesc, dstHandle);
         }
-        else if (layoutBinding.Type == RHIStructures::DescriptorType::UniformBuffer)
+        else if (layoutBinding.Type == RHIStructures::DescriptorType::UniformBuffer ||
+                 layoutBinding.Type == RHIStructures::DescriptorType::DynamicUniformBuffer)
         {
             BufferAllocation bufferAlloc = GetBufferAllocation(bindingIterator->ResourceID);
             DX12BufferData* bufferData = static_cast<DX12BufferData*>(bufferAlloc.Buffer);
             
             D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc{};
-            cbvDesc.BufferLocation = bufferData->GPUAddress;
+            uint32_t offset = bindingIterator->DynamicOffset;
+            cbvDesc.BufferLocation = bufferData->GPUAddress + offset;
             cbvDesc.SizeInBytes = static_cast<UINT>((bufferAlloc.Size + 255) & ~255);
             
             device->CreateConstantBufferView(&cbvDesc, dstHandle);
+            
+            // Track dynamic offsets for dynamic uniform buffers
+            if (layoutBinding.Type == RHIStructures::DescriptorType::DynamicUniformBuffer)
+            {
+                dynamicOffsets.push_back(bindingIterator->DynamicOffset);
+            }
         }
         
         descriptorIndex++;
@@ -1087,6 +1175,8 @@ uint64_t DirectX12BufferAllocator::AllocateDescriptorSet(uint32_t pipelineID, ui
     // Store all handles and types
     tableData->CpuHandles = allocatedHandles;
     tableData->DescriptorTypes = descriptorTypes;
+    tableData->ResourceIDs = resourceIDs;
+    tableData->IsDynamic = isDynamic;
     
     // Calculate the GPU handle for the base of the table (first descriptor)
     if (!allocatedHandles.empty())
@@ -1101,6 +1191,8 @@ uint64_t DirectX12BufferAllocator::AllocateDescriptorSet(uint32_t pipelineID, ui
     allocation.DescriptorAddress = tableData->BaseHandle.ptr;
     allocation.SetKey = MakeKey(pipelineID, setIndex);
     allocation.PlatformData = tableData;
+    allocation.DynamicOffsets = dynamicOffsets;
+    allocation.DynamicDescriptorCount = static_cast<uint32_t>(dynamicOffsets.size());
     
     return CacheDescriptorSet(allocation);
 }
@@ -1137,6 +1229,60 @@ void DirectX12BufferAllocator::FreeDescriptorSet(uint64_t setID)
     
     delete tableData;
     AllocatedDescriptorSets.erase(setID);
+}
+
+void DirectX12BufferAllocator::UpdateDescriptorSetDynamicOffsets(uint64_t setID, const std::vector<uint32_t>& offsets)
+{
+    ID3D12Device* device = D3DCore::GetInstance().GetDevice().Get();
+    
+    auto it = AllocatedDescriptorSets.find(setID);
+    if (it == AllocatedDescriptorSets.end())
+        throw std::runtime_error("Invalid descriptor set ID");
+    
+    DescriptorSetAllocation& allocation = it->second;
+    DescriptorTableData* tableData = static_cast<DescriptorTableData*>(allocation.PlatformData);
+    
+    if (!tableData)
+        throw std::runtime_error("Invalid descriptor table data");
+    
+    // Validate alignment (DirectX12 requires 256-byte alignment for CBVs)
+    constexpr uint32_t D3D12_CONSTANT_BUFFER_ALIGNMENT = 256;
+    for (uint32_t offset : offsets)
+    {
+        if (offset % D3D12_CONSTANT_BUFFER_ALIGNMENT != 0)
+            throw std::runtime_error("Dynamic offset " + std::to_string(offset) + 
+                                    " not aligned to 256 bytes");
+    }
+    
+    // Update CBVs with new offsets
+    uint32_t offsetIndex = 0;
+    for (size_t i = 0; i < tableData->IsDynamic.size(); ++i)
+    {
+        if (tableData->IsDynamic[i])
+        {
+            if (offsetIndex >= offsets.size())
+                throw std::runtime_error("Not enough offsets provided");
+            
+            // Get the buffer allocation
+            BufferAllocation bufferAlloc = GetBufferAllocation(tableData->ResourceIDs[i]);
+            DX12BufferData* bufferData = static_cast<DX12BufferData*>(bufferAlloc.Buffer);
+            
+            // Recreate the CBV with new offset
+            D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc{};
+            cbvDesc.BufferLocation = bufferData->GPUAddress + offsets[offsetIndex];
+            cbvDesc.SizeInBytes = static_cast<UINT>((bufferAlloc.Size + 255) & ~255);
+            
+            device->CreateConstantBufferView(&cbvDesc, tableData->CpuHandles[i]);
+            
+            offsetIndex++;
+        }
+    }
+    
+    if (offsetIndex != offsets.size())
+        throw std::runtime_error("Offset count mismatch");
+    
+    // Update cached offsets
+    allocation.DynamicOffsets = offsets;
 }
 
 D3D12_CPU_DESCRIPTOR_HANDLE DirectX12BufferAllocator::GetHandle(size_t index, DescriptorType type)
