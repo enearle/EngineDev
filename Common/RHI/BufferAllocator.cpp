@@ -763,15 +763,8 @@ uint64_t DirectX12BufferAllocator::CreateBuffer(BufferDesc bufferDesc)
         subResourceData.RowPitch = bufferDesc.Size;
         subResourceData.SlicePitch = bufferDesc.Size;
 
-        // Transfer allocator needs to be reset before the first upload
-        // Messy, but I will have to rework this into an asynchronous 
-        // ring buffer anyway.
-        static bool firstUse = true;
-        if (firstUse)
-        {
-            cmdList->Reset(D3DCore::GetInstance().GetTransferCommandAllocator().Get(), nullptr);
-            firstUse = false;
-        }
+        D3DCore::GetInstance().GetTransferCommandAllocator()->Reset();
+        cmdList->Reset(D3DCore::GetInstance().GetTransferCommandAllocator().Get(), nullptr);
         
         CD3DX12_RESOURCE_BARRIER transition1 = CD3DX12_RESOURCE_BARRIER::Transition(
             defaultBuffer.Get(), 
@@ -804,9 +797,6 @@ uint64_t DirectX12BufferAllocator::CreateBuffer(BufferDesc bufferDesc)
             WaitForSingleObject(eventHandle, INFINITE);
             CloseHandle(eventHandle);
         }
-        
-        D3DCore::GetInstance().GetTransferCommandAllocator()->Reset();
-        cmdList->Reset(D3DCore::GetInstance().GetTransferCommandAllocator().Get(), nullptr);
     }
 
     D3D12_GPU_VIRTUAL_ADDRESS gpuAddress = defaultBuffer->GetGPUVirtualAddress();
@@ -831,7 +821,9 @@ uint64_t DirectX12BufferAllocator::CreateImage(ImageDesc imageDesc)
 {
     ID3D12Device* device = D3DCore::GetInstance().GetDevice().Get();
     ID3D12GraphicsCommandList* cmdList = D3DCore::GetInstance().GetTransferCommandList().Get();
-
+    D3DCore::GetInstance().GetTransferCommandAllocator()->Reset();
+    cmdList->Reset(D3DCore::GetInstance().GetTransferCommandAllocator().Get(), nullptr);
+    
     if (imageDesc.ArrayLayers != 1 || imageDesc.MipLevels != 1)
         throw std::runtime_error("DirectX12BufferAllocator::CreateImage currently supports only 1 layer and 1 mip (match Vulkan path later).");
 
@@ -913,8 +905,8 @@ uint64_t DirectX12BufferAllocator::CreateImage(ImageDesc imageDesc)
     ID3D12CommandList* ppCommandLists[] = { cmdList };
     commandQueue->ExecuteCommandLists(1, ppCommandLists);
 
-    static UINT64 transferFenceValue = 0;
-    transferFenceValue++;
+    UINT64 transferFenceValue = transferFence->GetCompletedValue() + 1;
+    //transferFenceValue++;
     commandQueue->Signal(transferFence.Get(), transferFenceValue);
     if (transferFence->GetCompletedValue() < transferFenceValue)
     {
@@ -923,9 +915,6 @@ uint64_t DirectX12BufferAllocator::CreateImage(ImageDesc imageDesc)
         WaitForSingleObject(eventHandle, INFINITE);
         CloseHandle(eventHandle);
     }
-
-    D3DCore::GetInstance().GetTransferCommandAllocator()->Reset();
-    cmdList->Reset(D3DCore::GetInstance().GetTransferCommandAllocator().Get(), nullptr);
     
     D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
     srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
@@ -975,7 +964,6 @@ DirectX12BufferAllocator::DirectX12BufferAllocator()
     dsvHeapDesc.NodeMask = 0;
     device->CreateDescriptorHeap(&dsvHeapDesc, IID_PPV_ARGS(DepthStencilHeap.GetAddressOf())) >> ERROR_HANDLER;
     
-
 }
 
 DirectX12BufferAllocator::~DirectX12BufferAllocator()

@@ -5,7 +5,7 @@
 #include "Common/RHI/Geometry/GeometryImport.h"
 
 
-// A really bad way to handle this temprarily
+// A really bad way to handle this temporarily
 std::vector<uint64_t> Materials;
 RHIConstants::MVPData MVPData;
 std::vector<RHIConstants::MVPData> MVPDataArray;
@@ -76,13 +76,11 @@ int main(int argc, char* argv[])
     std::vector<IOResource> inputResources = {*pipelines[0]->GetOutputResource()};
     pipelines.push_back(RHIConstants::DeferredLightingPipeline(&inputResources));
     
+    // Create texture images
     Materials.push_back(Material("shells_0", Material::PBR).LoadMaterial(0,0));
     Materials.push_back(Material("shells_1", Material::PBR).LoadMaterial(0,0));
-    for (uint64_t material : Materials)
-    {
-        std::cout << "Loaded material with descriptor set ID " << material << std::endl;
-    }
-
+    
+    // Create vertex/index buffers
     MeshRoot = GeometryImport::CreateMeshGroup("shells.fbx", "Shells", DirectX::XMMatrixIdentity());
     MVPDataArray.reserve(100);
     
