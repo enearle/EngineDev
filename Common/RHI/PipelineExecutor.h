@@ -28,12 +28,13 @@ public:
 
     virtual void IssueMemoryBarrier(const RHIStructures::MemoryBarrier& barrier) = 0;
     virtual void IssueImageMemoryBarrier(const ImageMemoryBarrier& barrier) = 0;
-    
-    virtual void DrawSceneNode(const SceneNode& node, std::vector<uint64_t>& perItemDrawSets, const DirectX::XMFLOAT4X4& viewProjX4, const DirectX::XMFLOAT4 camPos) = 0;
+
     virtual void DrawIndexed(uint64_t vertBufferID, uint32_t vertCount, uint64_t indexBufferID, uint32_t indexCount, 
         void* pushConstants = nullptr, size_t pushConstantsSize = 0) = 0;
-    virtual void DrawIndexed(const Mesh* mesh,  void* pushConstants = nullptr, size_t pushConstantsSize = 0) = 0;
-    virtual void DrawQuad(std::vector<uint64_t>* descriptorSets = nullptr) = 0;
+    virtual void DrawFSQuad() = 0;
+    
+    virtual void BindDrawDescriptorSets(std::vector<uint64_t>* descriptorSets = nullptr, uint32_t numPipelineSets = 0) = 0;
+    virtual void BindPipelineDescriptorSets(std::vector<uint64_t>* descriptorSets = nullptr) = 0;
 };
 
 class D3DPipelineExecutor : public PipelineExecutor
@@ -54,14 +55,16 @@ public:
                void* depthView,
                uint32_t width, uint32_t height) override;
     void EndPipeline() override;
+    
     void IssueMemoryBarrier(const RHIStructures::MemoryBarrier& barrier) override;
     void IssueImageMemoryBarrier(const ImageMemoryBarrier& barrier) override;
-    void DrawSceneNode(const SceneNode& node, std::vector<uint64_t>& perItemDrawSets, const DirectX::XMFLOAT4X4& viewProjX4, const DirectX::XMFLOAT4 camPos) override;
+
     void DrawIndexed(uint64_t vertBufferID, uint32_t vertCount, uint64_t indexBufferID, uint32_t indexCount, 
         void* pushConstant, size_t pushConstantSize) override;
-    void DrawIndexed(const Mesh* mesh,  void* pushConstants = nullptr, size_t pushConstantsSize = 0) override;
-    void DrawQuad(std::vector<uint64_t>* descriptorSets = nullptr) override;
-    void BindDescriptorSets(std::vector<uint64_t>* descriptorSets, bool hasPushConstant = false);
+    void DrawFSQuad() override;
+    
+    void BindDrawDescriptorSets(std::vector<uint64_t>* descriptorSets, uint32_t numPipelineSets) override;
+    void BindPipelineDescriptorSets(std::vector<uint64_t>* descriptorSets) override;
     
 private:
     ID3D12GraphicsCommandList* GetCommandList();
@@ -86,15 +89,17 @@ public:
                void* depthView,
                uint32_t width, uint32_t height) override;
     void EndPipeline() override;
+    
     void IssueMemoryBarrier(const RHIStructures::MemoryBarrier& barrier) override;
     void IssueImageMemoryBarrier(const ImageMemoryBarrier& barrier) override;
-    void DrawSceneNode(const SceneNode& node, std::vector<uint64_t>& perItemDrawSets, const DirectX::XMFLOAT4X4& viewProjX4, const DirectX::XMFLOAT4 camPos) override;
+
     void DrawIndexed(uint64_t vertBufferID, uint32_t vertCount, uint64_t indexBufferID, uint32_t indexCount, 
         void* pushConstant, size_t pushConstantSize) override;
-    void DrawIndexed(const Mesh* mesh,  void* pushConstants = nullptr, size_t pushConstantsSize = 0) override;
-    void DrawQuad(std::vector<uint64_t>* descriptorSets = nullptr) override;
-    void BindDescriptorSets(std::vector<uint64_t>* descriptorSets, bool hasPushConstant = false);
-
+    void DrawFSQuad() override;
+    
+    void BindDrawDescriptorSets(std::vector<uint64_t>* descriptorSets, uint32_t numPipelineSets) override;
+    void BindPipelineDescriptorSets(std::vector<uint64_t>* descriptorSets) override;
+    
 private:
     
     VulkanPipeline* CurrentPipeline;

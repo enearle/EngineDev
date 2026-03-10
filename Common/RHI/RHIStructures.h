@@ -617,10 +617,13 @@ namespace RHIStructures
     
     struct IndexedDraw
     {
-        Mesh* Mesh = nullptr;
+        uint64_t VertexBufferID = 0;
+        uint64_t IndexBufferID = 0;
+        uint32_t VertexCount = 0;
+        uint32_t IndexCount = 0;
         void* PushConstants = nullptr;
         size_t PushConstantSize = 0;
-        uint64_t DescriptorSetIndex = 0;
+        std::vector<uint64_t> PerDrawDescriptors;
     };
     
     // Must also create a method for instanced draws here
@@ -628,8 +631,10 @@ namespace RHIStructures
     struct PipelineFrameContext
     {
         Pipeline* ContextPipeline = nullptr;
-        bool IsQuad = false;
+        bool IsFSQuad = false;
+        bool IsPresented = false;
         std::vector<IndexedDraw> IndexedDraws;
+        std::vector<uint64_t> PerFrameDescriptors;
     };
 
 }

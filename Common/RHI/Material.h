@@ -1,8 +1,7 @@
 #pragma once
-#include <cstdint>
 #include <string>
 #include <vector>
-
+#include "../../Solution/RHI/RHI_API_Macro.h"
 #include "BufferAllocator.h"
 
 namespace RHIStructures
@@ -21,7 +20,7 @@ struct PreBufferCache
     ~PreBufferCache();
 };
 
-class Material
+class RHI_API Material
 {
 public:
     enum MaterialFormat

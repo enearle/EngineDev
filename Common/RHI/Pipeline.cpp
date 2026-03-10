@@ -1,4 +1,6 @@
 ﻿#include "Pipeline.h"
+
+#include <iostream>
 #include <stdexcept>
 #include "BufferAllocator.h"
 #include "../GraphicsSettings.h"
@@ -28,6 +30,7 @@ D3DPipeline::D3DPipeline(uint32_t pipelineID, const PipelineDesc& desc, std::vec
 {
     clearColors = desc.AttachmentClearValues;
     depthClearValue = desc.DepthClearValue;
+    PushConstantCount = static_cast<uint32_t>(desc.Constants.size());
     
     ComPtr<ID3D12Device> device = D3DCore::GetInstance().GetDevice();
     Topology = DXPrimitiveTopology(desc.PrimitiveTopology);
@@ -370,6 +373,7 @@ VulkanPipeline::VulkanPipeline(uint32_t pipelineID, const PipelineDesc& desc, st
 {
     clearColors = desc.AttachmentClearValues;
     depthClearValue = desc.DepthClearValue;
+    PushConstantCount = static_cast<uint32_t>(desc.Constants.size());
     // Cache shader modules for cleanup
     // All shaders will allways be loaded. This is meh, but for my engine probably fine.
     std::vector<VkPipelineShaderStageCreateInfo> shaderStages;

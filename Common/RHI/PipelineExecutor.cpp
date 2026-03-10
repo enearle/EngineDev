@@ -212,36 +212,6 @@ void D3DPipelineExecutor::IssueImageMemoryBarrier(const ImageMemoryBarrier& barr
     cmdList->ResourceBarrier(1, &d3dBarrier);
 }
 
-void D3DPipelineExecutor::DrawSceneNode(const SceneNode& node, std::vector<uint64_t>& perItemDrawSets, const DirectX::XMFLOAT4X4& camera, const DirectX::XMFLOAT4 camPos)
-{
-    // Render meshes on this node
-    for (size_t i = 0; i < node.GetMeshCount(); i++)
-    {
-        const Mesh* mesh = node.GetMesh(i);
-        uint32_t materialIndex = mesh->GetLocalMaterialIndex();
-        
-        DirectX::XMMATRIX modelMatrix = node.GetModelMatrix();
-        DirectX::XMFLOAT4X4 model;
-        DirectX::XMStoreFloat4x4(&model, modelMatrix);
-
-        DirectX::XMFLOAT4X4 normal;
-        DirectX::XMMATRIX inverseTranspose = XMMatrixTranspose(XMMatrixInverse(nullptr, modelMatrix));
-        DirectX::XMStoreFloat4x4(&normal, inverseTranspose);
-
-        std::vector<uint64_t> descriptorSets = {perItemDrawSets[materialIndex]};
-        BindDescriptorSets(&descriptorSets, true);
-        
-        RHIConstants::MVPData mvpData { model, normal, camera, camPos };
-        DrawIndexed(mesh, &mvpData, sizeof(RHIConstants::MVPData));
-    }
-
-    std::vector<SceneNode> children = node.GetChildren();
-    for (const SceneNode& child : children)
-    {
-        DrawSceneNode(child, perItemDrawSets, camera, camPos);
-    }
-}
-
 void D3DPipelineExecutor::DrawIndexed(uint64_t vertBufferID, uint32_t vertCount, uint64_t indexBufferID, 
     uint32_t indexCount, void* pushConstant, size_t pushConstantSize)
 {
@@ -277,25 +247,40 @@ void D3DPipelineExecutor::DrawIndexed(uint64_t vertBufferID, uint32_t vertCount,
     cmdList->DrawIndexedInstanced(indexCount, 1, 0, 0, 0);
 }
 
-void D3DPipelineExecutor::DrawIndexed(const Mesh* mesh, void* pushConstants, size_t pushConstantsSize)
-{
-    DrawIndexed(mesh->GetVertexBufferID(), mesh->GetVertexCount(), mesh->GetIndexBufferID(), mesh->GetIndexCount(), 
-            pushConstants, pushConstantsSize);
-}
-
-void D3DPipelineExecutor::DrawQuad(std::vector<uint64_t>* descriptorSets)
+void D3DPipelineExecutor::DrawFSQuad()
 {
     ID3D12GraphicsCommandList* cmdList = GetCommandList();
-    BindDescriptorSets(descriptorSets);
     cmdList->DrawInstanced(6, 1, 0, 0);
 }
 
-void D3DPipelineExecutor::BindDescriptorSets(std::vector<uint64_t>* descriptorSets, bool hasPushConstant)
+void D3DPipelineExecutor::BindDrawDescriptorSets(std::vector<uint64_t>* descriptorSets, uint32_t numPipelineSets)
 {
     ID3D12GraphicsCommandList* cmdList = GetCommandList();
     BufferAllocator* bufferAlloc = BufferAllocator::GetInstance();
     
-    uint32_t rootParamIndex = hasPushConstant ? 1 : 0;
+    uint32_t rootParamIndex = numPipelineSets + CurrentPipeline->GetPushConstantCount();
+    
+    if (descriptorSets)
+    {
+        for (size_t i = 0; i < descriptorSets->size(); i++)
+        {
+            uint64_t descriptorSetID = descriptorSets->at(i);
+            DescriptorSetAllocation allocation = bufferAlloc->GetDescriptorSet(descriptorSetID);
+
+            D3D12_GPU_DESCRIPTOR_HANDLE handle;
+            handle.ptr = allocation.DescriptorAddress;
+            
+            cmdList->SetGraphicsRootDescriptorTable(rootParamIndex++, handle);
+        }
+    }
+}
+
+void D3DPipelineExecutor::BindPipelineDescriptorSets(std::vector<uint64_t>* descriptorSets)
+{
+    ID3D12GraphicsCommandList* cmdList = GetCommandList();
+    BufferAllocator* bufferAlloc = BufferAllocator::GetInstance();
+    
+    uint32_t rootParamIndex = CurrentPipeline->GetPushConstantCount();
     
     if (descriptorSets)
     {
@@ -314,6 +299,7 @@ void D3DPipelineExecutor::BindDescriptorSets(std::vector<uint64_t>* descriptorSe
     for (uint64_t descriptorSetID : CurrentPipeline->GetInputDescriptorSetIDs())
     {
         DescriptorSetAllocation allocation = bufferAlloc->GetDescriptorSet(descriptorSetID);
+        
         D3D12_GPU_DESCRIPTOR_HANDLE handle;
         handle.ptr = allocation.DescriptorAddress;
         cmdList->SetGraphicsRootDescriptorTable(rootParamIndex++, handle);
@@ -525,36 +511,6 @@ void VulkanPipelineExecutor::IssueImageMemoryBarrier(const ImageMemoryBarrier& b
     );
 }
 
-void VulkanPipelineExecutor::DrawSceneNode(const SceneNode& node, std::vector<uint64_t>& perItemDrawSets, const DirectX::XMFLOAT4X4& camera, const DirectX::XMFLOAT4 camPos)
-{
-    // Render meshes on this node
-    for (size_t i = 0; i < node.GetMeshCount(); i++)
-    {
-        const Mesh* mesh = node.GetMesh(i);
-        uint32_t materialIndex = mesh->GetLocalMaterialIndex();
-        
-        DirectX::XMMATRIX modelMatrix = node.GetModelMatrix();
-        DirectX::XMFLOAT4X4 model;
-        DirectX::XMStoreFloat4x4(&model, modelMatrix);
-
-        DirectX::XMFLOAT4X4 normal;
-        DirectX::XMMATRIX inverseTranspose = XMMatrixTranspose(XMMatrixInverse(nullptr, modelMatrix));
-        DirectX::XMStoreFloat4x4(&normal, inverseTranspose);
-        
-        std::vector<uint64_t> descriptorSets = {perItemDrawSets[materialIndex]};
-        BindDescriptorSets(&descriptorSets, true);
-        
-        RHIConstants::MVPData mvpData { model, normal, camera, camPos };
-        DrawIndexed(mesh, &mvpData, sizeof(RHIConstants::MVPData));
-    }
-
-    std::vector<SceneNode> children = node.GetChildren();
-    for (const SceneNode& child : children)
-    {
-        DrawSceneNode(child, perItemDrawSets, camera, camPos);
-    }
-}
-
 void VulkanPipelineExecutor::DrawIndexed(uint64_t vertBufferID, uint32_t vertCount, uint64_t indexBufferID, 
     uint32_t indexCount, void* pushConstant, size_t pushConstantSize)
 {
@@ -585,20 +541,42 @@ void VulkanPipelineExecutor::DrawIndexed(uint64_t vertBufferID, uint32_t vertCou
     }
 }
 
-void VulkanPipelineExecutor::DrawIndexed(const Mesh* mesh, void* pushConstants, size_t pushConstantsSize)
-{
-    DrawIndexed(mesh->GetVertexBufferID(), mesh->GetVertexCount(), mesh->GetIndexBufferID(), mesh->GetIndexCount(), 
-            pushConstants, pushConstantsSize);
-}
-
-void VulkanPipelineExecutor::DrawQuad(std::vector<uint64_t>* descriptorSets)
+void VulkanPipelineExecutor::DrawFSQuad()
 {
     VkCommandBuffer cmdBuffer = GetCommandBuffer();
-    BindDescriptorSets(descriptorSets);
     vkCmdDraw(cmdBuffer, 6, 1, 0, 0);
 }
 
-void VulkanPipelineExecutor::BindDescriptorSets(std::vector<uint64_t>* descriptorSets, bool hasPushConstant)
+void VulkanPipelineExecutor::BindDrawDescriptorSets(std::vector<uint64_t>* descriptorSets, uint32_t numPipelineSets)
+{
+    VkCommandBuffer cmdBuffer = GetCommandBuffer();
+    BufferAllocator* bufferAlloc = BufferAllocator::GetInstance();
+    
+    uint32_t numSets = 0;
+    std::vector<VkDescriptorSet> combinedDescriptorSets;
+    
+    if (descriptorSets)
+        for (uint64_t ID : *descriptorSets)
+        {
+            combinedDescriptorSets.push_back(reinterpret_cast<VkDescriptorSet>(bufferAlloc->GetDescriptorSet(ID).DescriptorAddress));
+            numSets++;
+        }
+    
+    if (combinedDescriptorSets.empty()) return;
+    
+    vkCmdBindDescriptorSets(
+        cmdBuffer,
+        VK_PIPELINE_BIND_POINT_GRAPHICS,
+        CurrentPipeline->GetPipelineLayout(),
+        numPipelineSets,                // First set = number of pipeline sets bound before draws
+        numSets,                        // Descriptor set count
+        combinedDescriptorSets.data(),  // Descriptor sets array
+        0,                              // Dynamic offset count
+        nullptr                         // Dynamic offsets
+    );
+}
+
+void VulkanPipelineExecutor::BindPipelineDescriptorSets(std::vector<uint64_t>* descriptorSets)
 {
     VkCommandBuffer cmdBuffer = GetCommandBuffer();
     BufferAllocator* bufferAlloc = BufferAllocator::GetInstance();
@@ -618,6 +596,8 @@ void VulkanPipelineExecutor::BindDescriptorSets(std::vector<uint64_t>* descripto
         combinedDescriptorSets.push_back(reinterpret_cast<VkDescriptorSet>(bufferAlloc->GetDescriptorSet(ID).DescriptorAddress));
         numSets++;
     }
+    
+    if (combinedDescriptorSets.empty()) return;
     
     vkCmdBindDescriptorSets(
         cmdBuffer,

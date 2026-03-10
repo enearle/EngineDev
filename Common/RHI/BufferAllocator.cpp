@@ -1,5 +1,6 @@
 #include "BufferAllocator.h"
 
+#include <iostream>
 #include <map>
 
 #include "../GraphicsSettings.h"
@@ -1014,7 +1015,46 @@ uint64_t DirectX12BufferAllocator::AllocateDescriptorSet(uint32_t pipelineID, ui
     DescriptorSetLayoutInfo& layoutInfo = iterator->second;
     DescriptorTableData* tableData = new DescriptorTableData();
     
-    // Allocate and copy descriptors
+    // First pass: Pre-allocate all descriptors contiguously to reserve heap space
+    std::vector<D3D12_CPU_DESCRIPTOR_HANDLE> allocatedHandles;
+    std::vector<DescriptorType> descriptorTypes;
+    
+    for (const DescriptorBinding& layoutBinding : layoutInfo.Bindings)
+    {
+        DescriptorType dxType;
+        D3D12_CPU_DESCRIPTOR_HANDLE dstHandle;
+
+        if (layoutBinding.Type == RHIStructures::DescriptorType::SampledImage)
+        {
+            dxType = SRV;
+            dstHandle = AllocateDescriptor(SRV);
+        }
+        else if (layoutBinding.Type == RHIStructures::DescriptorType::UniformBuffer)
+        {
+            dxType = CBV;
+            dstHandle = AllocateDescriptor(CBV);
+        }
+        else if (layoutBinding.Type == RHIStructures::DescriptorType::StorageBuffer)
+        {
+            dxType = SRV;
+            dstHandle = AllocateDescriptor(SRV);
+        }
+        else if (layoutBinding.Type == RHIStructures::DescriptorType::StorageImage)
+        {
+            dxType = UAV;
+            dstHandle = AllocateDescriptor(UAV);
+        }
+        else
+        {
+            throw std::runtime_error("Unsupported descriptor type");
+        }
+        
+        allocatedHandles.push_back(dstHandle);
+        descriptorTypes.push_back(dxType);
+    }
+    
+    // Second pass: Create the actual descriptor views
+    size_t descriptorIndex = 0;
     for (const DescriptorBinding& layoutBinding : layoutInfo.Bindings)
     {
         auto bindingIterator = std::find_if(bindings.begin(), bindings.end(),
@@ -1023,13 +1063,10 @@ uint64_t DirectX12BufferAllocator::AllocateDescriptorSet(uint32_t pipelineID, ui
         if (bindingIterator == bindings.end())
             throw std::runtime_error("Missing resource for binding");
         
-        D3D12_CPU_DESCRIPTOR_HANDLE dstHandle;
-        DescriptorType dxType;
+        D3D12_CPU_DESCRIPTOR_HANDLE dstHandle = allocatedHandles[descriptorIndex];
         
         if (layoutBinding.Type == RHIStructures::DescriptorType::SampledImage)
         {
-            dxType = SRV;
-            dstHandle = AllocateDescriptor(SRV);
             
             ImageAllocation imageAlloc = GetImageAllocation(bindingIterator->ResourceID);
             DX12ImageData* imageData = static_cast<DX12ImageData*>(imageAlloc.Image);
@@ -1046,9 +1083,6 @@ uint64_t DirectX12BufferAllocator::AllocateDescriptorSet(uint32_t pipelineID, ui
         }
         else if (layoutBinding.Type == RHIStructures::DescriptorType::UniformBuffer)
         {
-            dxType = CBV;
-            dstHandle = AllocateDescriptor(CBV);
-            
             BufferAllocation bufferAlloc = GetBufferAllocation(bindingIterator->ResourceID);
             DX12BufferData* bufferData = static_cast<DX12BufferData*>(bufferAlloc.Buffer);
             
@@ -1059,16 +1093,20 @@ uint64_t DirectX12BufferAllocator::AllocateDescriptorSet(uint32_t pipelineID, ui
             device->CreateConstantBufferView(&cbvDesc, dstHandle);
         }
         
-        tableData->CpuHandles.push_back(dstHandle);
-        tableData->DescriptorTypes.push_back(dxType);
-        
-        if (tableData->BaseHandle.ptr == 0)
-        {
-            D3D12_CPU_DESCRIPTOR_HANDLE heapStart = ShaderResourceHeap->GetCPUDescriptorHandleForHeapStart();
-            D3D12_GPU_DESCRIPTOR_HANDLE gpuStart = ShaderResourceHeap->GetGPUDescriptorHandleForHeapStart();
-            size_t offset = dstHandle.ptr - heapStart.ptr;
-            tableData->BaseHandle.ptr = gpuStart.ptr + offset;
-        }
+        descriptorIndex++;
+    }
+    
+    // Store all handles and types
+    tableData->CpuHandles = allocatedHandles;
+    tableData->DescriptorTypes = descriptorTypes;
+    
+    // Calculate the GPU handle for the base of the table (first descriptor)
+    if (!allocatedHandles.empty())
+    {
+        D3D12_CPU_DESCRIPTOR_HANDLE heapStart = ShaderResourceHeap->GetCPUDescriptorHandleForHeapStart();
+        D3D12_GPU_DESCRIPTOR_HANDLE gpuStart = ShaderResourceHeap->GetGPUDescriptorHandleForHeapStart();
+        size_t offset = allocatedHandles[0].ptr - heapStart.ptr;
+        tableData->BaseHandle.ptr = gpuStart.ptr + offset;
     }
     
     DescriptorSetAllocation allocation;

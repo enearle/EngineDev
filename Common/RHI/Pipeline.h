@@ -12,15 +12,15 @@ protected:
     IOResource* PipelineOutputResource;
     std::vector<DirectX::XMFLOAT4> clearColors;
     float depthClearValue = 1;
+    uint32_t PushConstantCount = 0;
 public:
     static RHI_API Pipeline* Create(uint32_t pipelineID, const PipelineDesc& desc, std::vector<IOResource>* inputIOResources = nullptr);
     virtual ~Pipeline() = default;
-    
     std::vector<DirectX::XMFLOAT4> GetClearColors() const { return clearColors; }
     float GetDepthClearValue() const { return depthClearValue; }
-    
     std::vector<uint64_t> GetInputDescriptorSetIDs() const { return PipelineInputDescriptorSetIDs; }
     IOResource* GetOutputResource() const { return PipelineOutputResource; }
+    uint32_t GetPushConstantCount() const { return PushConstantCount; }
     virtual size_t GetOwnedImageCount() const = 0;
     virtual void* GetOwnedImage(uint32_t index) = 0;
     virtual void* GetOwnedDepthImage() = 0;
