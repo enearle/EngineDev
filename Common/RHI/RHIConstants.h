@@ -327,10 +327,10 @@ namespace RHIConstants
         
         // 10. Binding texture
         std::vector<DescriptorBinding> bindings {
-        { .Type = DescriptorType::SampledImage,         .Slot = 0, .Set = 0, .Count = 1, .Sampler = SamplerType::Linear }, // Albedo
-        { .Type = DescriptorType::SampledImage,         .Slot = 1, .Set = 0, .Count = 1, .Sampler = SamplerType::Linear }, // Normal
-        { .Type = DescriptorType::SampledImage,         .Slot = 2, .Set = 0, .Count = 1, .Sampler = SamplerType::Linear }, // MetallicRoughness
-        { .Type = DescriptorType::DynamicUniformBuffer, .Slot = 0, .Set = 1, .Count = 1, .Sampler = SamplerType::Linear },
+        { .Type = DescriptorType::SampledImage,         .Slot = 0, .Set = 1, .Count = 1, .Sampler = SamplerType::Linear }, // Albedo
+        { .Type = DescriptorType::SampledImage,         .Slot = 1, .Set = 1, .Count = 1, .Sampler = SamplerType::Linear }, // Normal
+        { .Type = DescriptorType::SampledImage,         .Slot = 2, .Set = 1, .Count = 1, .Sampler = SamplerType::Linear }, // MetallicRoughness
+        { .Type = DescriptorType::DynamicUniformBuffer, .Slot = 0, .Set = 0, .Count = 1, .Sampler = SamplerType::Linear },
         };
         
         ShaderStageMask visibleStages = ShaderStageMask(0);

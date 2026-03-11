@@ -1,3 +1,5 @@
+#include <chrono>
+
 #include "../RHI/Renderer.h"
 #include "Common/Window.h"
 #include "Common/RHI/Material.h"
@@ -73,19 +75,10 @@ int main(int argc, char* argv[])
     VPData.ViewProjection = viewProj;
     VPData.CameraPosition = cameraPosition;
     
-    std::vector<class Pipeline*> pipelines;
-    pipelines.push_back(RHIConstants::PBRGeometryPipeline());
-    std::vector<IOResource> inputResources = {*pipelines[0]->GetOutputResource()};
-    pipelines.push_back(RHIConstants::DeferredLightingPipeline(&inputResources));
-    
-    // Create texture images
-    Materials.push_back(Material("shells_0", Material::PBR).LoadMaterial(0,0));
-    Materials.push_back(Material("shells_1", Material::PBR).LoadMaterial(0,0));
-    
     // Dynamic uniform
     BufferDesc VPBufferDesc = RHIConstants::DefaultConstantBufferDesc;
     VPBufferDesc.Size = 256;
-    VPBufferDesc.Access = MemoryAccess(3);
+    VPBufferDesc.Access = MemoryAccess(9);
     VPBufferDesc.InitialData = &VPData;
     
     VPBufferID = BufferAllocator::GetInstance()->CreateBuffer(VPBufferDesc);
@@ -93,11 +86,25 @@ int main(int argc, char* argv[])
     if (!vpAllocation.IsMapped || vpAllocation.Address == nullptr)
         throw std::runtime_error("VP buffer is not mapped! Check MemoryAccess flags.");
     
+    // Create pipelines
+    std::vector<class Pipeline*> pipelines;
+    pipelines.push_back(RHIConstants::PBRGeometryPipeline());
+    std::vector<IOResource> inputResources = {*pipelines[0]->GetOutputResource()};
+    for (auto& binding : inputResources[0].Layout.Bindings)
+    {
+        binding.Set = 1;  // Temporary, need better way to manage IODescriptors
+    }
+    pipelines.push_back(RHIConstants::DeferredLightingPipeline(&inputResources));
+    
+    // Create texture images
+    Materials.push_back(Material("shells_0", Material::PBR).LoadMaterial(0,1));
+    Materials.push_back(Material("shells_1", Material::PBR).LoadMaterial(0,1));
+    
     std::vector<DescriptorSetBinding> vpBindings = {
         {0, VPBufferID, 0}
     };
-    geometryVPDescriptorSet = BufferAllocator::GetInstance()->AllocateDescriptorSet(0, 1, vpBindings);
-    lightingVPDescriptorSet = BufferAllocator::GetInstance()->AllocateDescriptorSet(1, 1, vpBindings);
+    geometryVPDescriptorSet = BufferAllocator::GetInstance()->AllocateDescriptorSet(0, 0, vpBindings);
+    lightingVPDescriptorSet = BufferAllocator::GetInstance()->AllocateDescriptorSet(1, 0, vpBindings);
     
     // Create vertex/index buffers
     MeshRoot = GeometryImport::CreateMeshGroup("shells.fbx", "Shells", DirectX::XMMatrixIdentity());
@@ -110,8 +117,38 @@ int main(int argc, char* argv[])
     Renderer::AddDescriptorIDToContext(1, lightingVPDescriptorSet);
     AddSceneNode(MeshRoot.GetSceneNode());
     std::cout << "Engine initialized with " << ModelDataArray.size() << " MVP data entries." << std::endl;
+    
+    auto startTime = std::chrono::high_resolution_clock::now();
+    
     while (!window->PeekMessages())
     {
+        // Calculate elapsed time
+        auto currentTime = std::chrono::high_resolution_clock::now();
+        float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
+    
+        // Rotate camera around the object
+        float radius = 15.0f;
+        float speed = 0.5f;
+        DirectX::XMFLOAT4 cameraPosition = {
+            radius * sinf(time * speed),
+            10.0f,
+            radius * cosf(time * speed),
+            1.0f
+        };
+    
+        // Update view-projection matrix
+        DirectX::XMMATRIX view = DirectX::XMMatrixLookAtLH(
+            DirectX::XMLoadFloat4(&cameraPosition), 
+            DirectX::XMVectorSet(0.0f, 0.0f, 0.0f, 1.0f),
+            DirectX::XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f)
+        );
+        DirectX::XMMATRIX projection = DirectX::XMMatrixPerspectiveFovLH(
+            DirectX::XM_PIDIV2, 1280.0f / 720.0f, 0.1f, 100.0f
+        );
+        DirectX::XMMATRIX vp = view * projection;
+        DirectX::XMFLOAT4X4 viewProj;
+        DirectX::XMStoreFloat4x4(&viewProj, vp);
+        
         RHIConstants::VPData* mappedVP = static_cast<RHIConstants::VPData*>(vpAllocation.Address);
         mappedVP->ViewProjection = viewProj;
         mappedVP->CameraPosition = cameraPosition;

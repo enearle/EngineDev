@@ -2,12 +2,12 @@
 #include <unordered_map>
 #include <map>
 #include "RHIStructures.h"
-
+#include "../../Solution/RHI/RHI_API_Macro.h"
 class BitPool;
 using namespace RHIStructures;
 using Microsoft::WRL::ComPtr;
 
-class BufferAllocator
+class RHI_API BufferAllocator
 {
 protected:
     

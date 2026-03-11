@@ -552,49 +552,20 @@ void VulkanPipelineExecutor::BindDrawDescriptorSets(std::vector<uint64_t>* descr
     VkCommandBuffer cmdBuffer = GetCommandBuffer();
     BufferAllocator* bufferAlloc = BufferAllocator::GetInstance();
     
-    uint32_t numSets = 0;
     std::vector<VkDescriptorSet> combinedDescriptorSets;
+    std::vector<uint32_t> dynamicOffsets;
     
     if (descriptorSets)
-        for (uint64_t ID : *descriptorSets)
-        {
-            combinedDescriptorSets.push_back(reinterpret_cast<VkDescriptorSet>(bufferAlloc->GetDescriptorSet(ID).DescriptorAddress));
-            numSets++;
-        }
-    
-    if (combinedDescriptorSets.empty()) return;
-    
-    vkCmdBindDescriptorSets(
-        cmdBuffer,
-        VK_PIPELINE_BIND_POINT_GRAPHICS,
-        CurrentPipeline->GetPipelineLayout(),
-        numPipelineSets,                // First set = number of pipeline sets bound before draws
-        numSets,                        // Descriptor set count
-        combinedDescriptorSets.data(),  // Descriptor sets array
-        0,                              // Dynamic offset count
-        nullptr                         // Dynamic offsets
-    );
-}
-
-void VulkanPipelineExecutor::BindPipelineDescriptorSets(std::vector<uint64_t>* descriptorSets)
-{
-    VkCommandBuffer cmdBuffer = GetCommandBuffer();
-    BufferAllocator* bufferAlloc = BufferAllocator::GetInstance();
-    
-    uint32_t numSets = 0;
-    std::vector<VkDescriptorSet> combinedDescriptorSets;
-    
-    if (descriptorSets)
-        for (uint64_t ID : *descriptorSets)
-        {
-            combinedDescriptorSets.push_back(reinterpret_cast<VkDescriptorSet>(bufferAlloc->GetDescriptorSet(ID).DescriptorAddress));
-            numSets++;
-        }
-        
-    for (uint64_t ID : CurrentPipeline->GetInputDescriptorSetIDs())
     {
-        combinedDescriptorSets.push_back(reinterpret_cast<VkDescriptorSet>(bufferAlloc->GetDescriptorSet(ID).DescriptorAddress));
-        numSets++;
+        for (uint64_t ID : *descriptorSets)
+        {
+            DescriptorSetAllocation allocation = bufferAlloc->GetDescriptorSet(ID);
+            combinedDescriptorSets.push_back(reinterpret_cast<VkDescriptorSet>(allocation.DescriptorAddress));
+
+            dynamicOffsets.insert(dynamicOffsets.end(), 
+                                 allocation.DynamicOffsets.begin(), 
+                                 allocation.DynamicOffsets.end());
+        }
     }
     
     if (combinedDescriptorSets.empty()) return;
@@ -603,11 +574,56 @@ void VulkanPipelineExecutor::BindPipelineDescriptorSets(std::vector<uint64_t>* d
         cmdBuffer,
         VK_PIPELINE_BIND_POINT_GRAPHICS,
         CurrentPipeline->GetPipelineLayout(),
-        0,                              // First set (set = 0 in shader)
-        numSets,                        // Descriptor set count
-        combinedDescriptorSets.data(),  // Descriptor sets array
-        0,                              // Dynamic offset count
-        nullptr                         // Dynamic offsets
+        numPipelineSets,
+        combinedDescriptorSets.size(),
+        combinedDescriptorSets.data(),
+        dynamicOffsets.size(),           // NEW: Dynamic offset count
+        dynamicOffsets.data()             // NEW: Dynamic offsets array
+    );
+}
+
+void VulkanPipelineExecutor::BindPipelineDescriptorSets(std::vector<uint64_t>* descriptorSets)
+{
+    VkCommandBuffer cmdBuffer = GetCommandBuffer();
+    BufferAllocator* bufferAlloc = BufferAllocator::GetInstance();
+    
+    std::vector<VkDescriptorSet> combinedDescriptorSets;
+    std::vector<uint32_t> dynamicOffsets;
+    
+    if (descriptorSets)
+    {
+        for (uint64_t ID : *descriptorSets)
+        {
+            DescriptorSetAllocation allocation = bufferAlloc->GetDescriptorSet(ID);
+            combinedDescriptorSets.push_back(reinterpret_cast<VkDescriptorSet>(allocation.DescriptorAddress));
+            
+            dynamicOffsets.insert(dynamicOffsets.end(), 
+                                 allocation.DynamicOffsets.begin(), 
+                                 allocation.DynamicOffsets.end());
+        }
+    }
+        
+    for (uint64_t ID : CurrentPipeline->GetInputDescriptorSetIDs())
+    {
+        DescriptorSetAllocation allocation = bufferAlloc->GetDescriptorSet(ID);
+        combinedDescriptorSets.push_back(reinterpret_cast<VkDescriptorSet>(allocation.DescriptorAddress));
+        
+        dynamicOffsets.insert(dynamicOffsets.end(), 
+                             allocation.DynamicOffsets.begin(), 
+                             allocation.DynamicOffsets.end());
+    }
+    
+    if (combinedDescriptorSets.empty()) return;
+    
+    vkCmdBindDescriptorSets(
+        cmdBuffer,
+        VK_PIPELINE_BIND_POINT_GRAPHICS,
+        CurrentPipeline->GetPipelineLayout(),
+        0,
+        combinedDescriptorSets.size(),
+        combinedDescriptorSets.data(),
+        dynamicOffsets.size(),
+        dynamicOffsets.data()
     );
 }
 

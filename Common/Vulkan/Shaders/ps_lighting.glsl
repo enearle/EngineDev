@@ -2,10 +2,15 @@
 
 layout(location = 0) in vec2 inUV;
 
-layout(set = 0, binding = 0) uniform sampler2D subAlbedo;
-layout(set = 0, binding = 1) uniform sampler2D subNormal;
-layout(set = 0, binding = 2) uniform sampler2D subMetalicRoughnessAO;
-layout(set = 0, binding = 3) uniform sampler2D subPosition;
+layout(set = 1, binding = 0) uniform sampler2D subAlbedo;
+layout(set = 1, binding = 1) uniform sampler2D subNormal;
+layout(set = 1, binding = 2) uniform sampler2D subMetalicRoughnessAO;
+layout(set = 1, binding = 3) uniform sampler2D subPosition;
+
+layout(set = 0, binding = 0) uniform VPData {
+    mat4 viewProjection;
+    vec4 cameraPosition;
+} vpData;
 
 layout(location = 0) out vec4 outColour;
 
@@ -37,10 +42,10 @@ void init()
     
     metallic = materialData.r;
     roughness = max(materialData.g, 0.04);
-    roughness = max(roughness * roughness, 0.001); // Square and clamp
+    roughness = max(roughness * roughness, 0.001);
     ambientOcclusion = materialData.b;
     
-    vec3 camPosition = vec3(0.0, 10, -8);
+    vec3 camPosition = vpData.cameraPosition.rgb;
     viewVector = normalize(camPosition - fragPosition);
 }
 

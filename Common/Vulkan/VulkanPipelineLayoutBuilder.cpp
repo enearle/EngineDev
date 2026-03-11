@@ -54,7 +54,7 @@ VkPipelineLayout VulkanPipelineLayoutBuilder::BuildPipelineLayout(uint32_t pipel
         {
             std::vector<VkDescriptorSetLayoutBinding> vkBindings;
             vkBindings.reserve(bindings.size());
-        
+    
             for (const auto& binding : bindings)
             {
                 vkBindings.push_back(binding.binding);
@@ -64,14 +64,14 @@ VkPipelineLayout VulkanPipelineLayoutBuilder::BuildPipelineLayout(uint32_t pipel
             layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
             layoutInfo.bindingCount = static_cast<uint32_t>(vkBindings.size());
             layoutInfo.pBindings = vkBindings.data();
-            layoutInfo.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_DESCRIPTOR_BUFFER_BIT_EXT;
+            layoutInfo.flags = 0;
 
             VkDescriptorSetLayout descriptorSetLayout = VK_NULL_HANDLE;
             VkResult result = vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &descriptorSetLayout);
-        
+    
             if (result != VK_SUCCESS)
                 throw std::runtime_error("Failed to create descriptor set layout");
-        
+    
             descriptorSetLayouts.push_back(descriptorSetLayout);
         }
     }

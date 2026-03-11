@@ -6,9 +6,9 @@ layout(location = 2) in vec3 inTangent;
 layout(location = 3) in vec3 inBitangent;
 layout(location = 4) in vec2 inUV;
 
-layout(set = 0, binding = 0) uniform sampler2D albedoMap;
-layout(set = 0, binding = 1) uniform sampler2D normalMap;
-layout(set = 0, binding = 2) uniform sampler2D metallicRoughnessMap;
+layout(set = 1, binding = 0) uniform sampler2D albedoMap;
+layout(set = 1, binding = 1) uniform sampler2D normalMap;
+layout(set = 1, binding = 2) uniform sampler2D metallicRoughnessMap;
 
 layout(location = 0) out vec4 outAlbedo;  
 layout(location = 1) out vec4 outNormal;  
