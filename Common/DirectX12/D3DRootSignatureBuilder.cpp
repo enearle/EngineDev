@@ -75,9 +75,12 @@ ComPtr<ID3D12RootSignature> D3DRootSignatureBuilder::BuildRootSignature(uint32_t
     return rootSignature;
 }
 
-void D3DRootSignatureBuilder::CreateRootParameters(uint32_t pipelineID, const std::vector<ResourceLayout>& layouts, 
+void D3DRootSignatureBuilder::CreateRootParameters(uint32_t pipelineID, const std::vector<ResourceLayout>& layouts,
     const std::vector<PipelineConstant>& constants, std::vector<RootParameter>& outRootParameters)
 {
+    // Push constants always use space0 if present
+    uint32_t spaceOffset = 0;
+    
     std::vector<D3D12_ROOT_PARAMETER> constantRanges;
     uint32_t constantSlot = 0;
     for (const PipelineConstant& constant : constants)
@@ -92,6 +95,10 @@ void D3DRootSignatureBuilder::CreateRootParameters(uint32_t pipelineID, const st
     }
     outRootParameters.insert(outRootParameters.end(), constantRanges.begin(), constantRanges.end());
     
+    // If we have push constants, offset descriptor sets by 1
+    if (!constants.empty())
+        spaceOffset = 1;
+    
     for (uint32_t i = 0; i < layouts.size(); i++)
     {
         const ResourceLayout& layout = layouts[i];
@@ -100,6 +107,7 @@ void D3DRootSignatureBuilder::CreateRootParameters(uint32_t pipelineID, const st
                 
         std::vector<D3D12_DESCRIPTOR_RANGE> srvRanges;
         std::vector<D3D12_DESCRIPTOR_RANGE> uavRanges;
+        std::vector<D3D12_DESCRIPTOR_RANGE> cbvRanges;
         
         D3D12_SHADER_VISIBILITY visibility = DXShaderStageFlags(layout.VisibleStages);
         
@@ -110,9 +118,20 @@ void D3DRootSignatureBuilder::CreateRootParameters(uint32_t pipelineID, const st
                 RootParameter parameter = {};
                 parameter.parameter.ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
                 parameter.parameter.Descriptor.ShaderRegister = binding.Slot;
-                parameter.parameter.Descriptor.RegisterSpace = binding.Set;
+                parameter.parameter.Descriptor.RegisterSpace = binding.Set + spaceOffset;
                 parameter.parameter.ShaderVisibility = visibility;
                 outRootParameters.push_back(parameter);
+            }
+            else if (binding.Type == DescriptorType::DynamicUniformBuffer)
+            {
+                D3D12_DESCRIPTOR_RANGE range{};
+                range.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;
+                range.NumDescriptors = binding.Count;
+                range.BaseShaderRegister = binding.Slot;
+                range.RegisterSpace = binding.Set + spaceOffset;
+                range.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+                
+                cbvRanges.push_back(range);
             }
             else if (binding.Type == DescriptorType::StorageBuffer || 
                      binding.Type == DescriptorType::SampledImage)
@@ -121,7 +140,7 @@ void D3DRootSignatureBuilder::CreateRootParameters(uint32_t pipelineID, const st
                 range.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
                 range.NumDescriptors = binding.Count;
                 range.BaseShaderRegister = binding.Slot;
-                range.RegisterSpace = binding.Set;
+                range.RegisterSpace = binding.Set + spaceOffset;
                 range.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
                 
                 srvRanges.push_back(range);
@@ -132,7 +151,7 @@ void D3DRootSignatureBuilder::CreateRootParameters(uint32_t pipelineID, const st
                 range.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
                 range.NumDescriptors = binding.Count;
                 range.BaseShaderRegister = binding.Slot;
-                range.RegisterSpace = binding.Set;
+                range.RegisterSpace = binding.Set + spaceOffset;
                 range.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
                 
                 uavRanges.push_back(range);
@@ -141,26 +160,22 @@ void D3DRootSignatureBuilder::CreateRootParameters(uint32_t pipelineID, const st
         
         if (!srvRanges.empty())
         {
-            // Sort ranges by base shader register
             std::sort(srvRanges.begin(), srvRanges.end(), 
                 [](const D3D12_DESCRIPTOR_RANGE& a, const D3D12_DESCRIPTOR_RANGE& b) {
                     return a.BaseShaderRegister < b.BaseShaderRegister;
                 });
-    
-            // Consolidate contiguous ranges
+            
             std::vector<D3D12_DESCRIPTOR_RANGE> consolidatedRanges;
             for (size_t i = 0; i < srvRanges.size(); ) {
                 D3D12_DESCRIPTOR_RANGE range = srvRanges[i];
                 size_t j = i + 1;
-        
-                // Merge contiguous bindings
+                
                 while (j < srvRanges.size() && 
                        srvRanges[j].BaseShaderRegister == range.BaseShaderRegister + range.NumDescriptors) {
                     range.NumDescriptors += srvRanges[j].NumDescriptors;
                     j++;
                        }
-        
-                // First range starts at 0, others append
+                
                 range.OffsetInDescriptorsFromTableStart = 
                     consolidatedRanges.empty() ? 0 : D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
         
@@ -169,6 +184,16 @@ void D3DRootSignatureBuilder::CreateRootParameters(uint32_t pipelineID, const st
             }
     
             srvRanges = consolidatedRanges;
+        }
+        
+        if (!cbvRanges.empty())
+        {
+            RootParameter parameter = {};
+            parameter.parameter.ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+            parameter.parameter.DescriptorTable.NumDescriptorRanges = static_cast<UINT>(cbvRanges.size());
+            parameter.parameter.ShaderVisibility = visibility;
+            parameter.ranges = cbvRanges;
+            outRootParameters.push_back(parameter);
         }
         
         if (!srvRanges.empty())

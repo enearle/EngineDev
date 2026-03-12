@@ -1,44 +1,50 @@
+struct RootConstants
+{
+    float4x4 model;
+    float4x4 normal;
+};
+ConstantBuffer<RootConstants> ModelData : register(b0, space0);
+
+struct CBVBuffer
+{
+    float4x4 viewProjection;
+    float4 cameraPosition;
+};
+ConstantBuffer<CBVBuffer> VPData : register(b0, space1);
+
 struct VSInput
 {
-    float3 position     : POSITION;
-    float3 normal       : NORMAL;
-    float3 tangent      : TANGENT;
-    float3 bitangent    : BINORMAL;
-    float2 UV           : TEXCOORD;
+    float3 position : POSITION;
+    float3 normal : NORMAL;
+    float3 tangent : TANGENT;
+    float3 binormal : BINORMAL;
+    float2 uv : TEXCOORD;
 };
 
 struct VSOutput
 {
-    float4 position     : SV_Position;
-    float3 worldPosition     : TEXCOORD0;
-    float3 normal       : TEXCOORD1;
-    float3 tangent      : TEXCOORD2;
-    float3 bitangent    : TEXCOORD3;
-    float2 uv           : TEXCOORD4;
-};
-
-cbuffer VPData : register(b0)
-{
-    float4x4 model;
-    float4x4 normal;
-    float4x4 viewProjection;
-    float4 cameraPos;
+    float4 position : SV_POSITION;
+    float3 worldPosition : POSITION0;
+    float3 normal : NORMAL;
+    float3 tangent : TANGENT;
+    float3 binormal : BINORMAL;
+    float2 uv : TEXCOORD;
 };
 
 VSOutput main(VSInput input)
 {
     VSOutput output;
     
-    float4 worldPosition = mul(model, float4(input.position, 1));
-    output.position = mul(viewProjection, worldPosition);
-    output.worldPosition = worldPosition.xyz;
+    float4 worldPos = mul(ModelData.model, float4(input.position, 1.0));
+    output.worldPosition = worldPos.xyz;
+    output.position = mul(VPData.viewProjection, worldPos);
     
-    float3x3 normalMatrix = (float3x3)normal;
+    float3x3 normalMatrix = (float3x3)ModelData.normal;
+    output.normal = normalize(mul(normalMatrix, input.normal));
+    output.tangent = normalize(mul(normalMatrix, input.tangent));
+    output.binormal = normalize(mul(normalMatrix, input.binormal));
     
-    output.normal    = mul(normalMatrix, input.normal);
-    output.tangent   = mul(normalMatrix, input.tangent);
-    output.bitangent = mul(normalMatrix, input.bitangent);
-
-    output.uv = input.UV;
+    output.uv = input.uv;
+    
     return output;
 }

@@ -92,7 +92,7 @@ int main(int argc, char* argv[])
     std::vector<IOResource> inputResources = {*pipelines[0]->GetOutputResource()};
     for (auto& binding : inputResources[0].Layout.Bindings)
     {
-        binding.Set = 1;  // Temporary, need better way to manage IODescriptors
+        binding.Set = 1;  // Temporary, need a better way to manage IODescriptors
     }
     pipelines.push_back(RHIConstants::DeferredLightingPipeline(&inputResources));
     
@@ -122,21 +122,18 @@ int main(int argc, char* argv[])
     
     while (!window->PeekMessages())
     {
-        // Calculate elapsed time
         auto currentTime = std::chrono::high_resolution_clock::now();
         float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
-    
-        // Rotate camera around the object
         float radius = 15.0f;
         float speed = 0.5f;
+        
         DirectX::XMFLOAT4 cameraPosition = {
             radius * sinf(time * speed),
             10.0f,
             radius * cosf(time * speed),
             1.0f
         };
-    
-        // Update view-projection matrix
+        
         DirectX::XMMATRIX view = DirectX::XMMatrixLookAtLH(
             DirectX::XMLoadFloat4(&cameraPosition), 
             DirectX::XMVectorSet(0.0f, 0.0f, 0.0f, 1.0f),

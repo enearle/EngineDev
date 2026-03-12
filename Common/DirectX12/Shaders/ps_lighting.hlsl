@@ -6,12 +6,18 @@ struct VSOutput
 
 #define PI 3.14159265358979323846
 
-Texture2D inAlbedo                : register(t0);
-Texture2D inNormal                : register(t1);
-Texture2D inMetallicRoughnessAO   : register(t2);
-Texture2D inPosition              : register(t3);
-SamplerState linearSampler        : register(s0);
-SamplerState pointSampler         : register(s1);
+Texture2D inAlbedo                : register(t0, space1);
+Texture2D inNormal                : register(t1, space1);
+Texture2D inMetallicRoughnessAO   : register(t2, space1);
+Texture2D inPosition              : register(t3, space1);
+SamplerState linearSampler        : register(s0, space0);
+SamplerState pointSampler         : register(s1, space0);
+
+cbuffer VPData : register(b0, space0)
+{
+    float4x4 viewProjection;
+    float4 cameraPosition;
+};
 
 struct Light
 {
@@ -42,8 +48,7 @@ void init(VSOutput input)
     roughness = max(roughness * roughness, 0.001);
     ambientOcclusion = materialData.b;
     
-    float3 camPosition =float3(0.0, 10, -8);
-    viewVector = normalize(camPosition - fragPosition);
+    viewVector = normalize(cameraPosition.xyz - fragPosition);
 }
 
 // GGX/Throwbridge-Reitz normal distribution
@@ -126,15 +131,12 @@ float4 main(VSOutput input) : SV_TARGET
     init(input);
     
     Light light;
-    light.Position = float3(-20.0, 20.0, -20.0);    // Light position in world space
-    light.Colour = float3(1.0, 1.0, 1.0);           // White light
-    light.Intensity = 20.0;                         // Light intensity
-    light.Radius = 50.0;                            // Light radius
+    light.Position = float3(-20.0, 20.0, -20.0);
+    light.Colour = float3(1.0, 1.0, 1.0);
+    light.Intensity = 20.0;
+    light.Radius = 50.0;
     
-    // Calculate lighting
     float3 outGoingLight = LightPBR(light);
-
-    // Output final color (no clamp needed, handled by render target)
+    
     return float4(outGoingLight, 1.0);
-
 }

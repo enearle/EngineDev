@@ -19,7 +19,7 @@ VSOutput main(uint vertexID : SV_VertexID)
     VSOutput output;
     
     output.position = float4(positions[vertexID], 1.0f);
-    output.uv = (positions[vertexID] * float2(1, -1) + float2(1,1)) * 0.5f;
+    output.uv = (positions[vertexID].xy * float2(1, -1) + float2(1,1)) * 0.5f;
     
     return output;
 }

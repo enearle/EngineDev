@@ -258,6 +258,7 @@ void D3DPipelineExecutor::BindDrawDescriptorSets(std::vector<uint64_t>* descript
     ID3D12GraphicsCommandList* cmdList = GetCommandList();
     BufferAllocator* bufferAlloc = BufferAllocator::GetInstance();
     
+    D3DPipeline* d3dPipeline = static_cast<D3DPipeline*>(CurrentPipeline);
     uint32_t rootParamIndex = numPipelineSets + CurrentPipeline->GetPushConstantCount();
     
     if (descriptorSets)
