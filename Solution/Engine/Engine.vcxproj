@@ -103,7 +103,7 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>$(SolutionDir)..;$(SolutionDir)../External/NoesisGUI-NativeSDK-win-3.2.12-Indie/Include;$(VULKAN_SDK)\Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)..;$(SolutionDir)../External/NoesisGUI-NativeSDK-win-3.2.12-Indie/Include;$(SolutionDir)../External/NoesisGUI-NativeSDK-win-3.2.12-Indie/Src/Packages/Render/VKRenderDevice/Include;$(SolutionDir)../External/NoesisGUI-NativeSDK-win-3.2.12-Indie/Src/Packages/Render/D3D12RenderDevice/Include;$(SolutionDir)../External/NoesisGUI-NativeSDK-win-3.2.12-Indie/Src/Packages/App/Providers/Include;$(VULKAN_SDK)\Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
@@ -162,11 +162,15 @@
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ItemGroup>
     <ClCompile Include="Engine.cpp" />
+    <ClCompile Include="NoesisUILayer.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\RHI\RHI.vcxproj">
       <Project>{83d3c7a0-2c62-4d85-a13c-38689288e782}</Project>
     </ProjectReference>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="NoesisUILayer.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

@@ -44,8 +44,8 @@ uint64_t VulkanBufferAllocator::CreateBuffer(BufferDesc bufferDesc)
     VulkanBufferData* vulkanBufferData = new VulkanBufferData();
     VkBufferUsageFlags bufferFlags = VulkanBufferUsage(bufferDesc.Usage);
     VkMemoryPropertyFlags memoryFlags = VulkanMemoryType(bufferDesc.Access);
-    VkDevice device = VulkanCore::GetInstance().GetDevice();
-    VkPhysicalDevice physicalDevice = VulkanCore::GetInstance().GetPhysicalDevice();
+    VkDevice device = VulkanCore::Instance().GetDevice();
+    VkPhysicalDevice physicalDevice = VulkanCore::Instance().GetPhysicalDevice();
     
     bool needsDeviceAddress = (bufferDesc.Type == BufferType::Constant || bufferDesc.Type == BufferType::ShaderStorage);
     if (needsDeviceAddress)
@@ -127,11 +127,11 @@ uint64_t VulkanBufferAllocator::CreateBuffer(BufferDesc bufferDesc)
 
 void VulkanBufferAllocator::CopyToDeviceLocalBuffer(VkBuffer dstBuffer, const void* srcData, VkDeviceSize size)
 {
-    VkDevice device = VulkanCore::GetInstance().GetDevice();
-    VkPhysicalDevice physicalDevice = VulkanCore::GetInstance().GetPhysicalDevice();
-    VkCommandBuffer commandBuffer = VulkanCore::GetInstance().GetTransferCommandBuffer();
-    VkQueue transferQueue = VulkanCore::GetInstance().GetGraphicsQueue();
-    VkFence transferFence = VulkanCore::GetInstance().GetTransferFence();
+    VkDevice device = VulkanCore::Instance().GetDevice();
+    VkPhysicalDevice physicalDevice = VulkanCore::Instance().GetPhysicalDevice();
+    VkCommandBuffer commandBuffer = VulkanCore::Instance().GetTransferCommandBuffer();
+    VkQueue transferQueue = VulkanCore::Instance().GetGraphicsQueue();
+    VkFence transferFence = VulkanCore::Instance().GetTransferFence();
     
     VkBufferCreateInfo stagingBufferInfo = {};
     stagingBufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -200,8 +200,8 @@ void VulkanBufferAllocator::CopyToDeviceLocalBuffer(VkBuffer dstBuffer, const vo
 
 uint64_t VulkanBufferAllocator::CreateImage(ImageDesc imageDesc)
 {
-    VkDevice device = VulkanCore::GetInstance().GetDevice();
-    VkPhysicalDevice physicalDevice = VulkanCore::GetInstance().GetPhysicalDevice();
+    VkDevice device = VulkanCore::Instance().GetDevice();
+    VkPhysicalDevice physicalDevice = VulkanCore::Instance().GetPhysicalDevice();
     
     VkBufferCreateInfo stagingBufferInfo = {};
     stagingBufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -264,7 +264,7 @@ uint64_t VulkanBufferAllocator::CreateImage(ImageDesc imageDesc)
 
 void VulkanBufferAllocator::RegisterDescriptorSetLayout(uint32_t pipelineID, const ResourceLayout& layout)
 {
-    VkDevice device = VulkanCore::GetInstance().GetDevice();
+    VkDevice device = VulkanCore::Instance().GetDevice();
     
     // Group bindings by set
     std::map<uint32_t, std::vector<DescriptorBinding>> bindingsBySet;
@@ -291,7 +291,7 @@ void VulkanBufferAllocator::RegisterDescriptorSetLayout(uint32_t pipelineID, con
             vkBinding.descriptorType = VulkanDescriptorType(binding.Type);
             vkBinding.descriptorCount = binding.Count > 0 ? binding.Count : 1;
             vkBinding.stageFlags = VulkanShaderStageFlags(layout.VisibleStages);
-            vkBinding.pImmutableSamplers = VulkanCore::GetInstance().GetLinearSampler();
+            vkBinding.pImmutableSamplers = VulkanCore::Instance().GetLinearSampler();
             vkBindings.push_back(vkBinding);
             
             // Add to pool sizes
@@ -336,7 +336,7 @@ void VulkanBufferAllocator::RegisterDescriptorSetLayout(uint32_t pipelineID, con
 
 uint64_t VulkanBufferAllocator::AllocateDescriptorSet(uint32_t pipelineID, uint32_t setIndex, const std::vector<DescriptorSetBinding>& bindings)
 {
-    VkDevice device = VulkanCore::GetInstance().GetDevice();
+    VkDevice device = VulkanCore::Instance().GetDevice();
     
     
     uint64_t key = MakeKey(pipelineID, setIndex);
@@ -396,7 +396,7 @@ uint64_t VulkanBufferAllocator::AllocateDescriptorSet(uint32_t pipelineID, uint3
             VkDescriptorImageInfo imageInfo{};
             imageInfo.imageView = imageData->ImageView;
             imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-            imageInfo.sampler = *VulkanCore::GetInstance().GetLinearSampler();
+            imageInfo.sampler = *VulkanCore::Instance().GetLinearSampler();
             imageInfos.push_back(imageInfo);
             
             write.pImageInfo = &imageInfos.back();
@@ -439,7 +439,7 @@ uint64_t VulkanBufferAllocator::AllocateDescriptorSet(uint32_t pipelineID, uint3
 
 void VulkanBufferAllocator::FreeDescriptorSet(uint64_t setID)
 {
-    VkDevice device = VulkanCore::GetInstance().GetDevice();
+    VkDevice device = VulkanCore::Instance().GetDevice();
     auto& allocation = AllocatedDescriptorSets[setID];
     
     auto it = DescriptorSetLayouts.find(allocation.SetKey);
@@ -463,7 +463,7 @@ void VulkanBufferAllocator::UpdateDescriptorSetDynamicOffsets(uint64_t setID, co
     if (offsets.size() != allocation.DynamicDescriptorCount)
         throw std::runtime_error("Dynamic offset count mismatch");
     
-    VkPhysicalDevice physicalDevice = VulkanCore::GetInstance().GetPhysicalDevice();
+    VkPhysicalDevice physicalDevice = VulkanCore::Instance().GetPhysicalDevice();
     VkPhysicalDeviceProperties deviceProperties;
     vkGetPhysicalDeviceProperties(physicalDevice, &deviceProperties);
     
@@ -482,7 +482,7 @@ void VulkanBufferAllocator::UpdateDescriptorSetDynamicOffsets(uint64_t setID, co
 
 VulkanBufferAllocator::~VulkanBufferAllocator()
 {
-    VkDevice device = VulkanCore::GetInstance().GetDevice();
+    VkDevice device = VulkanCore::Instance().GetDevice();
     
     for (auto& [handle, allocation] : DescriptorSetLayouts)
     {
@@ -518,10 +518,10 @@ VulkanBufferAllocator::~VulkanBufferAllocator()
 
 void VulkanBufferAllocator::CopyBufferToImage(VkBuffer stagingBuffer, VkImage dstImage, uint32_t width, uint32_t height)
 {
-    VkDevice device = VulkanCore::GetInstance().GetDevice();
-    VkCommandBuffer commandBuffer = VulkanCore::GetInstance().GetTransferCommandBuffer();
-    VkQueue transferQueue = VulkanCore::GetInstance().GetGraphicsQueue();
-    VkFence transferFence = VulkanCore::GetInstance().GetTransferFence();
+    VkDevice device = VulkanCore::Instance().GetDevice();
+    VkCommandBuffer commandBuffer = VulkanCore::Instance().GetTransferCommandBuffer();
+    VkQueue transferQueue = VulkanCore::Instance().GetGraphicsQueue();
+    VkFence transferFence = VulkanCore::Instance().GetTransferFence();
     
     VkResult fenceStatus = vkGetFenceStatus(device, transferFence);
     if (fenceStatus == VK_NOT_READY)
@@ -576,10 +576,10 @@ void VulkanBufferAllocator::CopyBufferToImage(VkBuffer stagingBuffer, VkImage ds
 
 void VulkanBufferAllocator::TransitionImageLayout(VkImage image, VkImageLayout oldLayout, VkImageLayout newLayout)
 {
-    VkDevice device = VulkanCore::GetInstance().GetDevice();
-    VkCommandBuffer commandBuffer = VulkanCore::GetInstance().GetTransferCommandBuffer();
-    VkQueue commandQueue = VulkanCore::GetInstance().GetGraphicsQueue();
-    VkFence transferFence = VulkanCore::GetInstance().GetTransferFence();
+    VkDevice device = VulkanCore::Instance().GetDevice();
+    VkCommandBuffer commandBuffer = VulkanCore::Instance().GetTransferCommandBuffer();
+    VkQueue commandQueue = VulkanCore::Instance().GetGraphicsQueue();
+    VkFence transferFence = VulkanCore::Instance().GetTransferFence();
 
     VkCommandBufferBeginInfo beginInfo{};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -665,8 +665,8 @@ void VulkanBufferAllocator::TransitionImageLayout(VkImage image, VkImageLayout o
 
 VkImage VulkanBufferAllocator::CreateVulkanImage(ImageDesc imageDesc, VkDeviceMemory* imageMemory)
 {
-    VkDevice device = VulkanCore::GetInstance().GetDevice();
-    VkPhysicalDevice physicalDevice = VulkanCore::GetInstance().GetPhysicalDevice();
+    VkDevice device = VulkanCore::Instance().GetDevice();
+    VkPhysicalDevice physicalDevice = VulkanCore::Instance().GetPhysicalDevice();
     VkMemoryPropertyFlags memoryFlags = VulkanMemoryType(imageDesc.Access);
     // Create image
     VkImageCreateInfo imageInfo = {};
@@ -714,7 +714,7 @@ VkImage VulkanBufferAllocator::CreateVulkanImage(ImageDesc imageDesc, VkDeviceMe
 
 VkImageView VulkanBufferAllocator::CreateVulkanImageView(VkImage image, ImageDesc imageDesc)
 {
-    VkDevice device = VulkanCore::GetInstance().GetDevice();
+    VkDevice device = VulkanCore::Instance().GetDevice();
     VkImageViewCreateInfo viewInfo = {};
     viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
     viewInfo.image = image;                                                 // Image to create view for
@@ -743,7 +743,7 @@ uint32_t VulkanBufferAllocator::FindMemoryType(uint32_t allowdTypes, VkMemoryPro
 {
     // Get properties of physical device memory
     VkPhysicalDeviceMemoryProperties memoryProperties;
-    vkGetPhysicalDeviceMemoryProperties(VulkanCore::GetInstance().GetPhysicalDevice(), &memoryProperties);
+    vkGetPhysicalDeviceMemoryProperties(VulkanCore::Instance().GetPhysicalDevice(), &memoryProperties);
 
     // Iterate through memory types to find one that matches the required properties
     for (uint32_t i = 0; i < memoryProperties.memoryTypeCount; i++)
@@ -759,8 +759,8 @@ uint32_t VulkanBufferAllocator::FindMemoryType(uint32_t allowdTypes, VkMemoryPro
 
 uint64_t DirectX12BufferAllocator::CreateBuffer(BufferDesc bufferDesc)
 {
-    ID3D12Device* device = D3DCore::GetInstance().GetDevice().Get();
-    ID3D12GraphicsCommandList* cmdList = D3DCore::GetInstance().GetTransferCommandList().Get();
+    ID3D12Device* device = D3DCore::Instance().GetDevice().Get();
+    ID3D12GraphicsCommandList* cmdList = D3DCore::Instance().GetTransferCommandList().Get();
 
     ComPtr<ID3D12Resource> buffer;
     void* mappedAddress = nullptr;
@@ -817,7 +817,7 @@ uint64_t DirectX12BufferAllocator::CreateBuffer(BufferDesc bufferDesc)
          nullptr,
          IID_PPV_ARGS(uploadBuffer.GetAddressOf())) >> ERROR_HANDLER;
      
-     D3DCore::GetInstance().DeferUploadBufferRelease(uploadBuffer);
+     D3DCore::Instance().DeferUploadBufferRelease(uploadBuffer);
      
      if (bufferDesc.InitialData != nullptr)
      {
@@ -831,8 +831,8 @@ uint64_t DirectX12BufferAllocator::CreateBuffer(BufferDesc bufferDesc)
          subResourceData.RowPitch = bufferDesc.Size;
          subResourceData.SlicePitch = bufferDesc.Size;
 
-         D3DCore::GetInstance().GetTransferCommandAllocator()->Reset();
-         cmdList->Reset(D3DCore::GetInstance().GetTransferCommandAllocator().Get(), nullptr);
+         D3DCore::Instance().GetTransferCommandAllocator()->Reset();
+         cmdList->Reset(D3DCore::Instance().GetTransferCommandAllocator().Get(), nullptr);
          
          CD3DX12_RESOURCE_BARRIER transition1 = CD3DX12_RESOURCE_BARRIER::Transition(
              defaultBuffer.Get(), 
@@ -849,8 +849,8 @@ uint64_t DirectX12BufferAllocator::CreateBuffer(BufferDesc bufferDesc)
          cmdList->ResourceBarrier(1, &transition2);
          cmdList->Close();
          
-         ID3D12CommandQueue* commandQueue = D3DCore::GetInstance().GetCommandQueue().Get();
-         ComPtr<ID3D12Fence> transferFence = D3DCore::GetInstance().GetTransferFence();
+         ID3D12CommandQueue* commandQueue = D3DCore::Instance().GetCommandQueue().Get();
+         ComPtr<ID3D12Fence> transferFence = D3DCore::Instance().GetTransferFence();
          
          ID3D12CommandList* ppCommandLists[] = { cmdList };
          commandQueue->ExecuteCommandLists(1, ppCommandLists);
@@ -890,10 +890,10 @@ uint64_t DirectX12BufferAllocator::CreateBuffer(BufferDesc bufferDesc)
 
 uint64_t DirectX12BufferAllocator::CreateImage(ImageDesc imageDesc)
 {
-    ID3D12Device* device = D3DCore::GetInstance().GetDevice().Get();
-    ID3D12GraphicsCommandList* cmdList = D3DCore::GetInstance().GetTransferCommandList().Get();
-    D3DCore::GetInstance().GetTransferCommandAllocator()->Reset();
-    cmdList->Reset(D3DCore::GetInstance().GetTransferCommandAllocator().Get(), nullptr);
+    ID3D12Device* device = D3DCore::Instance().GetDevice().Get();
+    ID3D12GraphicsCommandList* cmdList = D3DCore::Instance().GetTransferCommandList().Get();
+    D3DCore::Instance().GetTransferCommandAllocator()->Reset();
+    cmdList->Reset(D3DCore::Instance().GetTransferCommandAllocator().Get(), nullptr);
     
     if (imageDesc.ArrayLayers != 1 || imageDesc.MipLevels != 1)
         throw std::runtime_error("DirectX12BufferAllocator::CreateImage currently supports only 1 layer and 1 mip (match Vulkan path later).");
@@ -943,7 +943,7 @@ uint64_t DirectX12BufferAllocator::CreateImage(ImageDesc imageDesc)
         nullptr,
         IID_PPV_ARGS(uploadBuffer.GetAddressOf())) >> ERROR_HANDLER;
     
-    D3DCore::GetInstance().DeferUploadBufferRelease(uploadBuffer);
+    D3DCore::Instance().DeferUploadBufferRelease(uploadBuffer);
     
     const uint32_t bytesPerPixel =
         (imageDesc.Format == Format::R8G8B8A8_UNORM || imageDesc.Format == Format::R8G8B8A8_UNORM_SRGB) ? 4u : 0u;
@@ -970,8 +970,8 @@ uint64_t DirectX12BufferAllocator::CreateImage(ImageDesc imageDesc)
     cmdList->ResourceBarrier(1, &toShaderRead);
     cmdList->Close();
 
-    ID3D12CommandQueue* commandQueue = D3DCore::GetInstance().GetCommandQueue().Get();
-    ComPtr<ID3D12Fence> transferFence = D3DCore::GetInstance().GetTransferFence();
+    ID3D12CommandQueue* commandQueue = D3DCore::Instance().GetCommandQueue().Get();
+    ComPtr<ID3D12Fence> transferFence = D3DCore::Instance().GetTransferFence();
 
     ID3D12CommandList* ppCommandLists[] = { cmdList };
     commandQueue->ExecuteCommandLists(1, ppCommandLists);
@@ -1008,7 +1008,7 @@ uint64_t DirectX12BufferAllocator::CreateImage(ImageDesc imageDesc)
 
 DirectX12BufferAllocator::DirectX12BufferAllocator()
 {
-    ID3D12Device* device = D3DCore::GetInstance().GetDevice().Get();
+    ID3D12Device* device = D3DCore::Instance().GetDevice().Get();
     
     ShaderResourceOffset = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
     RenderTargetOffset = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
@@ -1063,7 +1063,7 @@ void DirectX12BufferAllocator::RegisterDescriptorSetLayout(uint32_t pipelineID, 
 
 uint64_t DirectX12BufferAllocator::AllocateDescriptorSet(uint32_t pipelineID, uint32_t setIndex, const std::vector<DescriptorSetBinding>& bindings)
 {
-    ID3D12Device* device = D3DCore::GetInstance().GetDevice().Get();
+    ID3D12Device* device = D3DCore::Instance().GetDevice().Get();
     
     uint64_t key = MakeKey(pipelineID, setIndex);
     auto iterator = DescriptorSetLayouts.find(key);
@@ -1233,7 +1233,7 @@ void DirectX12BufferAllocator::FreeDescriptorSet(uint64_t setID)
 
 void DirectX12BufferAllocator::UpdateDescriptorSetDynamicOffsets(uint64_t setID, const std::vector<uint32_t>& offsets)
 {
-    ID3D12Device* device = D3DCore::GetInstance().GetDevice().Get();
+    ID3D12Device* device = D3DCore::Instance().GetDevice().Get();
     
     auto it = AllocatedDescriptorSets.find(setID);
     if (it == AllocatedDescriptorSets.end())

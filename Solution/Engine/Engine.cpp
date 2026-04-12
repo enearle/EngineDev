@@ -1,11 +1,11 @@
 #include <chrono>
 
+#include "NoesisUILayer.h"
 #include "../RHI/Renderer.h"
 #include "Common/Window.h"
 #include "Common/RHI/Material.h"
 #include "Common/RHI/RHIConstants.h"
 #include "Common/RHI/Geometry/GeometryImport.h"
-
 
 // A really bad way to handle this temporarily
 std::vector<uint64_t> Materials;
@@ -64,6 +64,18 @@ int main(int argc, char* argv[])
     
     Renderer::Start(window);
     
+    // Noesis Initialization
+    NoesisUILayer uiLayer;
+    uiLayer.NoesisInit();
+    
+    Renderer::SetStartOfFrameCallback([&uiLayer]() {
+        uiLayer.NoesisRenderOffscreen();
+    });
+    
+    Renderer::SetRenderCallback([&uiLayer]() {
+        uiLayer.NoesisRenderOnscreen();
+    });
+    
     DirectX::XMFLOAT4 cameraPosition = {0.0, 10, -8, 1};
     DirectX::XMFLOAT4X4 viewProj;
     DirectX::XMMATRIX view = DirectX::XMMatrixLookAtLH(DirectX::XMLoadFloat4(&cameraPosition), 
@@ -119,13 +131,17 @@ int main(int argc, char* argv[])
     std::cout << "Engine initialized with " << ModelDataArray.size() << " MVP data entries." << std::endl;
     
     auto startTime = std::chrono::high_resolution_clock::now();
-    
+    auto lastFrameTime = startTime;
+    auto currentTime = startTime;
     while (!window->PeekMessages())
     {
-        auto currentTime = std::chrono::high_resolution_clock::now();
+        lastFrameTime = currentTime;
+        currentTime = std::chrono::high_resolution_clock::now();
         float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
         float radius = 15.0f;
         float speed = 0.5f;
+        auto deltaTime = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - lastFrameTime).count();
+        uiLayer.NoesisUpdate(deltaTime);
         
         DirectX::XMFLOAT4 cameraPosition = {
             radius * sinf(time * speed),
@@ -152,6 +168,6 @@ int main(int argc, char* argv[])
         
         Renderer::DrawFrame();
     }
-    
+    uiLayer.NoesisShutdown();
     return Renderer::End();
 }

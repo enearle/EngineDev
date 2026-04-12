@@ -154,6 +154,7 @@
     <Content Include="..\..\Common\DirectX12\Shaders\ps_lighting.hlsl" />
     <Content Include="..\..\Common\DirectX12\Shaders\vs_lighting.hlsl" />
     <Content Include="..\..\Common\DirectX12\Shaders\ps_pbr.hlsl" />
+    <ClCompile Include="..\..\Common\ForwardInterface.cpp" />
     <ClCompile Include="..\..\Common\Input\InputState.cpp" />
     <ClCompile Include="..\..\Common\MetaData.cpp" />
     <ClCompile Include="..\..\Common\RHI\BufferAllocator.cpp" />
@@ -270,6 +271,7 @@
     <ClInclude Include="..\..\Common\DirectX12\D3DCore.h" />
     <ClInclude Include="..\..\Common\DirectX12\D3DRootSignatureBuilder.h" />
     <ClInclude Include="..\..\Common\DirectX12\d3dx12.h" />
+    <ClInclude Include="..\..\Common\ForwardInterface.h" />
     <ClInclude Include="..\..\Common\GraphicsSettings.h" />
     <ClInclude Include="..\..\Common\Input\InputState.h" />
     <ClInclude Include="..\..\Common\MetaData.h" />

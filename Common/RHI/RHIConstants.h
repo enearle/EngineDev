@@ -454,6 +454,17 @@ namespace RHIConstants
         return Pipeline::Create(1, lightingDesc, inputResources);
     }
     
+    static Pipeline* NoesisPipeline()
+    {
+        PipelineDesc noesisPassDesc{};
+        noesisPassDesc.RenderTargetFormats = { Format::R8G8B8A8_UNORM_SRGB };
+        noesisPassDesc.ColorLoadOps = { AttachmentLoadOp::Load };
+        noesisPassDesc.ColorStoreOps = { AttachmentStoreOp::Store };
+        noesisPassDesc.AttachmentClearValues = { {0,0,0,0} };
+
+        return Pipeline::Create(999, noesisPassDesc);
+    }
+    
     inline constexpr ImageMemoryBarrier PRE_BARRIER{
         .SrcStage      = PipelineStage::TopOfPipe,
         .DstStage      = PipelineStage::ColorAttachmentOutput,
@@ -551,7 +562,5 @@ namespace RHIConstants
         .Access = MemoryAccess(9),
         .InitialData = nullptr
     };
-    
-
     
 };

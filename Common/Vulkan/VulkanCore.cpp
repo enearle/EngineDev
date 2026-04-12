@@ -10,7 +10,7 @@
 using namespace Win32ErrorHandler;
 using namespace RHIStructures;
 
-VulkanCore& VulkanCore::GetInstance()
+VulkanCore& VulkanCore::Instance()
 {
     static VulkanCore instance;
     return instance;
@@ -35,6 +35,7 @@ void VulkanCore::InitVulkan(Window* window, CoreInitData data)
         CreateSwapchain();
         CreateSynchronizationPrimitives();
         CreateSamplers();
+        CreateNoesisCompatibilityRenderPass();
     }
     catch (const std::runtime_error& error)
     {
@@ -47,6 +48,7 @@ void VulkanCore::Cleanup()
     vkQueueWaitIdle(GraphicsQueue);
     vkQueueWaitIdle(PresentQueue);
     
+    vkDestroyRenderPass(Device, NoesisCompatibilityRenderPass, nullptr);
     vkDestroySampler(Device, PointSampler, nullptr);
     vkDestroySampler(Device, LinearSampler, nullptr);
     for (uint32_t i = 0; i < SwapChainImageCount; i++)
@@ -162,6 +164,7 @@ void VulkanCore::CreateLogicalDevice()
     deviceFeatures.samplerAnisotropy = VK_TRUE;     // Enable anisotropy feature
     deviceFeatures.geometryShader = VK_TRUE;        // Enable geometry shader feature
     deviceFeatures.depthClamp = VK_TRUE;            // Enable depth clamp feature
+    deviceFeatures.fillModeNonSolid = VK_TRUE;      // Enable wireframe/line polygon mode
 
     // Enable dynamic rendering feature
     VkPhysicalDeviceDynamicRenderingFeatures dynamicRenderingFeature{};
@@ -437,6 +440,39 @@ void VulkanCore::CreateSamplers()
     result = vkCreateSampler(Device, &samplerInfo, nullptr, &PointSampler);
     if (result != VK_SUCCESS)
         throw std::runtime_error("Failed to create texture sampler.");
+}
+
+void VulkanCore::CreateNoesisCompatibilityRenderPass()
+{
+    VkAttachmentDescription colorAttachment{};
+    colorAttachment.format = GetSwapchainFormat();
+    colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+    colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+    colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    colorAttachment.initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    colorAttachment.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+    VkAttachmentReference colorAttachmentRef{};
+    colorAttachmentRef.attachment = 0;
+    colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    
+    VkSubpassDescription subpass{};
+    subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+    subpass.colorAttachmentCount = 1;
+    subpass.pColorAttachments = &colorAttachmentRef;
+    
+    VkRenderPassCreateInfo renderPassInfo{};
+    renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+    renderPassInfo.attachmentCount = 1;
+    renderPassInfo.pAttachments = &colorAttachment;
+    renderPassInfo.subpassCount = 1;
+    renderPassInfo.pSubpasses = &subpass;
+    
+    VkResult result = vkCreateRenderPass(Device, &renderPassInfo, nullptr, &NoesisCompatibilityRenderPass);
+    if (result != VK_SUCCESS)
+        throw std::runtime_error("Failed to create Noesis compatibility render pass");
 }
 
 

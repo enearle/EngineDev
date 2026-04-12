@@ -185,7 +185,7 @@ namespace RHIStructures
         createInfo.pCode = reinterpret_cast<const uint32_t*>(shaderStage.ByteCode);
         VkShaderModule shaderModule;
         VkResult result;
-        result = vkCreateShaderModule(VulkanCore::GetInstance().GetDevice(), &createInfo, nullptr, &shaderModule);
+        result = vkCreateShaderModule(VulkanCore::Instance().GetDevice(), &createInfo, nullptr, &shaderModule);
         if (result != VK_SUCCESS)
             throw std::runtime_error("Failed to create shader module!");
         return shaderModule;

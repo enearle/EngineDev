@@ -41,35 +41,35 @@ D3DPipelineExecutor::~D3DPipelineExecutor()
 
 void D3DPipelineExecutor::StartRender(Window* window, CoreInitData data)
 {
-    D3DCore::GetInstance().InitDirect3D(window, data);
+    D3DCore::Instance().InitDirect3D(window, data);
 }
 
 void D3DPipelineExecutor::EndRender()
 {
-    D3DCore::GetInstance().Reset();
+    D3DCore::Instance().Reset();
 }
 
 void D3DPipelineExecutor::BeginFrame()
 {
-    D3DCore::GetInstance().BeginFrame();
+    D3DCore::Instance().BeginFrame();
 }
 
 void D3DPipelineExecutor::EndFrame()
 {
-    D3DCore::GetInstance().EndFrame();
+    D3DCore::Instance().EndFrame();
 }
 
 void D3DPipelineExecutor::GetSwapChainRenderTargets(void*& outBackBufferView, void*& outBackBuffer)
 {
-    D3D12_CPU_DESCRIPTOR_HANDLE rtvHandle = D3DCore::GetInstance().GetRenderTargetDescriptor();
-    ID3D12Resource* backBuffer = D3DCore::GetInstance().GetCurrentBackBuffer();
+    D3D12_CPU_DESCRIPTOR_HANDLE rtvHandle = D3DCore::Instance().GetRenderTargetDescriptor();
+    ID3D12Resource* backBuffer = D3DCore::Instance().GetCurrentBackBuffer();
     outBackBufferView = reinterpret_cast<void*>(rtvHandle.ptr);
     outBackBuffer = backBuffer;
 }
 
 void D3DPipelineExecutor::Wait()
 {
-    D3DCore::GetInstance().WaitForGPU();
+    D3DCore::Instance().WaitForGPU();
 }
 
 void D3DPipelineExecutor::BeginPipeline(Pipeline* pipeline,
@@ -309,7 +309,7 @@ void D3DPipelineExecutor::BindPipelineDescriptorSets(std::vector<uint64_t>* desc
 
 ID3D12GraphicsCommandList* D3DPipelineExecutor::GetCommandList()
 {
-    return D3DCore::GetInstance().GetCommandList().Get();
+    return D3DCore::Instance().GetCommandList().Get();
 }
 
 //================================================//
@@ -328,35 +328,35 @@ VulkanPipelineExecutor::~VulkanPipelineExecutor()
 
 void VulkanPipelineExecutor::StartRender(Window* window, CoreInitData data)
 {
-    VulkanCore::GetInstance().InitVulkan(window, data);
+    VulkanCore::Instance().InitVulkan(window, data);
 }
 
 void VulkanPipelineExecutor::EndRender()
 {
-    VulkanCore::GetInstance().Cleanup();
+    VulkanCore::Instance().Cleanup();
 }
 
 void VulkanPipelineExecutor::BeginFrame()
 {
-    VulkanCore::GetInstance().BeginFrame();
+    VulkanCore::Instance().BeginFrame();
 }
 
 void VulkanPipelineExecutor::EndFrame()
 {
-    VulkanCore::GetInstance().EndFrame();
+    VulkanCore::Instance().EndFrame();
 }
 
 void VulkanPipelineExecutor::GetSwapChainRenderTargets(void*& outBackBufferView, void*& outBackBuffer)
 {
-    VkImageView swapchainImageView = VulkanCore::GetInstance().GetCurrentSwapchainImageView();
-    VkImage vkImage = VulkanCore::GetInstance().GetCurrentSwapchainImage();
+    VkImageView swapchainImageView = VulkanCore::Instance().GetCurrentSwapchainImageView();
+    VkImage vkImage = VulkanCore::Instance().GetCurrentSwapchainImage();
     outBackBufferView = swapchainImageView;
     outBackBuffer = reinterpret_cast<void*>(vkImage);
 }
 
 void VulkanPipelineExecutor::Wait()
 {
-    VulkanCore::GetInstance().WaitForGPU();
+    VulkanCore::Instance().WaitForGPU();
 }
 
 void VulkanPipelineExecutor::BeginPipeline(Pipeline* pipeline,
@@ -630,6 +630,6 @@ void VulkanPipelineExecutor::BindPipelineDescriptorSets(std::vector<uint64_t>* d
 
 VkCommandBuffer VulkanPipelineExecutor::GetCommandBuffer()
 {
-    return VulkanCore::GetInstance().GetCommandBuffer();
+    return VulkanCore::Instance().GetCommandBuffer();
 }
 

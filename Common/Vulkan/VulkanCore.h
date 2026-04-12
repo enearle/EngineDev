@@ -3,6 +3,7 @@
 #include <vector>
 #include "../RHI/RHIStructures.h"
 #include "VulkanPipelineLayoutBuilder.h"
+#include "../GraphicsSettings.h"
 #include "../Vulkan/VulkanStructs.h"
 
 
@@ -47,7 +48,9 @@ class VulkanCore
     VkCommandBuffer TransferCommandBuffer               = VK_NULL_HANDLE;
     
     VkSampler LinearSampler                             = VK_NULL_HANDLE;
-    VkSampler PointSampler                            = VK_NULL_HANDLE;
+    VkSampler PointSampler                              = VK_NULL_HANDLE;
+    
+    VkRenderPass NoesisCompatibilityRenderPass          = VK_NULL_HANDLE;
     
     // Debug
     const std::vector<const char*> DEVICE_EXTENSIONS = {
@@ -69,7 +72,7 @@ class VulkanCore
     PFN_vkGetDescriptorEXT vkGetDescriptorEXT_FnPtr = nullptr;
 public:
 
-    static VulkanCore& GetInstance();
+    static VulkanCore& Instance();
     
     void InitVulkan(Window* window, RHIStructures::CoreInitData data);
     void Cleanup();
@@ -80,6 +83,8 @@ public:
     // Getters
     VkDevice GetDevice() const { return Device; }
     VkPhysicalDevice GetPhysicalDevice() const { return PhysicalDevice; }
+    VkSurfaceKHR GetSurface() const { return Surface; }
+    VkInstance GetInstance() const { return VulkanInstance; }
     VkQueue GetGraphicsQueue() const { return GraphicsQueue; }
     VkCommandPool GetCommandPool() const { return CommandPool; }
     VkFence GetTransferFence() const { return TransferFence; }
@@ -102,6 +107,8 @@ public:
     const VkPhysicalDeviceDescriptorBufferPropertiesEXT& GetDescriptorBufferProperties() const{ return DescriptorBufferProperties; }
     const VkSampler* GetLinearSampler() const { return &LinearSampler; }
     const VkSampler* GetNearestSampler() const { return &PointSampler; }
+    uint32_t GetQueueFamilyIndex() { return FindQueueFamilies(PhysicalDevice).GraphicsFamily; }
+    VkRenderPass GetNoesisCompatibilityRenderPass() { return NoesisCompatibilityRenderPass; }
     
 private:
     
@@ -115,6 +122,7 @@ private:
     void CreateCommandPool();
     void CreateSwapchain();
     void CreateSamplers();
+    void CreateNoesisCompatibilityRenderPass();
     
     // Debug Support
     VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo,

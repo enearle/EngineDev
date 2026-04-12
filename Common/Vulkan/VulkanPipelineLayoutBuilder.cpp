@@ -9,7 +9,7 @@ using namespace RHIStructures;
 VkPipelineLayout VulkanPipelineLayoutBuilder::BuildPipelineLayout(uint32_t pipelineID,
     const std::vector<ResourceLayout>& layouts, std::vector<VkDescriptorSetLayout>& descriptorSetLayouts, const std::vector<PipelineConstant>& constants)
 {
-    VkDevice device = VulkanCore::GetInstance().GetDevice();
+    VkDevice device = VulkanCore::Instance().GetDevice();
     if (!device)
         throw std::runtime_error("Vulkan device is null");
     
@@ -119,10 +119,10 @@ VulkanPipelineLayoutBuilder::CreateDescriptorSetLayoutBinding(const DescriptorBi
     switch (binding.Sampler)
     {
     case SamplerType::Linear:
-        result.binding.pImmutableSamplers = VulkanCore::GetInstance().GetLinearSampler();
+        result.binding.pImmutableSamplers = VulkanCore::Instance().GetLinearSampler();
         break;
     case SamplerType::Nearest:
-        result.binding.pImmutableSamplers = VulkanCore::GetInstance().GetNearestSampler();
+        result.binding.pImmutableSamplers = VulkanCore::Instance().GetNearestSampler();
         break;
     }
 

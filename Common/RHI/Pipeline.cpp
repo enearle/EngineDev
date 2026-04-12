@@ -32,7 +32,7 @@ D3DPipeline::D3DPipeline(uint32_t pipelineID, const PipelineDesc& desc, std::vec
     depthClearValue = desc.DepthClearValue;
     PushConstantCount = static_cast<uint32_t>(desc.Constants.size());
     
-    ComPtr<ID3D12Device> device = D3DCore::GetInstance().GetDevice();
+    ComPtr<ID3D12Device> device = D3DCore::Instance().GetDevice();
     Topology = DXPrimitiveTopology(desc.PrimitiveTopology);
     
     std::vector<ResourceLayout> resourceLayouts;
@@ -170,7 +170,7 @@ D3DPipeline::D3DPipeline(uint32_t pipelineID, const PipelineDesc& desc, std::vec
     if (desc.MultisampleState.SampleCount > 1)
     {
         sampleDesc.Count = desc.MultisampleState.SampleCount;
-        sampleDesc.Quality = D3DCore::GetInstance().GetMSAAQualityLevel(
+        sampleDesc.Quality = D3DCore::Instance().GetMSAAQualityLevel(
             DXFormat(desc.RenderTargetFormats[0]),
             desc.MultisampleState.SampleCount
         );
@@ -284,7 +284,7 @@ D3DPipeline::D3DPipeline(uint32_t pipelineID, const PipelineDesc& desc, std::vec
         if (desc.MultisampleState.SampleCount > 1)
         {
             sampleDesc.Count = desc.MultisampleState.SampleCount;
-            sampleDesc.Quality = D3DCore::GetInstance().GetMSAAQualityLevel(
+            sampleDesc.Quality = D3DCore::Instance().GetMSAAQualityLevel(
                 DXFormat(desc.RenderTargetFormats[i]),
                 desc.MultisampleState.SampleCount
             );
@@ -615,7 +615,7 @@ VulkanPipeline::VulkanPipeline(uint32_t pipelineID, const PipelineDesc& desc, st
     }
 
     VkResult cacheResult = vkCreatePipelineCache(
-        VulkanCore::GetInstance().GetDevice(),
+        VulkanCore::Instance().GetDevice(),
         &cacheCreateInfo,
         nullptr,
         &PipelineCache
@@ -624,7 +624,7 @@ VulkanPipeline::VulkanPipeline(uint32_t pipelineID, const PipelineDesc& desc, st
     if (cacheResult != VK_SUCCESS)
         throw std::runtime_error("Failed to create pipeline cache!");
 
-    VkResult result = vkCreateGraphicsPipelines(VulkanCore::GetInstance().GetDevice(), PipelineCache, 1, &pipelineCreateInfo, nullptr, &Pipeline);
+    VkResult result = vkCreateGraphicsPipelines(VulkanCore::Instance().GetDevice(), PipelineCache, 1, &pipelineCreateInfo, nullptr, &Pipeline);
     if (result != VK_SUCCESS)
         throw std::runtime_error("Failed to create Vulkan graphics pipeline!");
     
@@ -695,12 +695,12 @@ VulkanPipeline::VulkanPipeline(uint32_t pipelineID, const PipelineDesc& desc, st
         depthImageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
         depthImageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
-        result = vkCreateImage(VulkanCore::GetInstance().GetDevice(), &depthImageInfo, nullptr, &OwnedDepthImage);
+        result = vkCreateImage(VulkanCore::Instance().GetDevice(), &depthImageInfo, nullptr, &OwnedDepthImage);
         if (result != VK_SUCCESS)
             throw std::runtime_error("Failed to create Vulkan image for pipeline depth buffer!");
         
         VkMemoryRequirements memReqs;
-        vkGetImageMemoryRequirements(VulkanCore::GetInstance().GetDevice(), OwnedDepthImage, &memReqs);
+        vkGetImageMemoryRequirements(VulkanCore::Instance().GetDevice(), OwnedDepthImage, &memReqs);
         
         VkMemoryAllocateInfo allocInfo{};
         allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
@@ -709,11 +709,11 @@ VulkanPipeline::VulkanPipeline(uint32_t pipelineID, const PipelineDesc& desc, st
             memReqs.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
         );
 
-        result = vkAllocateMemory(VulkanCore::GetInstance().GetDevice(), &allocInfo, nullptr, &OwnedDepthImageMemory);
+        result = vkAllocateMemory(VulkanCore::Instance().GetDevice(), &allocInfo, nullptr, &OwnedDepthImageMemory);
         if (result != VK_SUCCESS)
             throw std::runtime_error("Failed to allocate Vulkan image memory for pipeline depth buffer!");
         
-        result = vkBindImageMemory(VulkanCore::GetInstance().GetDevice(), OwnedDepthImage, OwnedDepthImageMemory, 0);
+        result = vkBindImageMemory(VulkanCore::Instance().GetDevice(), OwnedDepthImage, OwnedDepthImageMemory, 0);
         if (result != VK_SUCCESS)
             throw std::runtime_error("Failed to bind Vulkan image memory for pipeline depth buffer!");
         
@@ -730,7 +730,7 @@ VulkanPipeline::VulkanPipeline(uint32_t pipelineID, const PipelineDesc& desc, st
         imageViewInfo.subresourceRange.baseArrayLayer = 0;
         imageViewInfo.subresourceRange.layerCount = 1;
 
-        result = vkCreateImageView(VulkanCore::GetInstance().GetDevice(), &imageViewInfo, nullptr, &OwnedDepthImageView);
+        result = vkCreateImageView(VulkanCore::Instance().GetDevice(), &imageViewInfo, nullptr, &OwnedDepthImageView);
         if (result != VK_SUCCESS)
             throw std::runtime_error("Failed to create Vulkan image view for pipeline depth buffer!");
         
@@ -782,12 +782,12 @@ VulkanPipeline::VulkanPipeline(uint32_t pipelineID, const PipelineDesc& desc, st
         imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
         imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
-        result = vkCreateImage(VulkanCore::GetInstance().GetDevice(), &imageInfo, nullptr, &OwnedImages[i]);
+        result = vkCreateImage(VulkanCore::Instance().GetDevice(), &imageInfo, nullptr, &OwnedImages[i]);
         if (result != VK_SUCCESS)
             throw std::runtime_error("Failed to create Vulkan image for pipeline render target!");
         
         VkMemoryRequirements memReqs;
-        vkGetImageMemoryRequirements(VulkanCore::GetInstance().GetDevice(), OwnedImages[i], &memReqs);
+        vkGetImageMemoryRequirements(VulkanCore::Instance().GetDevice(), OwnedImages[i], &memReqs);
 
         VkMemoryAllocateInfo allocInfo{};
         allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
@@ -796,11 +796,11 @@ VulkanPipeline::VulkanPipeline(uint32_t pipelineID, const PipelineDesc& desc, st
             memReqs.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
         );
 
-        result = vkAllocateMemory(VulkanCore::GetInstance().GetDevice(), &allocInfo, nullptr, &OwnedImageMemory[i]);
+        result = vkAllocateMemory(VulkanCore::Instance().GetDevice(), &allocInfo, nullptr, &OwnedImageMemory[i]);
         if (result != VK_SUCCESS)
             throw std::runtime_error("Failed to allocate Vulkan image memory for pipeline render target!");
         
-        result = vkBindImageMemory(VulkanCore::GetInstance().GetDevice(), OwnedImages[i], OwnedImageMemory[i], 0);
+        result = vkBindImageMemory(VulkanCore::Instance().GetDevice(), OwnedImages[i], OwnedImageMemory[i], 0);
         if (result != VK_SUCCESS)
             throw std::runtime_error("Failed to bind Vulkan image memory for pipeline render target!");
         
@@ -815,7 +815,7 @@ VulkanPipeline::VulkanPipeline(uint32_t pipelineID, const PipelineDesc& desc, st
         imageViewInfo.subresourceRange.baseArrayLayer = 0;
         imageViewInfo.subresourceRange.layerCount = 1;
 
-        result = vkCreateImageView(VulkanCore::GetInstance().GetDevice(), &imageViewInfo, nullptr, &OwnedImageViews[i]);
+        result = vkCreateImageView(VulkanCore::Instance().GetDevice(), &imageViewInfo, nullptr, &OwnedImageViews[i]);
         if (result != VK_SUCCESS)
             throw std::runtime_error("Failed to create Vulkan image view for pipeline render target!");
         
@@ -849,7 +849,7 @@ VulkanPipeline::VulkanPipeline(uint32_t pipelineID, const PipelineDesc& desc, st
 
 VulkanPipeline::~VulkanPipeline()
 {
-    VkDevice device = VulkanCore::GetInstance().GetDevice();
+    VkDevice device = VulkanCore::Instance().GetDevice();
     
     for (VkDescriptorSetLayout setLayout : SetLayouts)
         vkDestroyDescriptorSetLayout(device, setLayout, nullptr);

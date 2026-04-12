@@ -14,7 +14,7 @@ using namespace Win32ErrorHandler;
 
 ComPtr<ID3D12RootSignature> D3DRootSignatureBuilder::BuildRootSignature(uint32_t pipelineID, const std::vector<ResourceLayout>& layouts, const std::vector<PipelineConstant>& constants)
 {
-    ComPtr<ID3D12Device> device = D3DCore::GetInstance().GetDevice();
+    ComPtr<ID3D12Device> device = D3DCore::Instance().GetDevice();
     if (!device)
         throw std::runtime_error("D3D12 device is null");
     

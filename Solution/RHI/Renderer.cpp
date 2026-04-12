@@ -17,6 +17,8 @@ bool Renderer::initialized = false;
 std::vector<PipelineFrameContext> Renderer::PipelineFrameContexts;
 void* Renderer::CurrentBackBuffer = nullptr;
 void* Renderer::CurrentBackBufferView = nullptr;
+Renderer::FrameCallback Renderer::startOfFrameCallback = nullptr;
+Renderer::FrameCallback Renderer::renderCallback = nullptr;
 
 void Renderer::Start(Window* mainWindow)
 {
@@ -34,13 +36,15 @@ void Renderer::Start(Window* mainWindow)
 
 void Renderer::DrawFrame()
 {
-
     // Start of Frame
     executor->BeginFrame();
     executor->GetSwapChainRenderTargets(CurrentBackBufferView, CurrentBackBuffer);
     ImageMemoryBarrier preBarrier = PRE_BARRIER;
     preBarrier.ImageResource = CurrentBackBuffer;
     executor->IssueImageMemoryBarrier(preBarrier);
+    
+    // Call Noesis Pre-Frame Callback
+    if (startOfFrameCallback) startOfFrameCallback();
     
     // Load/unload time
     if (!initialized)
@@ -57,8 +61,7 @@ void Renderer::DrawFrame()
     }
     
     for (uint32_t i = 0; i < PipelineFrameContexts.size(); i++)
-        ExecutePipelineContext(i);
-    
+        ExecutePipelineContext(i, i == PipelineFrameContexts.size() - 1);
     
     // End of Frame
     ImageMemoryBarrier postBarrier = POST_BARRIER;
@@ -104,7 +107,7 @@ void Renderer::AddDescriptorIDToContext(uint32_t contextIndex, uint64_t descript
     PipelineFrameContexts[contextIndex].PerFrameDescriptors.push_back(descriptorID);
 }
 
-void Renderer::ExecutePipelineContext(uint32_t contextIndex)
+void Renderer::ExecutePipelineContext(uint32_t contextIndex, bool finalContext)
 {
     // Pre-draw attachment barrier
     ImageMemoryBarrier readToAttachmentBarrier = READ_TO_ATTACHMENT_BARRIER;
@@ -143,6 +146,9 @@ void Renderer::ExecutePipelineContext(uint32_t contextIndex)
             );
         }
     
+    // Noesis Render callback
+    if (finalContext && renderCallback) renderCallback();
+    
     // End Pipeline
     executor->EndPipeline();
     
@@ -153,5 +159,14 @@ void Renderer::ExecutePipelineContext(uint32_t contextIndex)
         gBufferBarrier.ImageResource = PipelineFrameContexts[contextIndex].ContextPipeline->GetOwnedImage(j);
         executor->IssueImageMemoryBarrier(gBufferBarrier);
     }
-    
+}
+
+void Renderer::SetStartOfFrameCallback(FrameCallback callback)
+{
+    startOfFrameCallback = callback;
+}
+
+void Renderer::SetRenderCallback(FrameCallback callback)
+{
+    renderCallback = callback;
 }

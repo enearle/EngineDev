@@ -60,7 +60,7 @@ class D3DCore
     
 public:
     ~D3DCore() = default;
-    static D3DCore& GetInstance();
+    static D3DCore& Instance();
     
     void InitDirect3D(Window* window, RHIStructures::CoreInitData data);
     void WaitForGPU();
@@ -74,6 +74,7 @@ public:
     ComPtr<ID3D12GraphicsCommandList> GetCommandList() const { return CommandLists[CurrentFrameIndex]; }
     ComPtr<ID3D12GraphicsCommandList> GetTransferCommandList() const { return TransferCommandList; }
     ComPtr<ID3D12CommandAllocator> GetTransferCommandAllocator() const { return TransferCommandAllocator; }
+    ComPtr<ID3D12Fence> GetFrameFence() const { return Fence; }
     ComPtr<ID3D12Fence> GetTransferFence() const { return TransferFence; }
     uint32_t GetCurrentFrameIndex() const { return CurrentFrameIndex; }
     ComPtr<ID3D12DescriptorHeap> GetRenderTargetDescriptorHeap() const { return RenderTargetDescriptorHeap; }
@@ -81,6 +82,14 @@ public:
     UINT GetMSAAQualityLevel(DXGI_FORMAT format, UINT sampleCount);
     D3D12_CPU_DESCRIPTOR_HANDLE GetRenderTargetDescriptor();
     ID3D12Resource* GetCurrentBackBuffer() const { return SwapChainBuffer[CurrentFrameIndex].Get(); }
+    DXGI_FORMAT GetRenderTargetFormat() const { return RenderTargetFormat; }
+    DXGI_SAMPLE_DESC GetSampleDesc() const 
+    { 
+        DXGI_SAMPLE_DESC desc;
+        desc.Count = SwapChainMSAA ? SwapChainMSAASamples : 1;
+        desc.Quality = 0;
+        return desc;
+    }
 
 private:
      

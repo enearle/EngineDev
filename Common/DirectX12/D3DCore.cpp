@@ -11,7 +11,7 @@
 using namespace Win32ErrorHandler;
 using namespace RHIStructures;
 
-D3DCore& D3DCore::GetInstance()
+D3DCore& D3DCore::Instance()
 {
     static D3DCore instance;
     return instance;
