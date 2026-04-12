@@ -1,0 +1,88 @@
+<Solution>
+  <Configurations>
+    <Platform Name="Win32" />
+    <BuildType Name="Debug" />
+    <BuildType Name="Profile" />
+    <BuildType Name="Release" />
+  </Configurations>
+  <Project Path="../Src/Projects/NoesisApp/windows_x86/NoesisApp-vs2026.vcxproj" Id="882554cb-05bc-337e-9097-a75441bbc2e7" />
+  <Folder Name="/Gui/">
+    <Project Path="../Src/Projects/XamlPlayer/windows_x86/Gui.XamlPlayer-vs2026.vcxproj" Id="d37eefca-9754-3ce6-9c0f-0e1eb2238145">
+      <BuildDependency Project="../Src/Projects/NoesisApp/windows_x86/NoesisApp-vs2026.vcxproj" />
+    </Project>
+  </Folder>
+  <Folder Name="/Samples/">
+    <Project Path="../Src/Projects/Integration/windows_x86/Samples.Integration-vs2026.vcxproj" Id="80de7631-0906-3bf1-910a-28ef6dfc5e43">
+      <BuildDependency Project="../Src/Projects/NoesisApp/windows_x86/NoesisApp-vs2026.vcxproj" />
+    </Project>
+    <Project Path="../Src/Projects/IntegrationGLUT/windows_x86/Samples.IntegrationGLUT-vs2026.vcxproj" Id="7663cdd0-8008-3a1e-bcdd-cb24d0480f6a">
+      <BuildDependency Project="../Src/Projects/NoesisApp/windows_x86/NoesisApp-vs2026.vcxproj" />
+    </Project>
+    <Project Path="../Src/Projects/HelloWorld/windows_x86/Samples.HelloWorld-vs2026.vcxproj" Id="61ded8dd-963d-3bf6-b48e-d077ed970646">
+      <BuildDependency Project="../Src/Projects/NoesisApp/windows_x86/NoesisApp-vs2026.vcxproj" />
+    </Project>
+    <Project Path="../Src/Projects/Buttons/windows_x86/Samples.Buttons-vs2026.vcxproj" Id="f9c7c61e-dd85-3544-b288-eba81104d107">
+      <BuildDependency Project="../Src/Projects/NoesisApp/windows_x86/NoesisApp-vs2026.vcxproj" />
+    </Project>
+    <Project Path="../Src/Projects/Login/windows_x86/Samples.Login-vs2026.vcxproj" Id="f2dd821d-869b-3e0f-8ab4-fbbdf88d340e">
+      <BuildDependency Project="../Src/Projects/NoesisApp/windows_x86/NoesisApp-vs2026.vcxproj" />
+    </Project>
+    <Project Path="../Src/Projects/QuestLog/windows_x86/Samples.QuestLog-vs2026.vcxproj" Id="d859a879-c2ad-3272-abb8-a372d857910d">
+      <BuildDependency Project="../Src/Projects/NoesisApp/windows_x86/NoesisApp-vs2026.vcxproj" />
+    </Project>
+    <Project Path="../Src/Projects/Scoreboard/windows_x86/Samples.Scoreboard-vs2026.vcxproj" Id="ed6ea3d5-6fdb-30df-84c0-32e2d60d0be8">
+      <BuildDependency Project="../Src/Projects/NoesisApp/windows_x86/NoesisApp-vs2026.vcxproj" />
+    </Project>
+    <Project Path="../Src/Projects/DataBinding/windows_x86/Samples.DataBinding-vs2026.vcxproj" Id="df7b8711-561b-3708-9a08-f0d38628e85f">
+      <BuildDependency Project="../Src/Projects/NoesisApp/windows_x86/NoesisApp-vs2026.vcxproj" />
+    </Project>
+    <Project Path="../Src/Projects/ApplicationTutorial/windows_x86/Samples.ApplicationTutorial-vs2026.vcxproj" Id="6a149e62-4e6c-38d0-bbb6-13ebc3f6b61b">
+      <BuildDependency Project="../Src/Projects/NoesisApp/windows_x86/NoesisApp-vs2026.vcxproj" />
+    </Project>
+    <Project Path="../Src/Projects/Commands/windows_x86/Samples.Commands-vs2026.vcxproj" Id="4a375c2c-d85d-3b6b-bc63-18e73867aead">
+      <BuildDependency Project="../Src/Projects/NoesisApp/windows_x86/NoesisApp-vs2026.vcxproj" />
+    </Project>
+    <Project Path="../Src/Projects/UserControl/windows_x86/Samples.UserControl-vs2026.vcxproj" Id="c020e504-7cf3-3126-9224-ec48b1c983ca">
+      <BuildDependency Project="../Src/Projects/NoesisApp/windows_x86/NoesisApp-vs2026.vcxproj" />
+    </Project>
+    <Project Path="../Src/Projects/CustomControl/windows_x86/Samples.CustomControl-vs2026.vcxproj" Id="568d7aeb-1d37-307d-9dbd-5ce9c6968dff">
+      <BuildDependency Project="../Src/Projects/NoesisApp/windows_x86/NoesisApp-vs2026.vcxproj" />
+    </Project>
+    <Project Path="../Src/Projects/BlendTutorial/windows_x86/Samples.BlendTutorial-vs2026.vcxproj" Id="0941fa50-3773-3600-b44b-c721e8072322">
+      <BuildDependency Project="../Src/Projects/NoesisApp/windows_x86/NoesisApp-vs2026.vcxproj" />
+    </Project>
+    <Project Path="../Src/Projects/Menu3D/windows_x86/Samples.Menu3D-vs2026.vcxproj" Id="14299ed6-6f15-347d-ac9b-e8912462d58b">
+      <BuildDependency Project="../Src/Projects/NoesisApp/windows_x86/NoesisApp-vs2026.vcxproj" />
+    </Project>
+    <Project Path="../Src/Projects/Localization/windows_x86/Samples.Localization-vs2026.vcxproj" Id="63113c37-2f24-36e6-b7c0-a9b79ec196be">
+      <BuildDependency Project="../Src/Projects/NoesisApp/windows_x86/NoesisApp-vs2026.vcxproj" />
+    </Project>
+    <Project Path="../Src/Projects/Inventory/windows_x86/Samples.Inventory-vs2026.vcxproj" Id="4bb27589-8e68-3aea-8b58-8fe440f22617">
+      <BuildDependency Project="../Src/Projects/NoesisApp/windows_x86/NoesisApp-vs2026.vcxproj" />
+    </Project>
+    <Project Path="../Src/Projects/TicTacToe/windows_x86/Samples.TicTacToe-vs2026.vcxproj" Id="49dd78ce-5a58-3eba-b12a-777edef45ce1">
+      <BuildDependency Project="../Src/Projects/NoesisApp/windows_x86/NoesisApp-vs2026.vcxproj" />
+    </Project>
+    <Project Path="../Src/Projects/Gallery/windows_x86/Samples.Gallery-vs2026.vcxproj" Id="d2c64495-55a2-383b-91a7-146e37797a58">
+      <BuildDependency Project="../Src/Projects/NoesisApp/windows_x86/NoesisApp-vs2026.vcxproj" />
+    </Project>
+    <Project Path="../Src/Projects/VideoEffect/windows_x86/Samples.VideoEffect-vs2026.vcxproj" Id="df1adc00-06ad-35af-ac9e-93c4db5d139b">
+      <BuildDependency Project="../Src/Projects/NoesisApp/windows_x86/NoesisApp-vs2026.vcxproj" />
+    </Project>
+    <Project Path="../Src/Projects/CustomRender/windows_x86/Samples.CustomRender-vs2026.vcxproj" Id="d6544d1d-f8d6-31f6-bc57-89f07e66f50a">
+      <BuildDependency Project="../Src/Projects/NoesisApp/windows_x86/NoesisApp-vs2026.vcxproj" />
+    </Project>
+    <Project Path="../Src/Projects/CustomAnimation/windows_x86/Samples.CustomAnimation-vs2026.vcxproj" Id="6f2725bc-d5f7-3646-ad58-d7604f2e8d33">
+      <BuildDependency Project="../Src/Projects/NoesisApp/windows_x86/NoesisApp-vs2026.vcxproj" />
+    </Project>
+    <Project Path="../Src/Projects/Rive/windows_x86/Samples.Rive-vs2026.vcxproj" Id="2e4db3eb-6768-3270-a700-e86da194451e">
+      <BuildDependency Project="../Src/Projects/NoesisApp/windows_x86/NoesisApp-vs2026.vcxproj" />
+    </Project>
+    <Project Path="../Src/Projects/BackgroundBlur/windows_x86/Samples.BackgroundBlur-vs2026.vcxproj" Id="81e6cf97-5a8b-3985-80fe-48d65bc0811c">
+      <BuildDependency Project="../Src/Projects/NoesisApp/windows_x86/NoesisApp-vs2026.vcxproj" />
+    </Project>
+    <Project Path="../Src/Projects/BrushShaders/windows_x86/Samples.BrushShaders-vs2026.vcxproj" Id="2913b0b4-a5b1-3345-bdbc-f5699a248bd4">
+      <BuildDependency Project="../Src/Projects/NoesisApp/windows_x86/NoesisApp-vs2026.vcxproj" />
+    </Project>
+  </Folder>
+</Solution>
