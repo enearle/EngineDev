@@ -35,6 +35,9 @@ public:
     
     virtual void BindDrawDescriptorSets(std::vector<uint64_t>* descriptorSets = nullptr, uint32_t numPipelineSets = 0) = 0;
     virtual void BindPipelineDescriptorSets(std::vector<uint64_t>* descriptorSets = nullptr) = 0;
+    
+    virtual void StartNoesisContext(uint32_t width, uint32_t height) = 0;
+    virtual void EndNoesisContext() = 0;
 };
 
 class D3DPipelineExecutor : public PipelineExecutor
@@ -65,6 +68,9 @@ public:
     
     void BindDrawDescriptorSets(std::vector<uint64_t>* descriptorSets, uint32_t numPipelineSets) override;
     void BindPipelineDescriptorSets(std::vector<uint64_t>* descriptorSets) override;
+    
+    void StartNoesisContext(uint32_t width, uint32_t height) override;
+    void EndNoesisContext() override;
     
 private:
     ID3D12GraphicsCommandList* GetCommandList();
@@ -99,6 +105,9 @@ public:
     
     void BindDrawDescriptorSets(std::vector<uint64_t>* descriptorSets, uint32_t numPipelineSets) override;
     void BindPipelineDescriptorSets(std::vector<uint64_t>* descriptorSets) override;
+    
+    void StartNoesisContext(uint32_t width, uint32_t height) override;
+    void EndNoesisContext() override;
     
 private:
     

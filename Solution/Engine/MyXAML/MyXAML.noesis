@@ -1,0 +1,4 @@
+<Project>
+  <Assembly>MyXAML</Assembly>
+  <DefaultDataNamespace>MyXAML</DefaultDataNamespace>
+</Project>

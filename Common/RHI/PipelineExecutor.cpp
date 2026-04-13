@@ -6,6 +6,7 @@
 #include "../DirectX12/D3D12Structs.h"
 #include "BufferAllocator.h"
 #include "RHIConstants.h"
+#include "../Window.h"
 
 using namespace D3D12Structs;
 
@@ -307,6 +308,30 @@ void D3DPipelineExecutor::BindPipelineDescriptorSets(std::vector<uint64_t>* desc
     }
 }
 
+void D3DPipelineExecutor::StartNoesisContext(uint32_t width, uint32_t height)
+{
+    ID3D12GraphicsCommandList* cmdList = GetCommandList();
+    ID3D12Resource* backBuffer = D3DCore::Instance().GetCurrentBackBuffer();
+    D3D12_CPU_DESCRIPTOR_HANDLE rtv = D3DCore::Instance().GetRenderTargetDescriptor();
+    D3D12_CPU_DESCRIPTOR_HANDLE dsv = D3DCore::Instance().GetNoesisDepthStencilDescriptor();
+
+    // Clear stencil (required for Noesis clipping)
+    cmdList->ClearDepthStencilView(dsv, D3D12_CLEAR_FLAG_STENCIL, 0.0f, 0, 0, nullptr);
+
+    // Set render targets
+    cmdList->OMSetRenderTargets(1, &rtv, false, &dsv);
+
+    // Set viewport & scissor
+    D3D12_VIEWPORT viewport = {0.0f, 0.0f, (float)width, (float)height, 0.0f, 1.0f};
+    D3D12_RECT scissor = {0, 0, (LONG)width, (LONG)height};
+    cmdList->RSSetViewports(1, &viewport);
+    cmdList->RSSetScissorRects(1, &scissor);
+}
+
+void D3DPipelineExecutor::EndNoesisContext()
+{
+}
+
 ID3D12GraphicsCommandList* D3DPipelineExecutor::GetCommandList()
 {
     return D3DCore::Instance().GetCommandList().Get();
@@ -366,13 +391,13 @@ void VulkanPipelineExecutor::BeginPipeline(Pipeline* pipeline,
 {
     CurrentPipeline = static_cast<VulkanPipeline*>(pipeline);
     VkCommandBuffer cmdBuffer = GetCommandBuffer();
-    
+
     VkRenderingInfo renderingInfo{};
     renderingInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
     renderingInfo.renderArea.offset = {0, 0};
     renderingInfo.renderArea.extent = {width, height};
     renderingInfo.layerCount = 1;
-    
+
     VkImageView depthStencilView = VK_NULL_HANDLE;
     std::vector<VkImageView> colourAttachmentViews;
     if (!colorViews.empty())
@@ -380,25 +405,25 @@ void VulkanPipelineExecutor::BeginPipeline(Pipeline* pipeline,
             colourAttachmentViews.push_back(reinterpret_cast<VkImageView>(colorView));
     else
         colourAttachmentViews = CurrentPipeline->GetOwnedImageViews();
-    
+
     if (depthView)
         depthStencilView = reinterpret_cast<VkImageView>(depthView);
     else 
         depthStencilView = CurrentPipeline->GetOwnedDepthImageView();
-    
+
     if (colourAttachmentViews.empty() && depthStencilView == VK_NULL_HANDLE)
         throw std::runtime_error("No attachments provided.");
-    
+
     if (CurrentPipeline->GetClearColors().size() != colourAttachmentViews.size())
         throw std::runtime_error("Number of clear colors does not match number of attachments.");
-    
+
     std::vector<VkAttachmentDescription> attachmentDescs = CurrentPipeline->GetAttachmentDescriptions();
     VkAttachmentDescription depthStencilDesc = {};  // Initialize to zero
     if (depthStencilView != VK_NULL_HANDLE) 
         depthStencilDesc = CurrentPipeline->GetDepthAttachmentDescription();
     std::vector<VkRenderingAttachmentInfo> colourAttachments;
     size_t numColourAttachments = colourAttachmentViews.size();
-    
+
     for (size_t i = 0; i < numColourAttachments; ++i)
     {
         VkRenderingAttachmentInfo attachment{};
@@ -410,10 +435,10 @@ void VulkanPipelineExecutor::BeginPipeline(Pipeline* pipeline,
         attachment.clearValue.color = {CurrentPipeline->GetClearColors()[i].x, CurrentPipeline->GetClearColors()[i].y, CurrentPipeline->GetClearColors()[i].z, CurrentPipeline->GetClearColors()[i].w};
         colourAttachments.push_back(attachment);
     }
-    
+
     renderingInfo.colorAttachmentCount = static_cast<uint32_t>(colourAttachments.size());
     renderingInfo.pColorAttachments = colourAttachments.data();
-    
+
     VkRenderingAttachmentInfo depthAttachment{};
     if (depthStencilView != VK_NULL_HANDLE)
     {
@@ -425,8 +450,9 @@ void VulkanPipelineExecutor::BeginPipeline(Pipeline* pipeline,
         depthAttachment.clearValue.depthStencil = {CurrentPipeline->GetDepthClearValue(), 0};
         renderingInfo.pDepthAttachment = &depthAttachment;
     }
-    
+
     vkCmdBeginRendering(cmdBuffer, &renderingInfo);
+    
     
     // Bind pipeline
     vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, CurrentPipeline->GetVulkanPipeline());
@@ -626,6 +652,31 @@ void VulkanPipelineExecutor::BindPipelineDescriptorSets(std::vector<uint64_t>* d
         dynamicOffsets.size(),
         dynamicOffsets.data()
     );
+}
+
+void VulkanPipelineExecutor::StartNoesisContext(uint32_t width, uint32_t height)
+{
+    VkCommandBuffer cmdBuffer = GetCommandBuffer();
+    
+    VkClearValue clearValues[2];
+    clearValues[0].depthStencil = {0.0f, 0};
+    clearValues[1].color = {{0.0f, 0.0f, 0.0f, 0.0f}};
+    
+    VkRenderPassBeginInfo beginInfo{};
+    beginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+    beginInfo.renderPass = VulkanCore::Instance().GetNoesisRenderPass();
+    beginInfo.framebuffer = VulkanCore::Instance().GetCurrentNoesisFramebuffer();
+    beginInfo.renderArea = {{0, 0}, {width, height}};
+    beginInfo.clearValueCount = 2;
+    beginInfo.pClearValues = clearValues;
+        
+    vkCmdBeginRenderPass(cmdBuffer, &beginInfo, VK_SUBPASS_CONTENTS_INLINE);
+}
+
+void VulkanPipelineExecutor::EndNoesisContext()
+{
+    VkCommandBuffer cmdBuffer = GetCommandBuffer();
+    vkCmdEndRenderPass(cmdBuffer);
 }
 
 VkCommandBuffer VulkanPipelineExecutor::GetCommandBuffer()

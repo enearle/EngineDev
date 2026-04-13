@@ -51,6 +51,11 @@ class VulkanCore
     VkSampler PointSampler                              = VK_NULL_HANDLE;
     
     VkRenderPass NoesisCompatibilityRenderPass          = VK_NULL_HANDLE;
+    std::vector<VkFramebuffer> NoesisFramebuffers;
+    std::vector<VkImage> NoesisStencilImages;
+    std::vector<VkDeviceMemory> NoesisStencilMemory;
+    std::vector<VkImageView> NoesisStencilImageViews;
+    VkFormat NoesisStencilFormat                        = VK_FORMAT_S8_UINT;
     
     // Debug
     const std::vector<const char*> DEVICE_EXTENSIONS = {
@@ -96,7 +101,7 @@ public:
     const std::vector<VkSemaphore>& GetImageAvailableSemaphores() const { return ImageAvailableSemaphores; }
     const std::vector<VkSemaphore>& GetRenderFinishedSemaphores() const { return RenderFinishedSemaphores; }
     const std::vector<VkFence>& GetInFlightFences() const { return InFlightFences; }
-    uint32_t GetSwapchainImageCount() const { return SwapChainImageCount; }
+    uint32_t GetFramesInFlight() const { return SwapChainImageCount; }
     uint32_t GetCurrentFrameIndex() const { return CurrentFrameIndex; }
     uint32_t GetCurrentSwapchainImageIndex() const { return CurrentSwapchainImageIndex; }
     VkImageView GetCurrentSwapchainImageView() const { return SwapchainImages[CurrentSwapchainImageIndex].ImageView; }
@@ -108,7 +113,8 @@ public:
     const VkSampler* GetLinearSampler() const { return &LinearSampler; }
     const VkSampler* GetNearestSampler() const { return &PointSampler; }
     uint32_t GetQueueFamilyIndex() { return FindQueueFamilies(PhysicalDevice).GraphicsFamily; }
-    VkRenderPass GetNoesisCompatibilityRenderPass() { return NoesisCompatibilityRenderPass; }
+    VkRenderPass GetNoesisRenderPass() { return NoesisCompatibilityRenderPass; }
+    VkFramebuffer GetCurrentNoesisFramebuffer() { return NoesisFramebuffers[CurrentSwapchainImageIndex]; }
     
 private:
     
@@ -123,6 +129,10 @@ private:
     void CreateSwapchain();
     void CreateSamplers();
     void CreateNoesisCompatibilityRenderPass();
+    void CreateNoesisStencilImages();
+    void CreateNoesisFramebuffers();
+    
+    uint32_t FindMemoryType(uint32_t allowedTypes, VkMemoryPropertyFlags properties);
     
     // Debug Support
     VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo,

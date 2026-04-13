@@ -1,0 +1,4 @@
+<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation">
+    <Rectangle Width="200" Height="200" Fill="#80FF0000"/>  <!-- 50% red -->
+    <Rectangle Width="150" Height="150" Fill="#80FFFFFF"/>  <!-- 50% green on top -->
+</Grid>

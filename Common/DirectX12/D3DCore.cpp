@@ -34,6 +34,7 @@ void D3DCore::InitDirect3D(Window* window, CoreInitData data)
         CreateCommandObjects();
         CreateSwapChain();
         CreateSwapChainDescriptorHeaps();
+        CreateNoesisDepthStencilBuffers();
     }
     catch (const std::exception& exception)
     {
@@ -225,6 +226,8 @@ void D3DCore::CreateSwapChain()
     msaaSampleDesc.Count = SwapChainMSAA && msaaSupported ? SwapChainMSAASamples : 1;
     msaaSampleDesc.Quality = SwapChainMSAA && msaaSupported ? msaaQualityLevels : 0;
     
+    SwapChainMSAAQuality = msaaSampleDesc.Quality;
+
     SwapChain.Reset();
     DXGI_SWAP_CHAIN_DESC1 swapChainDesc = {};
     swapChainDesc.Width = RendererWindow->GetWidth();
@@ -277,6 +280,13 @@ void D3DCore::CreateSwapChainDescriptorHeaps()
     DephtStencilHeapDesc.NodeMask = 0;
     Device->CreateDescriptorHeap(
         &DephtStencilHeapDesc, IID_PPV_ARGS(DepthStencilDescriptorHeap.GetAddressOf())) >> ERROR_HANDLER;
+    
+    D3D12_DESCRIPTOR_HEAP_DESC NoesisDepthHeapDesc;
+    NoesisDepthHeapDesc.NumDescriptors = SwapChainBufferCount;
+    NoesisDepthHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
+    NoesisDepthHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+    NoesisDepthHeapDesc.NodeMask = 0;
+    Device->CreateDescriptorHeap(&NoesisDepthHeapDesc, IID_PPV_ARGS(NoesisDepthStencilDescriptorHeap.GetAddressOf())) >> ERROR_HANDLER;
 
     for (UINT i = 0; i < SwapChainBufferCount; ++i)
     {
@@ -290,6 +300,40 @@ void D3DCore::CreateSwapChainDescriptorHeaps()
         rtvHandle.ptr += i * RenderTargetDescriptorOffset;
         
         Device->CreateRenderTargetView(backBuffer.Get(), nullptr, rtvHandle);
+    }
+}
+
+void D3DCore::CreateNoesisDepthStencilBuffers()
+{
+    auto heap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
+    D3D12_RESOURCE_DESC backBufferDesc = SwapChainBuffer[0]->GetDesc();
+
+    D3D12_RESOURCE_DESC desc = {};
+    desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+    desc.Alignment = 0;
+    desc.Width = backBufferDesc.Width;  
+    desc.Height = backBufferDesc.Height;
+    desc.DepthOrArraySize = 1;
+    desc.MipLevels = 1;
+    desc.Format = RHIStructures::DXFormat(Format::D24_UNORM_S8_UINT);
+    desc.SampleDesc.Count = 1;
+    desc.SampleDesc.Quality = 0;
+    desc.Flags = D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
+
+    for (UINT i = 0; i < SwapChainBufferCount; ++i)
+    {
+        Device->CreateCommittedResource(
+            &heap,
+            D3D12_HEAP_FLAG_NONE,
+            &desc,
+            D3D12_RESOURCE_STATE_COMMON,
+            nullptr,
+            IID_PPV_ARGS(NoesisDepthStencilBuffers[i].GetAddressOf())
+        ) >> ERROR_HANDLER;
+           
+        D3D12_CPU_DESCRIPTOR_HANDLE dsvHandle = NoesisDepthStencilDescriptorHeap->GetCPUDescriptorHandleForHeapStart();
+        dsvHandle.ptr += i * DepthStencilDescriptorOffset;
+        Device->CreateDepthStencilView(NoesisDepthStencilBuffers[i].Get(), nullptr, dsvHandle);
     }
 }
 
@@ -331,4 +375,12 @@ D3D12_CPU_DESCRIPTOR_HANDLE D3DCore::GetRenderTargetDescriptor()
         RenderTargetDescriptorHeap->GetCPUDescriptorHandleForHeapStart();
     rtvHandle.ptr += CurrentFrameIndex * RenderTargetDescriptorOffset;
     return rtvHandle;
+}
+
+D3D12_CPU_DESCRIPTOR_HANDLE D3DCore::GetNoesisDepthStencilDescriptor()
+{
+    D3D12_CPU_DESCRIPTOR_HANDLE dsvHandle =
+        NoesisDepthStencilDescriptorHeap->GetCPUDescriptorHandleForHeapStart();
+    dsvHandle.ptr += CurrentFrameIndex * DepthStencilDescriptorOffset;
+    return dsvHandle;
 }

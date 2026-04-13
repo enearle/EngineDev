@@ -10,16 +10,16 @@ public:
     using FrameCallback = std::function<void()>;
     
 private:
-    static class PipelineExecutor* executor;
-    static class BufferAllocator* bufferAlloc;
-    static class Window* window;
-    static bool initialized;
+    static class PipelineExecutor* Executor;
+    static class BufferAllocator* BufferAlloc;
+    static class Window* MainWindow;
+    static bool IsInitialized;
     static void* CurrentBackBufferView;
     static void* CurrentBackBuffer;
     static std::vector<RHIStructures::PipelineFrameContext> PipelineFrameContexts;
     
-    static FrameCallback startOfFrameCallback;
-    static FrameCallback renderCallback; 
+    static FrameCallback StartOfFrameCallback;
+    static FrameCallback EndOfFrameCallback; 
     
 public:
     static void Start(class Window* mainWindow);
@@ -28,10 +28,11 @@ public:
     static uint32_t CreatePipelineFrameContext(class Pipeline* pipeline, bool isQuad, bool isPresented);
     static void AddIndexedDrawToContext(uint32_t contextIndex, RHIStructures::IndexedDraw draw);
     static void AddDescriptorIDToContext(uint32_t contextIndex, uint64_t descriptorID);
-    static Window* GetWindow() { return window; }
+    static Window* GetWindow() { return MainWindow; }
     
     static void SetStartOfFrameCallback(FrameCallback callback);
     static void SetRenderCallback(FrameCallback callback);
+    static void Wait();
     
 private:
     static void ExecutePipelineContext(uint32_t contextIndex, bool finalContext);

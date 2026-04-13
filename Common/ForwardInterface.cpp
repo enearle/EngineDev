@@ -31,7 +31,7 @@ uint32_t ForwardInterface::GetVkQueueFamilyIndex()
 
 VkRenderPass ForwardInterface::GetNoesisCompatibilityRenderPass()
 {
-    return VulkanCore::Instance().GetNoesisCompatibilityRenderPass();
+    return VulkanCore::Instance().GetNoesisRenderPass();
 }
 
 VkCommandBuffer ForwardInterface::GetCommandBuffer()
@@ -42,6 +42,11 @@ VkCommandBuffer ForwardInterface::GetCommandBuffer()
 PFN_vkGetInstanceProcAddr ForwardInterface::GetInstanceProcAddress()
 {
     return vkGetInstanceProcAddr;
+}
+
+uint32_t ForwardInterface::GetVulkanFramesInFlight()
+{
+    return VulkanCore::Instance().GetFramesInFlight();
 }
 
 ID3D12Device* ForwardInterface::GetD3D12Device()
@@ -67,4 +72,9 @@ DXGI_SAMPLE_DESC ForwardInterface::GetD3D12SampleDesc()
 ID3D12GraphicsCommandList* ForwardInterface::GetCommandList()
 {
     return D3DCore::Instance().GetCommandList().Get();
+}
+
+uint32_t ForwardInterface::GetD3D12FramesInFlight()
+{
+    return D3DCore::Instance().GetFramesInFlight();
 }

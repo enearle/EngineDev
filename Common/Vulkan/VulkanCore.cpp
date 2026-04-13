@@ -36,6 +36,8 @@ void VulkanCore::InitVulkan(Window* window, CoreInitData data)
         CreateSynchronizationPrimitives();
         CreateSamplers();
         CreateNoesisCompatibilityRenderPass();
+        CreateNoesisStencilImages();
+        CreateNoesisFramebuffers();
     }
     catch (const std::runtime_error& error)
     {
@@ -47,7 +49,17 @@ void VulkanCore::Cleanup()
 {
     vkQueueWaitIdle(GraphicsQueue);
     vkQueueWaitIdle(PresentQueue);
-    
+
+    for (uint32_t i = 0; i < NoesisFramebuffers.size(); i++)
+    {
+        vkDestroyFramebuffer(Device, NoesisFramebuffers[i], nullptr);
+    }
+    for (uint32_t i = 0; i < NoesisStencilImages.size(); i++)
+    {
+        vkDestroyImageView(Device, NoesisStencilImageViews[i], nullptr);
+        vkDestroyImage(Device, NoesisStencilImages[i], nullptr);
+        vkFreeMemory(Device, NoesisStencilMemory[i], nullptr);
+    }
     vkDestroyRenderPass(Device, NoesisCompatibilityRenderPass, nullptr);
     vkDestroySampler(Device, PointSampler, nullptr);
     vkDestroySampler(Device, LinearSampler, nullptr);
@@ -444,6 +456,32 @@ void VulkanCore::CreateSamplers()
 
 void VulkanCore::CreateNoesisCompatibilityRenderPass()
 {
+    // Select stencil format (priority: S8 > D24S8 > D32S8 > D16S8)
+    VkFormatProperties props;
+    vkGetPhysicalDeviceFormatProperties(PhysicalDevice, VK_FORMAT_S8_UINT, &props);
+    if (props.optimalTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT)
+        NoesisStencilFormat = VK_FORMAT_S8_UINT;
+    else
+    {
+        vkGetPhysicalDeviceFormatProperties(PhysicalDevice, VK_FORMAT_D24_UNORM_S8_UINT, &props);
+        if (props.optimalTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT)
+            NoesisStencilFormat = VK_FORMAT_D24_UNORM_S8_UINT;
+        else
+            throw std::runtime_error("No suitable stencil format found for Noesis");
+    }
+    
+    // Attachment 0: Stencil (REQUIRED by Noesis)
+    VkAttachmentDescription stencilAttachment{};
+    stencilAttachment.format = NoesisStencilFormat;
+    stencilAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+    stencilAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    stencilAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    stencilAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;  // CRITICAL!
+    stencilAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    stencilAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    stencilAttachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+    
+    // Attachment 1: Color
     VkAttachmentDescription colorAttachment{};
     colorAttachment.format = GetSwapchainFormat();
     colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
@@ -453,28 +491,145 @@ void VulkanCore::CreateNoesisCompatibilityRenderPass()
     colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
     colorAttachment.initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
     colorAttachment.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-
-    VkAttachmentReference colorAttachmentRef{};
-    colorAttachmentRef.attachment = 0;
-    colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    
+    VkAttachmentReference stencilRef{};
+    stencilRef.attachment = 0;
+    stencilRef.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+    
+    VkAttachmentReference colorRef{};
+    colorRef.attachment = 1;
+    colorRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
     
     VkSubpassDescription subpass{};
     subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
     subpass.colorAttachmentCount = 1;
-    subpass.pColorAttachments = &colorAttachmentRef;
+    subpass.pColorAttachments = &colorRef;
+    subpass.pDepthStencilAttachment = &stencilRef;  // CRITICAL!
+    
+    VkAttachmentDescription attachments[] = { stencilAttachment, colorAttachment };
+    
+    // Subpass dependency for stencil clear
+    VkSubpassDependency dependency{};
+    dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
+    dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT |
+                              VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+    dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT |
+                               VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
     
     VkRenderPassCreateInfo renderPassInfo{};
     renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-    renderPassInfo.attachmentCount = 1;
-    renderPassInfo.pAttachments = &colorAttachment;
+    renderPassInfo.attachmentCount = 2;  // Stencil + Color
+    renderPassInfo.pAttachments = attachments;
     renderPassInfo.subpassCount = 1;
     renderPassInfo.pSubpasses = &subpass;
+    renderPassInfo.dependencyCount = 1;
+    renderPassInfo.pDependencies = &dependency;
     
     VkResult result = vkCreateRenderPass(Device, &renderPassInfo, nullptr, &NoesisCompatibilityRenderPass);
     if (result != VK_SUCCESS)
         throw std::runtime_error("Failed to create Noesis compatibility render pass");
 }
 
+void VulkanCore::CreateNoesisStencilImages()
+{
+    NoesisStencilImages.resize(SwapchainImages.size());
+    NoesisStencilImageViews.resize(SwapchainImages.size());
+    NoesisStencilMemory.resize(SwapchainImages.size());
+    
+    for (size_t i = 0; i < SwapchainImages.size(); i++)
+    {
+        // Create stencil image
+        VkImageCreateInfo imageInfo{};
+        imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+        imageInfo.imageType = VK_IMAGE_TYPE_2D;
+        imageInfo.format = NoesisStencilFormat;
+        imageInfo.extent.width = Extent2D.width;
+        imageInfo.extent.height = Extent2D.height;
+        imageInfo.extent.depth = 1;
+        imageInfo.mipLevels = 1;
+        imageInfo.arrayLayers = 1;
+        imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+        imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+        imageInfo.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+        imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        
+        if (vkCreateImage(Device, &imageInfo, nullptr, &NoesisStencilImages[i]) != VK_SUCCESS)
+            throw std::runtime_error("Failed to create Noesis stencil image");
+        
+        // Allocate memory
+        VkMemoryRequirements memReqs;
+        vkGetImageMemoryRequirements(Device, NoesisStencilImages[i], &memReqs);
+        
+        VkMemoryAllocateInfo allocInfo{};
+        allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        allocInfo.allocationSize = memReqs.size;
+        allocInfo.memoryTypeIndex = FindMemoryType(memReqs.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        
+        if (vkAllocateMemory(Device, &allocInfo, nullptr, &NoesisStencilMemory[i]) != VK_SUCCESS)
+            throw std::runtime_error("Failed to allocate Noesis stencil memory");
+        
+        vkBindImageMemory(Device, NoesisStencilImages[i], NoesisStencilMemory[i], 0);
+        
+        // Create image view
+        VkImageViewCreateInfo viewInfo{};
+        viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        viewInfo.image = NoesisStencilImages[i];
+        viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        viewInfo.format = NoesisStencilFormat;
+        viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_STENCIL_BIT;
+        if (NoesisStencilFormat != VK_FORMAT_S8_UINT)
+            viewInfo.subresourceRange.aspectMask |= VK_IMAGE_ASPECT_DEPTH_BIT;
+        viewInfo.subresourceRange.baseMipLevel = 0;
+        viewInfo.subresourceRange.levelCount = 1;
+        viewInfo.subresourceRange.baseArrayLayer = 0;
+        viewInfo.subresourceRange.layerCount = 1;
+        
+        if (vkCreateImageView(Device, &viewInfo, nullptr, &NoesisStencilImageViews[i]) != VK_SUCCESS)
+            throw std::runtime_error("Failed to create Noesis stencil image view");
+    }
+}
+
+void VulkanCore::CreateNoesisFramebuffers()
+{
+    NoesisFramebuffers.resize(SwapchainImages.size());
+    
+    for (size_t i = 0; i < SwapchainImages.size(); i++)
+    {
+        VkImageView attachments[] = {
+            NoesisStencilImageViews[i],  // Attachment 0: Stencil
+            SwapchainImages[i].ImageView // Attachment 1: Color
+        };
+        
+        VkFramebufferCreateInfo framebufferInfo{};
+        framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+        framebufferInfo.renderPass = NoesisCompatibilityRenderPass;
+        framebufferInfo.attachmentCount = 2;  // Changed from 1
+        framebufferInfo.pAttachments = attachments;
+        framebufferInfo.width = Extent2D.width;
+        framebufferInfo.height = Extent2D.height;
+        framebufferInfo.layers = 1;
+        
+        VkResult result = vkCreateFramebuffer(Device, &framebufferInfo, nullptr, &NoesisFramebuffers[i]);
+        if (result != VK_SUCCESS)
+            throw std::runtime_error("Failed to create Noesis framebuffer");
+    }
+}
+
+uint32_t VulkanCore::FindMemoryType(uint32_t allowedTypes, VkMemoryPropertyFlags flags)
+{
+    // Get properties of physical device memory
+    VkPhysicalDeviceMemoryProperties memoryProperties;
+    vkGetPhysicalDeviceMemoryProperties(PhysicalDevice, &memoryProperties);
+
+    // Iterate through memory types to find one that matches the required properties
+    for (uint32_t i = 0; i < memoryProperties.memoryTypeCount; i++)
+        if ((allowedTypes & (1 << i)) && (memoryProperties.memoryTypes[i].propertyFlags & flags) == flags)
+            return i;
+
+    throw std::runtime_error("Failed to find suitable memory type for mesh vertex buffer.");
+}
 
 void VulkanCore::CreateSynchronizationPrimitives()
 {
@@ -617,6 +772,7 @@ VkExtent2D VulkanCore::SelectExtent(const VkSurfaceCapabilitiesKHR& capabilities
 {
     // If current extent is at numeric limit, then extent cna vary
     // Or else it's the size of the window
+    
     if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max())
     {
         return capabilities.currentExtent;
@@ -628,7 +784,7 @@ VkExtent2D VulkanCore::SelectExtent(const VkSurfaceCapabilitiesKHR& capabilities
 
         // TODO: Add glfw support back later.
         //glfwGetFramebufferSize(Window, &width, &height);
-
+        
         width = RenderWindow->GetWidth();
         height = RenderWindow->GetHeight();
 

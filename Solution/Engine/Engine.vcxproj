@@ -103,7 +103,7 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>$(SolutionDir)..;$(SolutionDir)../External/NoesisGUI-NativeSDK-win-3.2.12-Indie/Include;$(SolutionDir)../External/NoesisGUI-NativeSDK-win-3.2.12-Indie/Src/Packages/Render/VKRenderDevice/Include;$(SolutionDir)../External/NoesisGUI-NativeSDK-win-3.2.12-Indie/Src/Packages/Render/D3D12RenderDevice/Include;$(SolutionDir)../External/NoesisGUI-NativeSDK-win-3.2.12-Indie/Src/Packages/App/Providers/Include;$(VULKAN_SDK)\Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)..;$(SolutionDir)../External/NoesisGUI-NativeSDK-win-3.2.12-Indie/Include;$(SolutionDir)../External/NoesisGUI-NativeSDK-win-3.2.12-Indie/Src/Packages/Render/VKRenderDevice/Include;$(SolutionDir)../External/NoesisGUI-NativeSDK-win-3.2.12-Indie/Src/Packages/Render/D3D12RenderDevice/Include;$(SolutionDir)../External/NoesisGUI-NativeSDK-win-3.2.12-Indie/Src/Packages/App/Interactivity/Include;$(SolutionDir)../External/NoesisGUI-NativeSDK-win-3.2.12-Indie/Src/Packages/App/Shaders/Include;$(SolutionDir)../External/NoesisGUI-NativeSDK-win-3.2.12-Indie/Src/Packages/App/Providers/Include;$(SolutionDir)../External/NoesisGUI-NativeSDK-win-3.2.12-Indie/Src/Packages/App/Launcher/Include;$(VULKAN_SDK)\Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>

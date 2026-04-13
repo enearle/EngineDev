@@ -10,14 +10,15 @@ class Pipeline
 protected:
     std::vector<uint64_t> PipelineInputDescriptorSetIDs;
     IOResource* PipelineOutputResource;
-    std::vector<DirectX::XMFLOAT4> clearColors;
-    float depthClearValue = 1;
+    std::vector<DirectX::XMFLOAT4> ClearColors;
+    float DepthClearValue = 1;
     uint32_t PushConstantCount = 0;
+
 public:
     static RHI_API Pipeline* Create(uint32_t pipelineID, const PipelineDesc& desc, std::vector<IOResource>* inputIOResources = nullptr);
     virtual ~Pipeline() = default;
-    std::vector<DirectX::XMFLOAT4> GetClearColors() const { return clearColors; }
-    float GetDepthClearValue() const { return depthClearValue; }
+    std::vector<DirectX::XMFLOAT4> GetClearColors() const { return ClearColors; }
+    float GetDepthClearValue() const { return DepthClearValue; }
     std::vector<uint64_t> GetInputDescriptorSetIDs() const { return PipelineInputDescriptorSetIDs; }
     IOResource* GetOutputResource() const { return PipelineOutputResource; }
     uint32_t GetPushConstantCount() const { return PushConstantCount; }
@@ -66,7 +67,6 @@ public:
     
     VkPipeline GetVulkanPipeline() const { return Pipeline; }
     VkPipelineLayout GetPipelineLayout() const { return PipelineLayout; }
-    VkRenderPass GetRenderPass() const { return RenderPass; }
     
     void* GetOwnedImage(uint32_t index) override { return OwnedImages[index]; }
     size_t GetOwnedImageCount() const override { return OwnedImages.size(); }

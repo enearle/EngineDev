@@ -168,6 +168,7 @@ int main(int argc, char* argv[])
         
         Renderer::DrawFrame();
     }
+    Renderer::Wait();
     uiLayer.NoesisShutdown();
     return Renderer::End();
 }

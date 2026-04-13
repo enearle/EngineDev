@@ -25,6 +25,7 @@ class D3DCore
     
     ComPtr<IDXGIFactory6> Factory;
     ComPtr<ID3D12Device> Device;
+    
 
     static const int SwapChainBufferCount = 3;
     int CurrentBackBuffer = 0;
@@ -45,10 +46,13 @@ class D3DCore
     ComPtr<ID3D12Fence> TransferFence;
     
     ComPtr<ID3D12Resource> SwapChainBuffer[SwapChainBufferCount];
+    ComPtr<ID3D12Resource> NoesisDepthStencilBuffers[SwapChainBufferCount];
     ComPtr<ID3D12Resource> DepthStencilBuffer;
-
+    ComPtr<ID3D12Resource> NoesisDepthStencilBuffer;
+    
     ComPtr<ID3D12DescriptorHeap> RenderTargetDescriptorHeap;
     ComPtr<ID3D12DescriptorHeap> DepthStencilDescriptorHeap;
+    ComPtr<ID3D12DescriptorHeap> NoesisDepthStencilDescriptorHeap;
 
     UINT RenderTargetDescriptorOffset = 0;
     UINT DepthStencilDescriptorOffset = 0;
@@ -57,6 +61,7 @@ class D3DCore
 
     bool SwapChainMSAA = false;
     UINT SwapChainMSAASamples = 1;
+    UINT SwapChainMSAAQuality = 0;
     
 public:
     ~D3DCore() = default;
@@ -77,17 +82,19 @@ public:
     ComPtr<ID3D12Fence> GetFrameFence() const { return Fence; }
     ComPtr<ID3D12Fence> GetTransferFence() const { return TransferFence; }
     uint32_t GetCurrentFrameIndex() const { return CurrentFrameIndex; }
+    uint32_t GetFramesInFlight() const { return SwapChainBufferCount; }
     ComPtr<ID3D12DescriptorHeap> GetRenderTargetDescriptorHeap() const { return RenderTargetDescriptorHeap; }
-    ComPtr<ID3D12DescriptorHeap> GetDepthStencilDescriptorHeap() const { return DepthStencilDescriptorHeap; }
+    ComPtr<ID3D12DescriptorHeap> GetNoesisDepthStencilDescriptorHeap() const { return DepthStencilDescriptorHeap; }
     UINT GetMSAAQualityLevel(DXGI_FORMAT format, UINT sampleCount);
     D3D12_CPU_DESCRIPTOR_HANDLE GetRenderTargetDescriptor();
+    D3D12_CPU_DESCRIPTOR_HANDLE GetNoesisDepthStencilDescriptor();
     ID3D12Resource* GetCurrentBackBuffer() const { return SwapChainBuffer[CurrentFrameIndex].Get(); }
     DXGI_FORMAT GetRenderTargetFormat() const { return RenderTargetFormat; }
     DXGI_SAMPLE_DESC GetSampleDesc() const 
     { 
         DXGI_SAMPLE_DESC desc;
         desc.Count = SwapChainMSAA ? SwapChainMSAASamples : 1;
-        desc.Quality = 0;
+        desc.Quality = SwapChainMSAAQuality;
         return desc;
     }
 
@@ -100,8 +107,8 @@ private:
     void CreateCommandObjects();
     void CreateSwapChain();
     void CreateSwapChainDescriptorHeaps();
+    void CreateNoesisDepthStencilBuffers();
     void WaitForFrame(uint32_t frameIndex);
-    
 public:
 
     

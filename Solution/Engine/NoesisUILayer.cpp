@@ -1,5 +1,12 @@
 ﻿#include "NoesisUILayer.h"
 #include "Common/ForwardInterface.h"
+#include <NsApp/Interaction.h>
+#include <NsApp/BackgroundEffectBehavior.h>
+#include <NsApp/BehaviorCollection.h>
+#include <NsApp/TriggerCollection.h>
+#include <NsApp/MouseDragElementBehavior.h>
+#include <NsApp/EventTrigger.h>
+#include <NsApp/ControlStoryboardAction.h>
 #include <NsGui/IntegrationAPI.h>
 #include <NsRender/VKFactory.h>
 #include <NsRender/D3D12Factory.h>
@@ -11,19 +18,21 @@
 #include <print>
 #include "Common/Window.h"
 #include "Solution/RHI/Renderer.h"
+#include <NsGui/Uri.h>
 
 void NoesisUILayer::NoesisInit()
 {
+    Init();
+    
     Noesis::GUI::SetLogHandler([](const char*, uint32_t, uint32_t level, const char*, const char* msg)
     {
         const char* prefixes[] = { "T", "D", "I", "W", "E" };
         std::println("[NOESIS/{}] {}", prefixes[level], msg);
     });
-    Noesis::GUI::Init();
     
-    Noesis::GUI::SetXamlProvider(Noesis::MakePtr<NoesisApp::LocalXamlProvider>("./Assets"));
-    Noesis::GUI::SetFontProvider(Noesis::MakePtr<NoesisApp::LocalFontProvider>("./Assets"));
-    Noesis::GUI::SetTextureProvider(Noesis::MakePtr<NoesisApp::LocalTextureProvider>("./Assets"));
+    Noesis::GUI::SetXamlProvider(Noesis::MakePtr<NoesisApp::LocalXamlProvider>("."));
+    Noesis::GUI::SetFontProvider(Noesis::MakePtr<NoesisApp::LocalFontProvider>("."));
+    Noesis::GUI::SetTextureProvider(Noesis::MakePtr<NoesisApp::LocalTextureProvider>("."));
     
     if (ForwardInterface::GetCurrentAPI() == Vulkan)
     {
@@ -37,6 +46,7 @@ void NoesisUILayer::NoesisInit()
         info.stereoSupport = false;
         
         RenderDevice = NoesisApp::VKFactory::CreateDevice(true, info);
+        NoesisApp::VKFactory::WarmUpRenderPass(RenderDevice.GetPtr(), ForwardInterface::GetNoesisCompatibilityRenderPass(), VK_SAMPLE_COUNT_1_BIT);
     }
     else if (ForwardInterface::GetCurrentAPI() == DirectX12)
     {
@@ -50,7 +60,7 @@ void NoesisUILayer::NoesisInit()
             );
     }
     
-    Noesis::Ptr<Noesis::FrameworkElement> xaml = Noesis::GUI::LoadXaml<Noesis::FrameworkElement>("YourUI.xaml");
+    Noesis::Ptr<Noesis::FrameworkElement> xaml = Noesis::GUI::LoadXaml<Noesis::FrameworkElement>(Noesis::Uri("MyXAML/MainPage.xaml"));
     View = Noesis::GUI::CreateView(xaml);
     View->GetRenderer()->Init(RenderDevice.GetPtr());
     View->SetSize(Renderer::GetWindow()->GetWidth(), Renderer::GetWindow()->GetHeight());
@@ -75,7 +85,6 @@ void NoesisUILayer::NoesisRenderOffscreen()
         info.safeFrameNumber = frameCounter > 2 ? frameCounter - 2 : 0;
         
         NoesisApp::VKFactory::SetCommandBuffer(RenderDevice.GetPtr(), info);
-        NoesisApp::VKFactory::SetRenderPass(RenderDevice.GetPtr(), ForwardInterface::GetNoesisCompatibilityRenderPass(), VK_SAMPLE_COUNT_1_BIT);
     }
     else if (ForwardInterface::GetCurrentAPI() == DirectX12)
     {
@@ -83,14 +92,33 @@ void NoesisUILayer::NoesisRenderOffscreen()
             ForwardInterface::GetCommandList(),
             frameCounter);
     }
-    
     View->GetRenderer()->UpdateRenderTree();
     View->GetRenderer()->RenderOffscreen();
 }
 
 void NoesisUILayer::NoesisRenderOnscreen()
 {
-    View->GetRenderer()->Render();
+    if (ForwardInterface::GetCurrentAPI() == Vulkan)
+    {
+        NoesisApp::VKFactory::SetRenderPass(RenderDevice.GetPtr(), ForwardInterface::GetNoesisCompatibilityRenderPass(), VK_SAMPLE_COUNT_1_BIT);
+        const uint32_t framesInFlight = ForwardInterface::GetVulkanFramesInFlight();
+        NoesisApp::VKFactory::RecordingInfo info = {};
+        info.commandBuffer = ForwardInterface::GetCommandBuffer();
+        info.frameNumber = frameCounter;
+        info.safeFrameNumber = frameCounter > framesInFlight ? frameCounter - framesInFlight : 0;
+        
+        NoesisApp::VKFactory::SetCommandBuffer(RenderDevice.GetPtr(), info);
+        View->GetRenderer()->Render(true);
+    }
+    else if (ForwardInterface::GetCurrentAPI() == DirectX12)
+    {
+        NoesisApp::D3D12Factory::SetCommandList(RenderDevice.GetPtr(), 
+            ForwardInterface::GetCommandList(),
+            frameCounter);
+        View->GetRenderer()->Render();
+    }
+    
+    NoesisApp::D3D12Factory::EndPendingSplitBarriers(RenderDevice);
 }
 
 void NoesisUILayer::NoesisShutdown()
@@ -98,4 +126,8 @@ void NoesisUILayer::NoesisShutdown()
     View->GetRenderer()->Shutdown();
     View.Reset();
     RenderDevice.Reset();
+}
+
+void NoesisUILayer::RegisterComponents() const
+{
 }

@@ -1,0 +1,53 @@
+<Page
+  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+  xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+  xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+  xmlns:noesis="clr-namespace:NoesisGUIExtensions"
+  xmlns:b="http://schemas.microsoft.com/xaml/behaviors"
+  mc:Ignorable="d"
+  d:DesignWidth="1920"
+  d:DesignHeight="1080"
+  Background="#FF4D5052">
+  <Grid x:Name="Root_Grid">
+    <Image x:Name="Background_Image" Source="Assets/tarkov.png"/>
+    <Grid x:Name="Badge_Grid" Margin="0,80,0,0" HorizontalAlignment="Center" VerticalAlignment="Top">
+      <Grid.Effect>
+        <DropShadowEffect Color="#FF182008" BlurRadius="24" Direction="-90" ShadowDepth="64" Opacity="0.467"/>
+      </Grid.Effect>
+      <Path x:Name="BadgeBlur" RenderTransformOrigin="0.5,0.5" Data="M345.977,551.25A32,32 0 01290.551,551.25L145.276,299.625 145.276,299.625 0,48A32,32 0 0127.7129,0L318.264,6.10352e-05 318.264,6.10352e-05 608.816,6.10352e-05A32,32 0 01636.529,48.0001L491.253,299.625 491.253,299.625 345.977,551.25z" Stretch="Fill" Width="600" Height="500" HorizontalAlignment="Center" VerticalAlignment="Center" Fill="#FFF4F4F5" Stroke="#00000000" StrokeThickness="2" StrokeLineJoin="Round" StrokeMiterLimit="0">
+        <Path.Transform3D>
+          <noesis:CompositeTransform3D/>
+        </Path.Transform3D>
+        <b:Interaction.Behaviors>
+          <noesis:BackgroundEffectBehavior Source="{Binding ElementName=Background_Image}">
+            <noesis:BackgroundEffectBehavior.Effect>
+              <BlurEffect Radius="72"/>
+            </noesis:BackgroundEffectBehavior.Effect>
+          </noesis:BackgroundEffectBehavior>
+        </b:Interaction.Behaviors>
+      </Path>
+      <Path x:Name="BadgeOverlay" RenderTransformOrigin="0.5,0.5" Data="{Binding Path=Data, ElementName=BadgeBlur}" Stretch="Fill" Width="{Binding Path=Width, ElementName=BadgeBlur}" Height="500" HorizontalAlignment="Center" VerticalAlignment="Center" Fill="#25FF6500" Stroke="#FFBD973A" StrokeThickness="2" StrokeLineJoin="Round" StrokeMiterLimit="0">
+        <Path.Transform3D>
+          <noesis:CompositeTransform3D/>
+        </Path.Transform3D>
+      </Path>
+      <Image x:Name="Icon" RenderTransformOrigin="0.5,0.5" Source="Assets/gun.png" Width="360" Height="360" Margin="-45,-180,0,0">
+        <Image.Effect>
+          <DropShadowEffect Color="#FF710000" BlurRadius="15" Direction="-135" ShadowDepth="18" Opacity="0.511"/>
+        </Image.Effect>
+        <Image.RenderTransform>
+          <TransformGroup>
+            <ScaleTransform/>
+            <SkewTransform/>
+            <RotateTransform Angle="-25"/>
+            <TranslateTransform/>
+          </TransformGroup>
+        </Image.RenderTransform>
+        <Image.Transform3D>
+          <noesis:CompositeTransform3D ScaleX="0.9" ScaleY="0.9" ScaleZ="0.9"/>
+        </Image.Transform3D>
+      </Image>
+    </Grid>
+  </Grid>
+</Page>

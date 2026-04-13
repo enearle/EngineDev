@@ -28,8 +28,8 @@ Pipeline* Pipeline::Create(uint32_t pipelineID, const PipelineDesc& desc, std::v
 
 D3DPipeline::D3DPipeline(uint32_t pipelineID, const PipelineDesc& desc, std::vector<IOResource>* inputIOResources)
 {
-    clearColors = desc.AttachmentClearValues;
-    depthClearValue = desc.DepthClearValue;
+    ClearColors = desc.AttachmentClearValues;
+    DepthClearValue = desc.DepthClearValue;
     PushConstantCount = static_cast<uint32_t>(desc.Constants.size());
     
     ComPtr<ID3D12Device> device = D3DCore::Instance().GetDevice();
@@ -371,9 +371,10 @@ D3DPipeline::D3DPipeline(uint32_t pipelineID, const PipelineDesc& desc, std::vec
 
 VulkanPipeline::VulkanPipeline(uint32_t pipelineID, const PipelineDesc& desc, std::vector<IOResource>* inputIOResources)
 {
-    clearColors = desc.AttachmentClearValues;
-    depthClearValue = desc.DepthClearValue;
+    ClearColors = desc.AttachmentClearValues;
+    DepthClearValue = desc.DepthClearValue;
     PushConstantCount = static_cast<uint32_t>(desc.Constants.size());
+    
     // Cache shader modules for cleanup
     // All shaders will allways be loaded. This is meh, but for my engine probably fine.
     std::vector<VkPipelineShaderStageCreateInfo> shaderStages;
@@ -859,9 +860,6 @@ VulkanPipeline::~VulkanPipeline()
         
     if (PipelineCache != VK_NULL_HANDLE)
         vkDestroyPipelineCache(device, PipelineCache, nullptr);
-        
-    if (RenderPass != VK_NULL_HANDLE)
-        vkDestroyRenderPass(device, RenderPass, nullptr);
         
     if (PipelineLayout != VK_NULL_HANDLE)
         vkDestroyPipelineLayout(device, PipelineLayout, nullptr);
