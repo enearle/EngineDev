@@ -22,7 +22,6 @@ void MoveCamera(DirectX::XMFLOAT2& moveVec, DirectX::XMFLOAT2 addedVec)
 int main(int argc, char* argv[])
 {
     Window* window = new Window(L"MyWindow", Win32, 1280, 720);
-    
     Renderer::Start(window);
     
     
@@ -39,7 +38,8 @@ int main(int argc, char* argv[])
     
     Renderer::CreatePipelines(pipelineDescs, vpBindings);
     
-    // Load a game object WIP (gameobject class not complete)
+    
+    // Load a game object WIP (gameobject/scenegraph not complete)
     new TempGameObject({"shells_0", "shells_1"},"shells.fbx", "Shells");
     CameraController* CameraCon = new CameraController(Camera::ActiveCamera, 5.0f);
     
@@ -48,19 +48,24 @@ int main(int argc, char* argv[])
     while (!window->PeekMessages())
     {
         Time::UpdateTime();
-        InputEventSystem::PollInput(Time::GetDeltaTime());
+        
+        
+        InputEventSystem::PollInput(window->GetWindowHandle(), Time::GetDeltaTime());
         InputEventSystem::ProcessCommands(Time::GetDeltaTime());
+        
+        
         NoesisUILayer::Instance().NoesisUpdate(Time::GetDeltaTime());
+        
         
         //float radius = 15.0f;
         //float speed = 0.5f;
         //DirectX::XMFLOAT3 cameraPosition = {radius * sinf(Time::GetRunningTime() * speed), 10.0f, radius * cosf(Time::GetRunningTime() * speed)};
         //Camera::ActiveCamera->SetPositionFloat3(cameraPosition);
         //Camera::ActiveCamera->LookAtFloat3({});
-        
         CameraCon->MoveCamera(Time::GetDeltaTime());
-
         Camera::UpdateMainCameraRenderData();
+        
+        
         Renderer::DrawFrame();
     }
     

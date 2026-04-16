@@ -1,4 +1,7 @@
 ﻿#include "NoesisUILayer.h"
+
+#include <iostream>
+
 #include "Common/ForwardInterface.h"
 #include <NsApp/Interaction.h>
 #include <NsApp/BackgroundEffectBehavior.h>
@@ -15,16 +18,23 @@
 #include <NsApp/LocalTextureProvider.h>
 #include <NsGui/IView.h>
 #include <NsGui/IRenderer.h>
+#include <NsGui/Button.h>
+#include <NsCore/Delegate.h>
+#include <NsGui/ResourceDictionary.h>
+#include <NsGui/UICollection.h>
 #include <print>
 #include "Common/Window.h"
 #include "Solution/RHI/Renderer.h"
 #include <NsGui/Uri.h>
+
+#include "InputEventSystem.h"
 
 NoesisUILayer& NoesisUILayer::Instance()
 {
     static NoesisUILayer instance;
     return instance;
 }
+
 
 void NoesisUILayer::NoesisInit()
 {
@@ -66,11 +76,31 @@ void NoesisUILayer::NoesisInit()
             );
     }
     
-    Noesis::Ptr<Noesis::FrameworkElement> xaml = Noesis::GUI::LoadXaml<Noesis::FrameworkElement>(Noesis::Uri("MyXAML/MainPage.xaml"));
+
+    Noesis::Ptr<Noesis::ResourceDictionary> theme = Noesis::GUI::LoadXaml<Noesis::ResourceDictionary>(
+    Noesis::Uri("MyXAML/NoesisTheme.DarkBlue.xaml"));
+
+    Noesis::Ptr<Noesis::FrameworkElement> xaml = Noesis::GUI::LoadXaml<Noesis::FrameworkElement>(
+        Noesis::Uri("MyXAML/MainPage.xaml"));
+
+    xaml->GetResources()->GetMergedDictionaries()->Add(theme.GetPtr());
+    
+    Noesis::Button* button = xaml->FindName<Noesis::Button>("myButton");
+    if (button != nullptr)
+    {
+        if (button != nullptr)
+        {
+            button->Click() += Noesis::MakeDelegate(this, &NoesisUILayer::OnButtonClick);
+        }
+    }
     View = Noesis::GUI::CreateView(xaml);
     View->GetRenderer()->Init(RenderDevice.GetPtr());
     View->SetSize(Renderer::GetWindow()->GetWidth(), Renderer::GetWindow()->GetHeight());
     View->SetFlags(Noesis::RenderFlags_PPAA | Noesis::RenderFlags_LCD);
+    
+    InputEventSystem::RegisterMouseDeltaCallback([this](float x, float y) { View->MouseMove(x,y); });
+    InputEventSystem::RegisterMouseDownCallback([this](float x, float y) { View->MouseButtonDown(x,y, Noesis::MouseButton_Left); });
+    InputEventSystem::RegisterMouseUpCallback([this](float x, float y) { View->MouseButtonUp(x,y, Noesis::MouseButton_Left); });
     
     Renderer::SetStartOfFrameCallback([this]() { this->NoesisRenderOffscreen(); });
     Renderer::SetRenderCallback([this]() { this->NoesisRenderOnscreen(); });
@@ -127,8 +157,6 @@ void NoesisUILayer::NoesisRenderOnscreen()
         View->GetRenderer()->Render();
         NoesisApp::D3D12Factory::EndPendingSplitBarriers(RenderDevice);
     }
-    
-    
 }
 
 void NoesisUILayer::NoesisShutdown()
@@ -140,4 +168,9 @@ void NoesisUILayer::NoesisShutdown()
 
 void NoesisUILayer::RegisterComponents() const
 {
+}
+
+void NoesisUILayer::OnButtonClick(Noesis::BaseComponent* sender, const Noesis::RoutedEventArgs& e)
+{
+    std::cout << "Button clicked!" << std::endl;
 }

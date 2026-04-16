@@ -183,6 +183,16 @@
     <ClInclude Include="TempGameObject.h" />
     <ClInclude Include="Time.h" />
   </ItemGroup>
+  <ItemGroup>
+    <Content Include="MyXAML\Fonts\PT Root UI_Bold.otf" />
+    <Content Include="MyXAML\Fonts\PT Root UI_Regular.otf" />
+    <Content Include="MyXAML\MainPage.xaml" />
+    <Content Include="MyXAML\NoesisTheme.Brushes.DarkBlue.xaml" />
+    <Content Include="MyXAML\NoesisTheme.Colors.Dark.xaml" />
+    <Content Include="MyXAML\NoesisTheme.DarkBlue.xaml" />
+    <Content Include="MyXAML\NoesisTheme.Fonts.xaml" />
+    <Content Include="MyXAML\NoesisTheme.Styles.xaml" />
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>

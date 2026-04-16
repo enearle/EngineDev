@@ -1,12 +1,12 @@
 ﻿#include "InputEventSystem.h"
-
 #include <vector>
-#include <windows.h>
+
 
 std::unordered_map<std::string, KeyState> InputEventSystem::sRegisteredGameplayInput;
 std::unordered_map<std::string, KeyState> InputEventSystem::sRegisteredMenuInput;
 std::vector<MouseDeltaCallback> InputEventSystem::sMouseCallbacks;
-std::vector<MouseClickCallback> InputEventSystem::sMouseClickCallbacks;
+std::vector<MouseClickCallback> InputEventSystem::sMouseUpCallbacks;
+std::vector<MouseClickCallback> InputEventSystem::sMouseDownCallbacks;
 CommandQueue InputEventSystem::sCommandQueue;
 InputMode InputEventSystem::sInputMode = InputMode::Gameplay;
 bool InputEventSystem::sGameplayShowCursor = false;
@@ -50,8 +50,16 @@ void InputEventSystem::RegisterCommand(InputMode inputMode, const std::string& k
     }
 }
 
-void InputEventSystem::PollInput(double deltaTime)
+void InputEventSystem::PollInput(HWND hwnd, double deltaTime)
 {
+    static bool wasPressed = false;
+    bool isPressed = GetAsyncKeyState(VK_LBUTTON) & 0x8000;
+    POINT mousePos;
+    GetCursorPos(&mousePos);
+    int x = mousePos.x;
+    int y = mousePos.y;
+    ScreenToClient(hwnd, &mousePos);
+    
     switch (sInputMode)
     {
     case InputMode::Gameplay:
@@ -66,6 +74,23 @@ void InputEventSystem::PollInput(double deltaTime)
             
             keyState.Update(combinationActive,sCommandQueue);
         }
+        
+        for (auto callback : sMouseCallbacks)
+            callback(x, y);
+        
+        if (wasPressed && !isPressed)
+        {
+            for (auto callback : sMouseUpCallbacks)
+                callback(x, y);
+        }
+        else if (isPressed && !wasPressed)
+        {
+            for (auto callback : sMouseDownCallbacks)
+                callback(x, y);
+        }
+
+        wasPressed = isPressed;
+        
         break;
     case InputMode::UI:
         for (auto& [keyString, keyState] : sRegisteredMenuInput) 

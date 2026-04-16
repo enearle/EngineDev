@@ -1,10 +1,12 @@
 ﻿#pragma once
+#include <windows.h>
 #include <algorithm>
 #include <functional>
 #include <queue>
 #include <unordered_map>
 #include <unordered_set>
 #include <string>
+
 
 namespace DirectX
 {
@@ -21,8 +23,8 @@ enum KeyAction
 enum class InputMode { Gameplay, UI };
 
 using CommandCallback = std::function<void (double)>;
-using MouseDeltaCallback = std::function<void (double, const DirectX::XMFLOAT2&)>;
-using MouseClickCallback = std::function<void (double)>;
+using MouseDeltaCallback = std::function<void (float, float)>;
+using MouseClickCallback = std::function<void (float, float)>;
 
 class CommandQueue {
     std::queue<CommandCallback> mQueue;
@@ -98,7 +100,8 @@ class InputEventSystem
     static std::unordered_map<std::string, KeyState> sRegisteredGameplayInput;
     static std::unordered_map<std::string, KeyState> sRegisteredMenuInput;
     static std::vector<MouseDeltaCallback> sMouseCallbacks;
-    static std::vector<MouseClickCallback> sMouseClickCallbacks;
+    static std::vector<MouseClickCallback> sMouseUpCallbacks;
+    static std::vector<MouseClickCallback> sMouseDownCallbacks;
     static CommandQueue sCommandQueue;
     static InputMode sInputMode;
     static InputMode sNextInputMode;
@@ -122,7 +125,7 @@ class InputEventSystem
 public:
 
     static void RegisterCommand(InputMode inputMode, const std::string& keyCombination, KeyAction action, CommandCallback callback);
-    static void PollInput(double deltaTime);
+    static void PollInput(HWND hwnd, double deltaTime);
     static void ChangeInputMode(InputMode inputMode) { sInputMode = inputMode; }
     static void ProcessCommands(double deltaTime) { while (!sCommandQueue.isEmpty()) sCommandQueue.pop()(deltaTime); }
     static void ClearCommands() { sCommandQueue.clear(); }
@@ -137,7 +140,7 @@ public:
     static void SetCursorClampWhenHidden(bool clampCursorActive) { sClampCursorToWindowWhenHidden = clampCursorActive; }
     static void SetCursorClampWhenShown(bool clampCursorActive) { sClampCursorToWindowWhenShown = clampCursorActive; }
     static void RegisterMouseDeltaCallback(MouseDeltaCallback callback) { sMouseCallbacks.push_back(callback); }
-    static void RegisterMouseClickCallback(MouseClickCallback callback) { sMouseClickCallbacks.push_back(callback); }
-    
+    static void RegisterMouseUpCallback(MouseClickCallback callback) { sMouseUpCallbacks.push_back(callback); }
+    static void RegisterMouseDownCallback(MouseClickCallback callback) { sMouseDownCallbacks.push_back(callback); }
 };
 

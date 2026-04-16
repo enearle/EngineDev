@@ -8,6 +8,9 @@
   mc:Ignorable="d"
   d:DesignWidth="1920"
   d:DesignHeight="1080" Background="#004D5052">
+  <Page.Resources>
+    <ResourceDictionary Source="NoesisTheme.DarkBlue.xaml"/>
+  </Page.Resources>
   <Grid x:Name="Root_Grid">
     <Image x:Name="Background_Image" Source="Assets/tarkov.png" Opacity="0"/>
     <Grid x:Name="Badge_Grid" HorizontalAlignment="Left" VerticalAlignment="Center">
@@ -48,5 +51,6 @@
         </Image.Transform3D>
       </Image>
     </Grid>
+    <Button x:Name="myButton" Content="Button" Width="200" Height="200" HorizontalAlignment="Right" VerticalAlignment="Center" FontFamily="Cambria"/>
   </Grid>
 </Page>

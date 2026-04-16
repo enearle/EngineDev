@@ -14,6 +14,8 @@ public:
     void NoesisRenderOffscreen();
     void NoesisRenderOnscreen();
     void NoesisShutdown();
+private:
+    void OnButtonClick(Noesis::BaseComponent* sender, const Noesis::RoutedEventArgs& e);
 
 protected:
     // Override from Launcher to register custom components (if any)
