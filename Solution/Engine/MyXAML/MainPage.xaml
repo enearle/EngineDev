@@ -7,11 +7,10 @@
   xmlns:b="http://schemas.microsoft.com/xaml/behaviors"
   mc:Ignorable="d"
   d:DesignWidth="1920"
-  d:DesignHeight="1080"
-  Background="#FF4D5052">
+  d:DesignHeight="1080" Background="#004D5052">
   <Grid x:Name="Root_Grid">
-    <Image x:Name="Background_Image" Source="Assets/tarkov.png"/>
-    <Grid x:Name="Badge_Grid" Margin="0,80,0,0" HorizontalAlignment="Center" VerticalAlignment="Top">
+    <Image x:Name="Background_Image" Source="Assets/tarkov.png" Opacity="0"/>
+    <Grid x:Name="Badge_Grid" HorizontalAlignment="Left" VerticalAlignment="Center">
       <Grid.Effect>
         <DropShadowEffect Color="#FF182008" BlurRadius="24" Direction="-90" ShadowDepth="64" Opacity="0.467"/>
       </Grid.Effect>

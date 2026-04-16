@@ -20,6 +20,12 @@
 #include "Solution/RHI/Renderer.h"
 #include <NsGui/Uri.h>
 
+NoesisUILayer& NoesisUILayer::Instance()
+{
+    static NoesisUILayer instance;
+    return instance;
+}
+
 void NoesisUILayer::NoesisInit()
 {
     Init();
@@ -65,6 +71,9 @@ void NoesisUILayer::NoesisInit()
     View->GetRenderer()->Init(RenderDevice.GetPtr());
     View->SetSize(Renderer::GetWindow()->GetWidth(), Renderer::GetWindow()->GetHeight());
     View->SetFlags(Noesis::RenderFlags_PPAA | Noesis::RenderFlags_LCD);
+    
+    Renderer::SetStartOfFrameCallback([this]() { this->NoesisRenderOffscreen(); });
+    Renderer::SetRenderCallback([this]() { this->NoesisRenderOnscreen(); });
 }
 
 void NoesisUILayer::NoesisUpdate(float deltaTime)
@@ -116,9 +125,10 @@ void NoesisUILayer::NoesisRenderOnscreen()
             ForwardInterface::GetCommandList(),
             frameCounter);
         View->GetRenderer()->Render();
+        NoesisApp::D3D12Factory::EndPendingSplitBarriers(RenderDevice);
     }
     
-    NoesisApp::D3D12Factory::EndPendingSplitBarriers(RenderDevice);
+    
 }
 
 void NoesisUILayer::NoesisShutdown()

@@ -341,6 +341,8 @@ namespace RHIStructures
     
     struct PipelineDesc
     {
+        bool IsPresented = false;
+        bool IsQuad = false;
         bool CreateOwnAttachments = false;
         bool UseOwnResourceLayout = true;
         bool CreateDepthImage = false;

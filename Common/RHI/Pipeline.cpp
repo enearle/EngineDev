@@ -43,6 +43,11 @@ D3DPipeline::D3DPipeline(uint32_t pipelineID, const PipelineDesc& desc, std::vec
         for (const IOResource& ioResource : *inputIOResources)
             resourceLayouts.push_back(ioResource.Layout);
 
+    if (inputIOResources)
+        for (uint32_t i = desc.UseOwnResourceLayout ? 1 : 0; i < resourceLayouts.size(); i++)
+            for (auto& binding : resourceLayouts[i].Bindings)
+                binding.Set = i;
+    
     RootSignature = D3DRootSignatureBuilder::BuildRootSignature(pipelineID, resourceLayouts, desc.Constants);
     
     if (inputIOResources)
@@ -560,6 +565,11 @@ VulkanPipeline::VulkanPipeline(uint32_t pipelineID, const PipelineDesc& desc, st
     if (inputIOResources)
         for (const IOResource& ioResource : *inputIOResources)
             resourceLayouts.push_back(ioResource.Layout);
+    
+    if (inputIOResources)
+        for (uint32_t i = desc.UseOwnResourceLayout ? 1 : 0; i < resourceLayouts.size(); i++)
+            for (auto& binding : resourceLayouts[i].Bindings)
+                binding.Set = i;
 
     PipelineLayout = VulkanPipelineLayoutBuilder::BuildPipelineLayout(pipelineID, resourceLayouts, SetLayouts, desc.Constants);
     

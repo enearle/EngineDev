@@ -8,6 +8,7 @@
 class NoesisUILayer : public NoesisApp::Launcher
 {
 public:
+    static NoesisUILayer& Instance();
     void NoesisInit();
     void NoesisUpdate(float deltaTime);
     void NoesisRenderOffscreen();

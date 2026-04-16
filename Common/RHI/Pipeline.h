@@ -9,7 +9,7 @@ class Pipeline
 {
 protected:
     std::vector<uint64_t> PipelineInputDescriptorSetIDs;
-    IOResource* PipelineOutputResource;
+    IOResource* PipelineOutputResource = nullptr;
     std::vector<DirectX::XMFLOAT4> ClearColors;
     float DepthClearValue = 1;
     uint32_t PushConstantCount = 0;

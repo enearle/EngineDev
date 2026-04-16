@@ -17,15 +17,13 @@ public:
     virtual void GetSwapChainRenderTargets(void*& outBackBufferView, void*& outBackBuffer) = 0;
     virtual void Wait() = 0;
     
-    // Begin a rendering operation with a pipeline and its attachments
     virtual void BeginPipeline(Pipeline* pipeline,
                       const std::vector<void*>& colorViews,
                       void* depthView,
                       uint32_t width, uint32_t height) = 0;
     
-    // End current rendering operation
     virtual void EndPipeline() = 0;
-
+    
     virtual void IssueMemoryBarrier(const RHIStructures::MemoryBarrier& barrier) = 0;
     virtual void IssueImageMemoryBarrier(const ImageMemoryBarrier& barrier) = 0;
 

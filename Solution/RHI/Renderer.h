@@ -33,7 +33,8 @@ public:
     static void SetStartOfFrameCallback(FrameCallback callback);
     static void SetRenderCallback(FrameCallback callback);
     static void Wait();
-    
+    static void CreatePipelines(std::vector<RHIStructures::PipelineDesc> pipelineDescs, std::vector<std::vector<RHIStructures::DescriptorSetBinding>>
+                                vpBindings);
 private:
     static void ExecutePipelineContext(uint32_t contextIndex, bool finalContext);
 

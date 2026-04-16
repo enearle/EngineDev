@@ -4,8 +4,6 @@
 #include "../../Common/RHI/RHIConstants.h"
 #include "../../Common/RHI/PipelineExecutor.h"
 #include <DirectXMath.h>
-#include <iostream>
-#include "../../Common/RHI/Uniform.h"
 #include "../../Common/RHI/BufferAllocator.h"
 
 using namespace RHIConstants;
@@ -60,6 +58,7 @@ void Renderer::DrawFrame()
         IsInitialized = true;
     }
     
+    // This is where the magic happens
     for (uint32_t i = 0; i < PipelineFrameContexts.size(); i++)
         ExecutePipelineContext(i, i == PipelineFrameContexts.size() - 1);
     
@@ -129,7 +128,7 @@ void Renderer::ExecutePipelineContext(uint32_t contextIndex, bool finalContext)
     // Bind Descriptors and Draw
     std::vector<uint64_t>* perFrameDescriptors = PipelineFrameContexts[contextIndex].PerFrameDescriptors.size() > 0 
         ? &PipelineFrameContexts[contextIndex].PerFrameDescriptors : nullptr;
-    uint32_t numFramDescs = perFrameDescriptors ? perFrameDescriptors->size() : 0;
+    uint32_t numFrameDescs = perFrameDescriptors ? perFrameDescriptors->size() : 0;
     
     Executor->BindPipelineDescriptorSets(perFrameDescriptors);
     
@@ -138,7 +137,7 @@ void Renderer::ExecutePipelineContext(uint32_t contextIndex, bool finalContext)
     else
         for (int j = 0; j < PipelineFrameContexts[contextIndex].IndexedDraws.size(); j++)
         {
-            Executor->BindDrawDescriptorSets(&PipelineFrameContexts[contextIndex].IndexedDraws[j].PerDrawDescriptors, numFramDescs);
+            Executor->BindDrawDescriptorSets(&PipelineFrameContexts[contextIndex].IndexedDraws[j].PerDrawDescriptors, numFrameDescs);
             Executor->DrawIndexed(
                 PipelineFrameContexts[contextIndex].IndexedDraws[j].VertexBufferID,
                 PipelineFrameContexts[contextIndex].IndexedDraws[j].VertexCount,
@@ -174,4 +173,22 @@ void Renderer::SetRenderCallback(FrameCallback callback)
 void Renderer::Wait()
 {
     Executor->Wait();
+}
+
+void Renderer::CreatePipelines(std::vector<RHIStructures::PipelineDesc> pipelineDescs, std::vector<std::vector<DescriptorSetBinding>> vpBindings)
+{
+    std::vector<class Pipeline*> pipelines;
+    for (uint32_t i = 0; i < pipelineDescs.size(); ++i)
+    {
+        if (i == 0 || pipelines[i-1]->GetOutputResource() == nullptr)
+            pipelines.push_back(Pipeline::Create(i, pipelineDescs[i]));
+        else
+        {    
+            std::vector<IOResource> inputResources = {*pipelines[i-1]->GetOutputResource()};
+            pipelines.push_back(Pipeline::Create(i, pipelineDescs[i], &inputResources));
+        }
+        uint64_t set = BufferAllocator::GetInstance()->AllocateDescriptorSet(i, 0, vpBindings[i]);
+        Renderer::CreatePipelineFrameContext(pipelines[i], pipelineDescs[i].IsQuad, pipelineDescs[i].IsPresented);
+        Renderer::AddDescriptorIDToContext(i, set);
+    }
 }
