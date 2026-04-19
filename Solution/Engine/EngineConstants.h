@@ -177,12 +177,12 @@ namespace EngineConstants
         
         // 10. Binding texture
         std::vector<DescriptorBinding> bindings {
-                {
-                    .Type = DescriptorType::SampledImage,
-                   .Slot = 0,
-                   .Set = 0,
-                   .Count = 1
-                }
+            {
+                .Type = DescriptorType::SampledImage,
+               .Slot = 0,
+               .Set = 0,
+               .Count = 1
+            }
         };
         
         ShaderStageMask descriptorVisibleStages = ShaderStageMask(0);
@@ -202,9 +202,50 @@ namespace EngineConstants
         return TexturedQuadDesc;
     }
     
+    static PipelineDesc CreateSkinnedPBRVariant()
+    {
+        PipelineDesc skinnedVariant = {};
+        
+        skinnedVariant.PipelineID = 1;
+        skinnedVariant.IsVariant = true;
+        skinnedVariant.VertexShader = ImportShader("vs_pbr_skinned", "main");
+        
+        skinnedVariant.VertexBindings = {
+            VertexBinding{
+                .Binding = 0,
+                .Stride = sizeof(SkinnedVertex),
+                .Instanced = false
+            }
+        };
+        
+        skinnedVariant.VertexAttributes = {
+            VertexAttribute{ .Binding = 0, .Location = 0, .Format = Format::R32G32B32_FLOAT,    .Offset = 0,   .SemanticName = SemanticName::Position,     .SemanticIndex = 0 },
+            VertexAttribute{ .Binding = 0, .Location = 1, .Format = Format::R32G32B32_FLOAT,    .Offset = 12,  .SemanticName = SemanticName::Normal,       .SemanticIndex = 0 },
+            VertexAttribute{ .Binding = 0, .Location = 2, .Format = Format::R32G32B32_FLOAT,    .Offset = 24,  .SemanticName = SemanticName::Tangent,      .SemanticIndex = 0 },
+            VertexAttribute{ .Binding = 0, .Location = 3, .Format = Format::R32G32B32_FLOAT,    .Offset = 36,  .SemanticName = SemanticName::Binormal,     .SemanticIndex = 0 },
+            VertexAttribute{ .Binding = 0, .Location = 4, .Format = Format::R32G32_FLOAT,       .Offset = 48,  .SemanticName = SemanticName::TexCoord,     .SemanticIndex = 0 },
+            VertexAttribute{ .Binding = 0, .Location = 5, .Format = Format::R32G32B32A32_FLOAT, .Offset = 56,  .SemanticName = SemanticName::BlendWeight,  .SemanticIndex = 0 },
+            VertexAttribute{ .Binding = 0, .Location = 6, .Format = Format::R32G32B32A32_UINT,  .Offset = 72,  .SemanticName = SemanticName::BlendIndices, .SemanticIndex = 0 }
+        };
+        
+        ShaderStageMask boneStages = ShaderStageMask(0);
+        boneStages.SetVertex(true);
+        
+        skinnedVariant.VariantResourceLayout.Bindings = {
+            { .Type = DescriptorType::UniformBuffer, .Slot = 0, .Count = 1 }
+        };
+        skinnedVariant.VariantResourceLayout.VisibleStages = boneStages;
+        
+        return skinnedVariant;
+    }
+
+    
     static PipelineDesc PBRGeometryPipeline()
     {
         PipelineDesc PBRDescGeometry = {};
+                
+        PBRDescGeometry.PipelineID = 0;
+        PBRDescGeometry.PipelineVariants.push_back(CreateSkinnedPBRVariant());
         
         PBRDescGeometry.CreateOwnAttachments = true;
         PBRDescGeometry.OutputDescriptorSetIndex = 0;
@@ -344,6 +385,7 @@ namespace EngineConstants
         
         PBRDescGeometry.IsPresented = false;
         PBRDescGeometry.IsQuad = false;
+
         
         return PBRDescGeometry;
     }
@@ -352,6 +394,7 @@ namespace EngineConstants
     {
         PipelineDesc lightingDesc = {};
 
+        lightingDesc.PipelineID = 1;
         lightingDesc.UseOwnResourceLayout = true;
         
         // 1. Shader stages - fullscreen quad shaders

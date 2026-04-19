@@ -1,4 +1,7 @@
 #include "Renderer.h"
+
+#include <algorithm>
+
 #include "../../Common/Window.h"
 #include "../../Common/RHI/Pipeline.h"
 #include "../../Common/RHI/RHIConstants.h"
@@ -55,6 +58,14 @@ void Renderer::DrawFrame()
                 Executor->IssueImageMemoryBarrier(initBarrier);
             }
         
+        ImageMemoryBarrier initDepthBarrier = INIT_DEPTH_BARRIER;
+        for (int i = 0; i < PipelineFrameContexts.size(); i++)
+            if (PipelineFrameContexts[i].ContextPipeline->GetOwnedDepthImage())
+            {
+                initDepthBarrier.ImageResource = PipelineFrameContexts[i].ContextPipeline->GetOwnedDepthImage();
+                Executor->IssueImageMemoryBarrier(initDepthBarrier);
+            }
+        
         IsInitialized = true;
     }
     
@@ -109,54 +120,181 @@ void Renderer::AddDescriptorIDToContext(uint32_t contextIndex, uint64_t descript
     PipelineFrameContexts[contextIndex].PerFrameDescriptors.push_back(descriptorID);
 }
 
+//void Renderer::ExecutePipelineContext(uint32_t contextIndex, bool finalContext)
+//{
+//    // Pre-draw attachment barrier
+//    ImageMemoryBarrier readToAttachmentBarrier = READ_TO_ATTACHMENT_BARRIER;
+//    for (int j = 0; j < PipelineFrameContexts[contextIndex].ContextPipeline->GetOwnedImageCount(); j++)
+//    {
+//        readToAttachmentBarrier.ImageResource = PipelineFrameContexts[contextIndex].ContextPipeline->GetOwnedImage(j);
+//        Executor->IssueImageMemoryBarrier(readToAttachmentBarrier);
+//    }
+//    
+//    // Begin Pipeline
+//    if (PipelineFrameContexts[contextIndex].IsPresented)
+//        Executor->BeginPipeline(PipelineFrameContexts[contextIndex].ContextPipeline, {CurrentBackBufferView}, nullptr, MainWindow->GetWidth(), MainWindow->GetHeight());
+//    else
+//        Executor->BeginPipeline(PipelineFrameContexts[contextIndex].ContextPipeline, {}, nullptr, MainWindow->GetWidth(), MainWindow->GetHeight());
+//
+//    // Bind Descriptors and Draw
+//    std::vector<uint64_t>* perFrameDescriptors = PipelineFrameContexts[contextIndex].PerFrameDescriptors.size() > 0 
+//        ? &PipelineFrameContexts[contextIndex].PerFrameDescriptors : nullptr;
+//    uint32_t numFrameDescs = perFrameDescriptors ? perFrameDescriptors->size() : 0;
+//    
+//    Executor->BindPipelineDescriptorSets(perFrameDescriptors);
+//    
+//    if (PipelineFrameContexts[contextIndex].IsFSQuad)
+//        Executor->DrawFSQuad();
+//    else
+//        for (int j = 0; j < PipelineFrameContexts[contextIndex].IndexedDraws.size(); j++)
+//        {
+//            Executor->BindDrawDescriptorSets(&PipelineFrameContexts[contextIndex].IndexedDraws[j].PerDrawDescriptors, numFrameDescs);
+//            Executor->DrawIndexed(
+//                PipelineFrameContexts[contextIndex].IndexedDraws[j].VertexBufferID,
+//                PipelineFrameContexts[contextIndex].IndexedDraws[j].VertexCount,
+//                PipelineFrameContexts[contextIndex].IndexedDraws[j].IndexBufferID,
+//                PipelineFrameContexts[contextIndex].IndexedDraws[j].IndexCount,
+//                PipelineFrameContexts[contextIndex].IndexedDraws[j].PushConstants,
+//                PipelineFrameContexts[contextIndex].IndexedDraws[j].PushConstantSize
+//            );
+//        }
+//    
+//    // End Pipeline
+//    Executor->EndPipeline();
+//    
+//    // Post-draw attachment barrier
+//    ImageMemoryBarrier gBufferBarrier = ATTACHMENT_TO_READ_BARRIER;
+//    for (int j = 0; j < PipelineFrameContexts[contextIndex].ContextPipeline->GetOwnedImageCount(); j++)
+//    {
+//        gBufferBarrier.ImageResource = PipelineFrameContexts[contextIndex].ContextPipeline->GetOwnedImage(j);
+//        Executor->IssueImageMemoryBarrier(gBufferBarrier);
+//    }
+//}
 void Renderer::ExecutePipelineContext(uint32_t contextIndex, bool finalContext)
 {
-    // Pre-draw attachment barrier
+    auto& context = PipelineFrameContexts[contextIndex];
+    Pipeline* mainPipeline = context.ContextPipeline;
+    
+    // Pre-draw attachment barriers
     ImageMemoryBarrier readToAttachmentBarrier = READ_TO_ATTACHMENT_BARRIER;
-    for (int j = 0; j < PipelineFrameContexts[contextIndex].ContextPipeline->GetOwnedImageCount(); j++)
+    for (int j = 0; j < mainPipeline->GetOwnedImageCount(); j++)
     {
-        readToAttachmentBarrier.ImageResource = PipelineFrameContexts[contextIndex].ContextPipeline->GetOwnedImage(j);
+        readToAttachmentBarrier.ImageResource = mainPipeline->GetOwnedImage(j);
         Executor->IssueImageMemoryBarrier(readToAttachmentBarrier);
     }
     
+    // Depth barrier if exists
+    if (mainPipeline->GetOwnedDepthImage())
+    {
+        ImageMemoryBarrier depthBarrier = READ_TO_DEPTH_ATTACHMENT_BARRIER;
+        depthBarrier.ImageResource = mainPipeline->GetOwnedDepthImage();
+        Executor->IssueImageMemoryBarrier(depthBarrier);
+    }
+    
     // Begin Pipeline
-    if (PipelineFrameContexts[contextIndex].IsPresented)
-        Executor->BeginPipeline(PipelineFrameContexts[contextIndex].ContextPipeline, {CurrentBackBufferView}, nullptr, MainWindow->GetWidth(), MainWindow->GetHeight());
+    if (context.IsPresented)
+        Executor->BeginPipeline(mainPipeline, {CurrentBackBufferView}, nullptr, 
+                               MainWindow->GetWidth(), MainWindow->GetHeight());
     else
-        Executor->BeginPipeline(PipelineFrameContexts[contextIndex].ContextPipeline, {}, nullptr, MainWindow->GetWidth(), MainWindow->GetHeight());
+        Executor->BeginPipeline(mainPipeline, {}, nullptr, 
+                               MainWindow->GetWidth(), MainWindow->GetHeight());
 
-    // Bind Descriptors and Draw
-    std::vector<uint64_t>* perFrameDescriptors = PipelineFrameContexts[contextIndex].PerFrameDescriptors.size() > 0 
-        ? &PipelineFrameContexts[contextIndex].PerFrameDescriptors : nullptr;
+    // Bind per-frame descriptors
+    std::vector<uint64_t>* perFrameDescriptors = context.PerFrameDescriptors.size() > 0 
+        ? &context.PerFrameDescriptors : nullptr;
     uint32_t numFrameDescs = perFrameDescriptors ? perFrameDescriptors->size() : 0;
     
     Executor->BindPipelineDescriptorSets(perFrameDescriptors);
     
-    if (PipelineFrameContexts[contextIndex].IsFSQuad)
+    // Handle draws
+    if (context.IsFSQuad)
+    {
         Executor->DrawFSQuad();
+    }
     else
-        for (int j = 0; j < PipelineFrameContexts[contextIndex].IndexedDraws.size(); j++)
+    {
+        // Sort draws by variant ID to minimize pipeline switches
+        std::vector<IndexedDraw>& draws = context.IndexedDraws;
+        std::sort(draws.begin(), draws.end(), 
+            [](const IndexedDraw& a, const IndexedDraw& b) {
+                return a.PipelineVarientID < b.PipelineVarientID;
+            });
+        
+        uint32_t currentVariantID = UINT32_MAX;
+        Pipeline* currentPipeline = mainPipeline;
+        
+        for (int j = 0; j < draws.size(); j++)
         {
-            Executor->BindDrawDescriptorSets(&PipelineFrameContexts[contextIndex].IndexedDraws[j].PerDrawDescriptors, numFrameDescs);
+            IndexedDraw& draw = draws[j];
+            
+            // Switch pipeline variant if needed
+            if (draw.PipelineVarientID != currentVariantID)
+            {
+                // Get the correct pipeline variant
+                if (draw.PipelineVarientID == 0)
+                {
+                    currentPipeline = mainPipeline;
+                }
+                else
+                {
+                    uint32_t variantIndex = draw.PipelineVarientID - 1;
+                    if (variantIndex >= mainPipeline->PipelineVariants.size())
+                    {
+                        throw std::runtime_error("Invalid PipelineVarientID: " + 
+                            std::to_string(draw.PipelineVarientID));
+                    }
+                    currentPipeline = mainPipeline->PipelineVariants[variantIndex];
+                }
+                
+                // Switch pipeline if not the first draw
+                if (currentVariantID != UINT32_MAX)
+                {
+                    Executor->EndPipeline();
+                    
+                    if (context.IsPresented)
+                        Executor->BeginPipeline(currentPipeline, {CurrentBackBufferView}, nullptr,
+                                               MainWindow->GetWidth(), MainWindow->GetHeight());
+                    else
+                        Executor->BeginPipeline(currentPipeline, {}, nullptr,
+                                               MainWindow->GetWidth(), MainWindow->GetHeight());
+                    
+                    // Re-bind per-frame descriptors after pipeline switch
+                    Executor->BindPipelineDescriptorSets(perFrameDescriptors);
+                }
+                
+                currentVariantID = draw.PipelineVarientID;
+            }
+            
+            // Bind per-draw descriptors and execute draw
+            Executor->BindDrawDescriptorSets(&draw.PerDrawDescriptors, numFrameDescs);
             Executor->DrawIndexed(
-                PipelineFrameContexts[contextIndex].IndexedDraws[j].VertexBufferID,
-                PipelineFrameContexts[contextIndex].IndexedDraws[j].VertexCount,
-                PipelineFrameContexts[contextIndex].IndexedDraws[j].IndexBufferID,
-                PipelineFrameContexts[contextIndex].IndexedDraws[j].IndexCount,
-                PipelineFrameContexts[contextIndex].IndexedDraws[j].PushConstants,
-                PipelineFrameContexts[contextIndex].IndexedDraws[j].PushConstantSize
+                draw.VertexBufferID,
+                draw.VertexCount,
+                draw.IndexBufferID,
+                draw.IndexCount,
+                draw.PushConstants,
+                draw.PushConstantSize
             );
         }
+    }
     
     // End Pipeline
     Executor->EndPipeline();
     
-    // Post-draw attachment barrier
+    // Post-draw attachment barriers
     ImageMemoryBarrier gBufferBarrier = ATTACHMENT_TO_READ_BARRIER;
-    for (int j = 0; j < PipelineFrameContexts[contextIndex].ContextPipeline->GetOwnedImageCount(); j++)
+    for (int j = 0; j < mainPipeline->GetOwnedImageCount(); j++)
     {
-        gBufferBarrier.ImageResource = PipelineFrameContexts[contextIndex].ContextPipeline->GetOwnedImage(j);
+        gBufferBarrier.ImageResource = mainPipeline->GetOwnedImage(j);
         Executor->IssueImageMemoryBarrier(gBufferBarrier);
+    }
+    
+    // Depth barrier if exists
+    if (mainPipeline->GetOwnedDepthImage())
+    {
+        ImageMemoryBarrier depthBarrier = DEPTH_ATTACHMENT_TO_READ_BARRIER;
+        depthBarrier.ImageResource = mainPipeline->GetOwnedDepthImage();
+        Executor->IssueImageMemoryBarrier(depthBarrier);
     }
 }
 
@@ -181,11 +319,11 @@ void Renderer::CreatePipelines(std::vector<RHIStructures::PipelineDesc> pipeline
     for (uint32_t i = 0; i < pipelineDescs.size(); ++i)
     {
         if (i == 0 || pipelines[i-1]->GetOutputResource() == nullptr)
-            pipelines.push_back(Pipeline::Create(i, pipelineDescs[i]));
+            pipelines.push_back(Pipeline::Create(pipelineDescs[i]));
         else
         {    
             std::vector<IOResource> inputResources = {*pipelines[i-1]->GetOutputResource()};
-            pipelines.push_back(Pipeline::Create(i, pipelineDescs[i], &inputResources));
+            pipelines.push_back(Pipeline::Create(pipelineDescs[i], &inputResources));
         }
         uint64_t set = BufferAllocator::GetInstance()->AllocateDescriptorSet(i, 0, vpBindings[i]);
         Renderer::CreatePipelineFrameContext(pipelines[i], pipelineDescs[i].IsQuad, pipelineDescs[i].IsPresented);

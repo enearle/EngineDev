@@ -20,7 +20,7 @@ namespace RHIStructures
     //====================================//
     
     // Format Mappings
-    constexpr std::array<VkFormat, 18> VULKAN_FORMATS = {
+    constexpr std::array<VkFormat, 19> VULKAN_FORMATS = {
         VK_FORMAT_UNDEFINED,
         VK_FORMAT_R8G8B8A8_UNORM,
         VK_FORMAT_R8G8B8A8_SRGB,
@@ -38,10 +38,11 @@ namespace RHIStructures
         VK_FORMAT_BC4_UNORM_BLOCK,
         VK_FORMAT_BC5_UNORM_BLOCK,
         VK_FORMAT_BC6H_UFLOAT_BLOCK,
-        VK_FORMAT_BC7_UNORM_BLOCK
+        VK_FORMAT_BC7_UNORM_BLOCK,
+        VK_FORMAT_R32G32B32A32_UINT,
     };
 
-    constexpr std::array<DXGI_FORMAT, 18> DX_FORMATS = {
+    constexpr std::array<DXGI_FORMAT, 19> DX_FORMATS = {
         DXGI_FORMAT_UNKNOWN,
         DXGI_FORMAT_R8G8B8A8_UNORM,
         DXGI_FORMAT_R8G8B8A8_UNORM_SRGB,
@@ -59,7 +60,8 @@ namespace RHIStructures
         DXGI_FORMAT_BC4_UNORM,
         DXGI_FORMAT_BC5_UNORM,
         DXGI_FORMAT_BC6H_UF16,
-        DXGI_FORMAT_BC7_UNORM
+        DXGI_FORMAT_BC7_UNORM,
+        DXGI_FORMAT_R32G32B32A32_UINT,
     };
 
     VkFormat VulkanFormat(Format format)

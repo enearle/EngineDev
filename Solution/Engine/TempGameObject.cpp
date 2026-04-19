@@ -39,6 +39,7 @@ void TempGameObject::AddSceneNode(const SceneNode& node)
         ModelDataArray.push_back(mvpData);
         
         IndexedDraw indexedDraw;
+        indexedDraw.PipelineVarientID = mesh->GetPipelineVariantID();
         indexedDraw.VertexBufferID = mesh->GetVertexBufferID();
         indexedDraw.IndexBufferID = mesh->GetIndexBufferID();
         indexedDraw.VertexCount = mesh->GetVertexCount();

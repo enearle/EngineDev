@@ -15,6 +15,7 @@ dxc -T ps_6_0 -E main -Fo "%DX_OUTPUT_DIR%\ps_rainbow.cso" DirectX12\Shaders\ps_
 dxc -T vs_6_0 -E main -Fo "%DX_OUTPUT_DIR%\vs_quad.cso" DirectX12\Shaders\vs_quad.hlsl
 dxc -T ps_6_0 -E main -Fo "%DX_OUTPUT_DIR%\ps_quad.cso" DirectX12\Shaders\ps_quad.hlsl
 
+dxc -T vs_6_0 -E main -Fo "%DX_OUTPUT_DIR%\vs_pbr_skinned.cso" DirectX12\Shaders\vs_pbr_skinned.hlsl
 dxc -T vs_6_0 -E main -Fo "%DX_OUTPUT_DIR%\vs_pbr.cso" DirectX12\Shaders\vs_pbr.hlsl
 dxc -T ps_6_0 -E main -Fo "%DX_OUTPUT_DIR%\ps_pbr.cso" DirectX12\Shaders\ps_pbr.hlsl
 
@@ -30,6 +31,7 @@ glslangValidator -V -S frag -e main -o "%VULKAN_OUTPUT_DIR%\ps_rainbow.spv" Vulk
 glslangValidator -V -S vert -e main -o "%VULKAN_OUTPUT_DIR%\vs_quad.spv" Vulkan\Shaders\vs_quad.glsl
 glslangValidator -V -S frag -e main -o "%VULKAN_OUTPUT_DIR%\ps_quad.spv" Vulkan\Shaders\ps_quad.glsl
 
+glslangValidator -V -S vert -e main -o "%VULKAN_OUTPUT_DIR%\vs_pbr_skinned.spv" Vulkan\Shaders\vs_pbr_skinned.glsl
 glslangValidator -V -S vert -e main -o "%VULKAN_OUTPUT_DIR%\vs_pbr.spv" Vulkan\Shaders\vs_pbr.glsl
 glslangValidator -V -S frag -e main -o "%VULKAN_OUTPUT_DIR%\ps_pbr.spv" Vulkan\Shaders\ps_pbr.glsl
 

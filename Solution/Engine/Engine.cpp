@@ -13,12 +13,6 @@
 using namespace EngineConstants;
 using namespace std;
 
-void MoveCamera(DirectX::XMFLOAT2& moveVec, DirectX::XMFLOAT2 addedVec)
-{
-    moveVec.x += addedVec.x;
-    moveVec.y += addedVec.y;
-}
-
 int main(int argc, char* argv[])
 {
     Window* window = new Window(L"MyWindow", Win32, 1280, 720);
@@ -39,7 +33,7 @@ int main(int argc, char* argv[])
     Renderer::CreatePipelines(pipelineDescs, vpBindings);
     
     
-    // Load a game object WIP (gameobject/scenegraph not complete)
+    // Load a game object WIP (gameobject/staticmesh/scenegraph not complete)
     new TempGameObject({"shells_0", "shells_1"},"shells.fbx", "Shells");
     CameraController* CameraCon = new CameraController(Camera::ActiveCamera, 5.0f);
     

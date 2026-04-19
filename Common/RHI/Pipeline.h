@@ -7,6 +7,9 @@ using Microsoft::WRL::ComPtr;
 
 class Pipeline
 {
+public:
+    std::vector<Pipeline*> PipelineVariants = {};
+    
 protected:
     std::vector<uint64_t> PipelineInputDescriptorSetIDs;
     IOResource* PipelineOutputResource = nullptr;
@@ -15,7 +18,7 @@ protected:
     uint32_t PushConstantCount = 0;
 
 public:
-    static RHI_API Pipeline* Create(uint32_t pipelineID, const PipelineDesc& desc, std::vector<IOResource>* inputIOResources = nullptr);
+    static RHI_API Pipeline* Create(const PipelineDesc& desc, std::vector<IOResource>* inputIOResources = nullptr);
     virtual ~Pipeline() = default;
     std::vector<DirectX::XMFLOAT4> GetClearColors() const { return ClearColors; }
     float GetDepthClearValue() const { return DepthClearValue; }
@@ -31,7 +34,7 @@ class D3DPipeline : public Pipeline
 {
 public:
     
-    D3DPipeline(uint32_t pipelineID, const PipelineDesc& desc, std::vector<IOResource>* inputIOResources = nullptr);
+    D3DPipeline(const PipelineDesc& desc, std::vector<IOResource>* inputIOResources = nullptr);
     ~D3DPipeline() override = default;
     
     ID3D12PipelineState* GetPipelineState() const { return PipelineState.Get(); }
@@ -62,7 +65,7 @@ class VulkanPipeline : public Pipeline
 {
 public:
     
-    VulkanPipeline(uint32_t pipelineID, const PipelineDesc& desc, std::vector<IOResource>* inputIOResources = nullptr);
+    VulkanPipeline(const PipelineDesc& desc, std::vector<IOResource>* inputIOResources = nullptr);
     ~VulkanPipeline() override;
     
     VkPipeline GetVulkanPipeline() const { return Pipeline; }

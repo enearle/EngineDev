@@ -118,8 +118,12 @@ void D3DRootSignatureBuilder::CreateRootParameters(uint32_t pipelineID, const st
                 RootParameter parameter = {};
                 parameter.parameter.ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
                 parameter.parameter.Descriptor.ShaderRegister = binding.Slot;
-                parameter.parameter.Descriptor.RegisterSpace = binding.Set + spaceOffset;
+                if (binding.Set >= 16)
+                    parameter.parameter.Descriptor.RegisterSpace = binding.Set;
+                else
+                    parameter.parameter.Descriptor.RegisterSpace = binding.Set + spaceOffset;
                 parameter.parameter.ShaderVisibility = visibility;
+                
                 outRootParameters.push_back(parameter);
             }
             else if (binding.Type == DescriptorType::DynamicUniformBuffer)

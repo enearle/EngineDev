@@ -3,6 +3,7 @@
 #include <iostream>
 #include <stdexcept>
 #include "BufferAllocator.h"
+#include "RHIConstants.h"
 #include "../GraphicsSettings.h"
 #include "../DirectX12/D3D12Structs.h"
 #include "../Vulkan/VulkanStructs.h"
@@ -16,17 +17,81 @@ using namespace Win32ErrorHandler;
 using namespace VulkanStructs;
 using namespace D3D12Structs;
 
-Pipeline* Pipeline::Create(uint32_t pipelineID, const PipelineDesc& desc, std::vector<IOResource>*inputIOResources)
+Pipeline* Pipeline::Create(const PipelineDesc& desc, std::vector<IOResource>*inputIOResources)
 {
+    Pipeline* mainPipeline = nullptr;
+
+    // Create the main pipeline
     if (GRAPHICS_SETTINGS.APIToUse == Vulkan)
-        return new VulkanPipeline(pipelineID, desc, inputIOResources);
+        mainPipeline = new VulkanPipeline(desc, inputIOResources);
     else if (GRAPHICS_SETTINGS.APIToUse == DirectX12)
-        return new D3DPipeline(pipelineID, desc, inputIOResources);
+        mainPipeline = new D3DPipeline(desc, inputIOResources);
     else
         throw std::runtime_error("Invalid graphics API selected.");
+    
+    // Create variants if specified
+    if (!desc.PipelineVariants.empty())
+    {
+        mainPipeline->PipelineVariants.reserve(desc.PipelineVariants.size());
+
+        for (size_t i = 0; i < desc.PipelineVariants.size(); i++)
+        {
+            PipelineDesc variantDesc = desc.PipelineVariants[i];
+            
+            variantDesc.CreateOwnAttachments = false;
+            variantDesc.CreateDepthImage = false;
+            
+            if (variantDesc.RenderTargetFormats.empty())
+                variantDesc.RenderTargetFormats = desc.RenderTargetFormats;
+            if (variantDesc.DepthStencilFormat == Format::Unknown)
+                variantDesc.DepthStencilFormat = desc.DepthStencilFormat;
+            
+            if (variantDesc.BlendAttachmentStates.empty())
+                variantDesc.BlendAttachmentStates = desc.BlendAttachmentStates;
+            
+            if (variantDesc.MultisampleState.SampleCount == 0)
+                variantDesc.MultisampleState = desc.MultisampleState;
+            
+            if (variantDesc.Constants.empty())
+                variantDesc.Constants = desc.Constants;
+            
+            if (variantDesc.DepthStencilState.DepthCompareOp == CompareOp::Never)
+                variantDesc.DepthStencilState = desc.DepthStencilState;
+            
+            variantDesc.RasterizerState = desc.RasterizerState;
+            
+            if (variantDesc.ResourceLayout.Bindings.empty())
+                variantDesc.ResourceLayout = desc.ResourceLayout;
+            
+            if (variantDesc.PrimitiveTopology == PrimitiveTopology::TriangleList && 
+                desc.PrimitiveTopology != PrimitiveTopology::TriangleList)
+                variantDesc.PrimitiveTopology = desc.PrimitiveTopology;
+            
+            if (variantDesc.FragmentShader.ByteCode == nullptr)
+                variantDesc.FragmentShader = desc.FragmentShader;
+            
+            if (variantDesc.AttachmentSamplers.empty())
+                variantDesc.AttachmentSamplers = desc.AttachmentSamplers;
+            
+            if (variantDesc.AttachmentClearValues.empty())
+                variantDesc.AttachmentClearValues = desc.AttachmentClearValues;
+            
+            
+            Pipeline* variant = nullptr;
+
+            if (GRAPHICS_SETTINGS.APIToUse == Vulkan)
+                variant = new VulkanPipeline(variantDesc, inputIOResources);
+            else if (GRAPHICS_SETTINGS.APIToUse == DirectX12)
+                variant = new D3DPipeline(variantDesc, inputIOResources);
+
+            mainPipeline->PipelineVariants.push_back(variant);
+        }
+    }
+    
+    return mainPipeline;
 }
 
-D3DPipeline::D3DPipeline(uint32_t pipelineID, const PipelineDesc& desc, std::vector<IOResource>* inputIOResources)
+D3DPipeline::D3DPipeline(const PipelineDesc& desc, std::vector<IOResource>* inputIOResources)
 {
     ClearColors = desc.AttachmentClearValues;
     DepthClearValue = desc.DepthClearValue;
@@ -36,26 +101,37 @@ D3DPipeline::D3DPipeline(uint32_t pipelineID, const PipelineDesc& desc, std::vec
     Topology = DXPrimitiveTopology(desc.PrimitiveTopology);
     
     std::vector<ResourceLayout> resourceLayouts;
+    
     if (desc.UseOwnResourceLayout)
         resourceLayouts.push_back(desc.ResourceLayout);
     
-    if (inputIOResources)
+    if (inputIOResources && !desc.IsVariant)
         for (const IOResource& ioResource : *inputIOResources)
             resourceLayouts.push_back(ioResource.Layout);
-
-    if (inputIOResources)
-        for (uint32_t i = desc.UseOwnResourceLayout ? 1 : 0; i < resourceLayouts.size(); i++)
-            for (auto& binding : resourceLayouts[i].Bindings)
+    
+    for (uint32_t i = desc.UseOwnResourceLayout ? 1 : 0; i < resourceLayouts.size(); i++)
+        for (auto& binding : resourceLayouts[i].Bindings)
+            if (binding.Set < RHIConstants::VARIANT_DESCRIPTOR_SET_BASE)
                 binding.Set = i;
     
-    RootSignature = D3DRootSignatureBuilder::BuildRootSignature(pipelineID, resourceLayouts, desc.Constants);
+    if (desc.IsVariant)
+    {
+        ResourceLayout variantLayout = desc.VariantResourceLayout;
+        
+        for (auto& binding : variantLayout.Bindings)
+            binding.Set = RHIConstants::VARIANT_DESCRIPTOR_SET_BASE;
+    
+        resourceLayouts.push_back(variantLayout);
+    }
+    
+    RootSignature = D3DRootSignatureBuilder::BuildRootSignature(desc.PipelineID, resourceLayouts, desc.Constants);
     
     if (inputIOResources)
         for (uint32_t i = desc.UseOwnResourceLayout ? 1 : 0; i < resourceLayouts.size(); i++)
         {
             uint32_t inputIndex = desc.UseOwnResourceLayout ? i - 1 : i;
             uint64_t descriptorSetID = BufferAllocator::GetInstance()->AllocateDescriptorSet(
-                pipelineID, i, inputIOResources->at(inputIndex).Bindings);
+                desc.PipelineID, i, inputIOResources->at(inputIndex).Bindings);
             PipelineInputDescriptorSetIDs.push_back(descriptorSetID);
         }
     
@@ -357,24 +433,13 @@ D3DPipeline::D3DPipeline(uint32_t pipelineID, const PipelineDesc& desc, std::vec
     {
         PipelineOutputResource->Bindings.push_back(depthBindingData);
     }
-    
-    if (PipelineOutputResource)
-    {
-        char buf[512];
-        sprintf_s(buf, "=== GEOMETRY PIPELINE: PipelineOutputResource created ===\n");
-        OutputDebugStringA(buf);
-        sprintf_s(buf, "Bindings.size() = %zu\n", PipelineOutputResource->Bindings.size());
-        OutputDebugStringA(buf);
-        sprintf_s(buf, "Layout.Bindings.size() = %zu\n", PipelineOutputResource->Layout.Bindings.size());
-        OutputDebugStringA(buf);
-    }
 }
 
 //================================================//
 // Vulkan                                         //
 //================================================//
 
-VulkanPipeline::VulkanPipeline(uint32_t pipelineID, const PipelineDesc& desc, std::vector<IOResource>* inputIOResources)
+VulkanPipeline::VulkanPipeline(const PipelineDesc& desc, std::vector<IOResource>* inputIOResources)
 {
     ClearColors = desc.AttachmentClearValues;
     DepthClearValue = desc.DepthClearValue;
@@ -559,25 +624,36 @@ VulkanPipeline::VulkanPipeline(uint32_t pipelineID, const PipelineDesc& desc, st
     }
     
     std::vector<ResourceLayout> resourceLayouts;
+    
     if (desc.UseOwnResourceLayout)
         resourceLayouts.push_back(desc.ResourceLayout);
     
-    if (inputIOResources)
+    if (inputIOResources && !desc.IsVariant)
         for (const IOResource& ioResource : *inputIOResources)
             resourceLayouts.push_back(ioResource.Layout);
     
-    if (inputIOResources)
-        for (uint32_t i = desc.UseOwnResourceLayout ? 1 : 0; i < resourceLayouts.size(); i++)
-            for (auto& binding : resourceLayouts[i].Bindings)
+    for (uint32_t i = desc.UseOwnResourceLayout ? 1 : 0; i < resourceLayouts.size(); i++)
+        for (auto& binding : resourceLayouts[i].Bindings)
+            if (binding.Set < RHIConstants::VARIANT_DESCRIPTOR_SET_BASE)
                 binding.Set = i;
+    
+    if (+desc.IsVariant)
+    {
+        ResourceLayout variantLayout = desc.VariantResourceLayout;
 
-    PipelineLayout = VulkanPipelineLayoutBuilder::BuildPipelineLayout(pipelineID, resourceLayouts, SetLayouts, desc.Constants);
+        for (auto& binding : variantLayout.Bindings)
+            binding.Set = RHIConstants::VARIANT_DESCRIPTOR_SET_BASE;
+    
+        resourceLayouts.push_back(variantLayout);
+    }
+
+    PipelineLayout = VulkanPipelineLayoutBuilder::BuildPipelineLayout(desc.PipelineID, resourceLayouts, SetLayouts, desc.Constants);
     
     if (inputIOResources)
         for (uint32_t i = desc.UseOwnResourceLayout ? 1 : 0; i < resourceLayouts.size(); i++)
         {
             uint32_t inputIndex = desc.UseOwnResourceLayout ? i - 1 : i;
-            uint64_t descriptorSetID = BufferAllocator::GetInstance()->AllocateDescriptorSet(pipelineID, i, inputIOResources->at(inputIndex).Bindings);
+            uint64_t descriptorSetID = BufferAllocator::GetInstance()->AllocateDescriptorSet(desc.PipelineID, i, inputIOResources->at(inputIndex).Bindings);
             PipelineInputDescriptorSetIDs.push_back(descriptorSetID);
         }
     
@@ -861,6 +937,9 @@ VulkanPipeline::VulkanPipeline(uint32_t pipelineID, const PipelineDesc& desc, st
 VulkanPipeline::~VulkanPipeline()
 {
     VkDevice device = VulkanCore::Instance().GetDevice();
+    
+    for (int i = 0; i < PipelineVariants.size(); i++)
+        delete PipelineVariants[i];
     
     for (VkDescriptorSetLayout setLayout : SetLayouts)
         vkDestroyDescriptorSetLayout(device, setLayout, nullptr);

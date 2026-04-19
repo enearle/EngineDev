@@ -1,5 +1,7 @@
 ﻿#include "../../Common/RHI/BufferAllocator.h"
 #include "VulkanPipelineLayoutBuilder.h"
+
+#include <iostream>
 #include <map>
 #include <stdexcept>
 #include "VulkanCore.h"
@@ -33,47 +35,76 @@ VkPipelineLayout VulkanPipelineLayoutBuilder::BuildPipelineLayout(uint32_t pipel
     }
 
     // Create descriptor set layouts
+    // Collect all bindings from all resource layouts into a single map
+    std::map<uint32_t, std::vector<DescriptorSetLayoutBinding>> bindingsBySet;
+
     for (uint32_t i = 0; i < layouts.size(); i++)
     {
         const ResourceLayout& layout = layouts[i];
         BufferAllocator::GetInstance()->RegisterDescriptorSetLayout(pipelineID, layout);
         
-        std::map<uint32_t, std::vector<DescriptorSetLayoutBinding>> bindingsBySet;
-        uint32_t bindingIndex = 0;
-    
         for (const DescriptorBinding& binding : layout.Bindings)
         {
             DescriptorSetLayoutBinding setLayoutBinding = CreateDescriptorSetLayoutBinding(binding, layout.VisibleStages);
             bindingsBySet[binding.Set].push_back(setLayoutBinding);
-            bindingIndex++;
         }
-    
-        descriptorSetLayouts.reserve(bindingsBySet.size());
-    
-        for (const auto& [setIndex, bindings] : bindingsBySet)
+    }
+
+    // Find the maximum set number to determine array size
+    uint32_t maxSetNumber = 0;
+    for (const auto& [setIndex, bindings] : bindingsBySet)
+    {
+        if (setIndex > maxSetNumber)
+            maxSetNumber = setIndex;
+    }
+
+    // Create descriptor set layout array with proper indexing
+    descriptorSetLayouts.reserve(maxSetNumber + 1);
+
+    for (uint32_t setIndex = 0; setIndex <= maxSetNumber; setIndex++)
+    {
+        VkDescriptorSetLayout descriptorSetLayout = VK_NULL_HANDLE;
+        
+        auto it = bindingsBySet.find(setIndex);
+        if (it != bindingsBySet.end())
         {
+            // Create actual layout for this set
+            const std::vector<DescriptorSetLayoutBinding>& bindings = it->second;
             std::vector<VkDescriptorSetLayoutBinding> vkBindings;
             vkBindings.reserve(bindings.size());
-    
+            
             for (const auto& binding : bindings)
             {
                 vkBindings.push_back(binding.binding);
             }
-
+            
             VkDescriptorSetLayoutCreateInfo layoutInfo{};
             layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
             layoutInfo.bindingCount = static_cast<uint32_t>(vkBindings.size());
             layoutInfo.pBindings = vkBindings.data();
             layoutInfo.flags = 0;
-
-            VkDescriptorSetLayout descriptorSetLayout = VK_NULL_HANDLE;
+            
             VkResult result = vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &descriptorSetLayout);
-    
+            
             if (result != VK_SUCCESS)
                 throw std::runtime_error("Failed to create descriptor set layout");
-    
-            descriptorSetLayouts.push_back(descriptorSetLayout);
         }
+        else
+        {
+            // Create empty layout for unused set numbers
+            VkDescriptorSetLayoutCreateInfo layoutInfo{};
+            layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+            layoutInfo.bindingCount = 0;
+            layoutInfo.pBindings = nullptr;
+            layoutInfo.flags = 0;
+            
+            VkResult result = vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &descriptorSetLayout);
+            
+            if (result != VK_SUCCESS)
+                throw std::runtime_error("Failed to create empty descriptor set layout");
+        }
+        
+        descriptorSetLayouts.push_back(descriptorSetLayout);
     }
     
     // Define push constant ranges

@@ -145,7 +145,6 @@
   <ItemGroup>
     <ClCompile Include="..\..\Common\DirectX12\D3DCore.cpp" />
     <ClCompile Include="..\..\Common\DirectX12\D3DRootSignatureBuilder.cpp" />
-    <Content Include="..\..\Common\CodingStandard.txt" />
     <Content Include="..\..\Common\DirectX12\Shaders\ps_rainbow.hlsl" />
     <Content Include="..\..\Common\DirectX12\Shaders\vs_rainbow.hlsl" />
     <Content Include="..\..\Common\DirectX12\Shaders\ps_quad.hlsl" />
@@ -154,6 +153,7 @@
     <Content Include="..\..\Common\DirectX12\Shaders\ps_lighting.hlsl" />
     <Content Include="..\..\Common\DirectX12\Shaders\vs_lighting.hlsl" />
     <Content Include="..\..\Common\DirectX12\Shaders\ps_pbr.hlsl" />
+    <Content Include="..\..\Common\DirectX12\Shaders\vs_pbr_skinned.hlsl" />
     <ClCompile Include="..\..\Common\ForwardInterface.cpp" />
     <ClCompile Include="..\..\Common\Input\InputState.cpp" />
     <ClCompile Include="..\..\Common\MetaData.cpp" />
@@ -185,7 +185,9 @@
     <Content Include="..\..\Common\Vulkan\Shaders\ps_lighting.glsl" />
     <Content Include="..\..\Common\Vulkan\Shaders\vs_lighting.glsl" />
     <Content Include="..\..\Common\Vulkan\Shaders\vs_pbr.glsl" />
+    <Content Include="..\..\Common\Vulkan\Shaders\vs_pbr_skinned.glsl" />
     <Content Include="..\..\Common\Vulkan\Shaders\vs_quad.glsl" />
+    <Content Include="CodingStandard.txt" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\Common\Data\BitPool.h" />

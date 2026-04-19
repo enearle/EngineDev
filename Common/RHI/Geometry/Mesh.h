@@ -22,14 +22,16 @@ public:
     uint32_t GetVertexCount() const                     { return VertexCount; }
     uint32_t GetIndexCount() const                      { return IndexCount; }
     uint32_t GetLocalMaterialIndex() const              { return LocalMaterialIndex; }
-    
-    uint64_t GetVertexBufferID() const                 { return VertexBufferID; }
-    uint64_t GetIndexBufferID() const                  { return IndexBufferID; }
+    bool IsSkinned() const                              { return bIsSkinned; }
+    uint32_t GetPipelineVariantID() const               { return bIsSkinned ? 1 : 0; }
+    uint64_t GetVertexBufferID() const                  { return VertexBufferID; }
+    uint64_t GetIndexBufferID() const                   { return IndexBufferID; }
     void* GetVertexBufferHandle() const;
     void* GetIndexBufferHandle() const;
     
 private:
     
+    bool bIsSkinned = false;
     uint32_t VertexCount;
     uint32_t IndexCount;
     uint32_t LocalMaterialIndex;

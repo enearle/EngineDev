@@ -42,6 +42,17 @@ namespace RHIStructures
         DirectX::XMFLOAT2 TexCoord = {0,0};
     };
     
+    struct SkinnedVertex
+    {
+        DirectX::XMFLOAT3 Position = {0,0,0};
+        DirectX::XMFLOAT3 Normal = {0,0,0};
+        DirectX::XMFLOAT3 Tangent = {0,0,0};
+        DirectX::XMFLOAT3 Bitangent = {0,0,0};
+        DirectX::XMFLOAT2 TexCoord = {0,0};
+        DirectX::XMFLOAT4 BoneWeights = {0,0,0,0};
+        DirectX::XMUINT4 BoneIndices = {0,0,0,0};
+    };
+    
     class Mask
     {
     protected:
@@ -85,7 +96,8 @@ namespace RHIStructures
         BC4_UNORM = 14,
         BC5_UNORM = 15,
         BC6H_UF16 = 16,
-        BC7_UNORM = 17
+        BC7_UNORM = 17,
+        R32G32B32A32_UINT = 18,
     };
     VkFormat VulkanFormat(Format format);
     DXGI_FORMAT DXFormat(Format format);
@@ -341,6 +353,11 @@ namespace RHIStructures
     
     struct PipelineDesc
     {
+        uint32_t PipelineID = 0;
+        bool IsVariant = false;
+        std::vector<PipelineDesc> PipelineVariants = {};
+        ResourceLayout VariantResourceLayout = {};
+        
         bool IsPresented = false;
         bool IsQuad = false;
         bool CreateOwnAttachments = false;
@@ -623,6 +640,7 @@ namespace RHIStructures
     
     struct IndexedDraw
     {
+        uint32_t PipelineVarientID = 0;
         uint64_t VertexBufferID = 0;
         uint64_t IndexBufferID = 0;
         uint32_t VertexCount = 0;
