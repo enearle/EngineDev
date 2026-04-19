@@ -116,8 +116,8 @@ namespace EngineConstants
             throw std::runtime_error("Failed to load fragment shader!");
         
         // 2. Vertex input layout
-        TexturedQuadDesc.VertexAttributes = {}; // Empty - shader uses SV_VertexID
-        TexturedQuadDesc.VertexBindings = {};   // Empty - no bindings needed
+        TexturedQuadDesc.VertexAttributes = {};     // Empty - shader uses SV_VertexID
+        TexturedQuadDesc.VertexBindings = {};       // Empty - no bindings needed
 
         // 3. Primitive topology
         TexturedQuadDesc.PrimitiveTopology = PrimitiveTopology::TriangleList;
@@ -394,7 +394,7 @@ namespace EngineConstants
     {
         PipelineDesc lightingDesc = {};
 
-        lightingDesc.PipelineID = 1;
+        lightingDesc.PipelineID = 2;
         lightingDesc.UseOwnResourceLayout = true;
         
         // 1. Shader stages - fullscreen quad shaders

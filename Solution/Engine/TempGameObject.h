@@ -14,6 +14,6 @@ class TempGameObject
 
 public:
     
-    TempGameObject(std::vector<std::string> materials, std::string filename, std::string name);
+    TempGameObject(std::vector<std::string> materials, std::string filename, std::string name, bool useSkinning = false);
     void AddSceneNode(const SceneNode& node);
 };

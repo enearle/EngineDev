@@ -3,14 +3,14 @@
 #include "Common/RHI/Geometry/GeometryImport.h"
 #include "Solution/RHI/Renderer.h"
 
-TempGameObject::TempGameObject(std::vector<std::string> materials, std::string filename, std::string name)
+TempGameObject::TempGameObject(std::vector<std::string> materials, std::string filename, std::string name, bool useSkinning)
 {
     for (std::string material : materials)
     {
         Materials.push_back(Material(material, Material::PBR).LoadMaterial(0, 1));
     }
     
-    MeshRoot = GeometryImport::CreateMeshGroup(filename, name, DirectX::XMMatrixIdentity());
+    MeshRoot = GeometryImport::CreateMeshGroup(filename, name, DirectX::XMMatrixIdentity(), useSkinning);
     ModelDataArray.reserve(100);
     
     AddSceneNode(MeshRoot.GetSceneNode());

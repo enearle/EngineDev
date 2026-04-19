@@ -657,7 +657,7 @@ namespace RHIStructures
         Pipeline* ContextPipeline = nullptr;
         bool IsFSQuad = false;
         bool IsPresented = false;
-        std::vector<IndexedDraw> IndexedDraws;
+        std::vector<std::vector<IndexedDraw>> IndexedDrawBins;
         std::vector<uint64_t> PerFrameDescriptors;
     };
 

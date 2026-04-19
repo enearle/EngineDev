@@ -28,6 +28,7 @@ public:
     virtual size_t GetOwnedImageCount() const = 0;
     virtual void* GetOwnedImage(uint32_t index) = 0;
     virtual void* GetOwnedDepthImage() = 0;
+    size_t GetPipelineVariantCount() const { return PipelineVariants.size(); }
 };
 
 class D3DPipeline : public Pipeline

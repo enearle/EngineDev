@@ -61,6 +61,53 @@ Mesh::Mesh(std::vector<Vertex>* vertices, std::vector<uint32_t>* indices, uint32
     }
 }
 
+Mesh::Mesh(std::vector<SkinnedVertex>* vertices, std::vector<uint32_t>* indices, uint32_t LocalMaterialIndex) :
+    LocalMaterialIndex(LocalMaterialIndex), bIsSkinned(true)
+{
+    using namespace RHIStructures;
+    
+    VertexCount = vertices->size();
+    IndexCount = indices->size();
+    
+    MemoryAccess memoryAccess{0};
+    memoryAccess.SetGPURead(true);
+    memoryAccess.SetCPUWrite(true);
+    
+    BufferAllocator* bufferAlloc = BufferAllocator::GetInstance();
+    
+    if (VertexCount > 0)
+    {
+        BufferDesc vertexBufferDesc = {};
+        vertexBufferDesc.Size = vertices->size() * sizeof(SkinnedVertex);
+        vertexBufferDesc.Usage = BufferUsage{
+            .TransferSource = false,
+            .TransferDestination = true,
+            .Type = BufferType::Vertex
+        };
+        vertexBufferDesc.Type = BufferType::Vertex;
+        vertexBufferDesc.Access = memoryAccess;
+        vertexBufferDesc.InitialData = vertices->data();
+        
+        VertexBufferID = bufferAlloc->CreateBuffer(vertexBufferDesc);
+    }
+    
+    if (IndexCount > 0)
+    {
+        BufferDesc indexBufferDesc = {};
+        indexBufferDesc.Size = indices->size() * sizeof(uint32_t);
+        indexBufferDesc.Usage = BufferUsage{
+            .TransferSource = false,
+            .TransferDestination = true,
+            .Type = BufferType::Index
+        };
+        indexBufferDesc.Type = BufferType::Index;
+        indexBufferDesc.Access = memoryAccess;
+        indexBufferDesc.InitialData = indices->data();
+        
+        IndexBufferID = bufferAlloc->CreateBuffer(indexBufferDesc);
+    }
+}
+
 Mesh::~Mesh()
 {
     
