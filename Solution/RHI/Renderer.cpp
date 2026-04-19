@@ -253,7 +253,7 @@ void Renderer::CreatePipelines(std::vector<RHIStructures::PipelineDesc> pipeline
             std::vector<IOResource> inputResources = {*pipelines[i-1]->GetOutputResource()};
             pipelines.push_back(Pipeline::Create(pipelineDescs[i], &inputResources));
         }
-        uint64_t set = BufferAllocator::GetInstance()->AllocateDescriptorSet(i, 0, vpBindings[i]);
+        uint64_t set = BufferAllocator::GetInstance()->AllocateDescriptorSet(pipelineDescs[i].PipelineID, 0, vpBindings[i]);
         Renderer::CreatePipelineFrameContext(pipelines[i], pipelineDescs[i].IsQuad, pipelineDescs[i].IsPresented);
         Renderer::AddDescriptorIDToContext(i, set);
     }

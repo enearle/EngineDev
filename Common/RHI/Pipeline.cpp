@@ -135,6 +135,7 @@ D3DPipeline::D3DPipeline(const PipelineDesc& desc, std::vector<IOResource>* inpu
             PipelineInputDescriptorSetIDs.push_back(descriptorSetID);
         }
     
+    
     // This is a DirectX-specific means to store 3D vertex data in the pipeline for later use.
     // A more modern (and API agnostic) approach is to handle additional 3D transformations (outside VS/GS)
     // in compute shaders and only use graphics pipelines for a purely rasterized process.
@@ -637,13 +638,11 @@ VulkanPipeline::VulkanPipeline(const PipelineDesc& desc, std::vector<IOResource>
             if (binding.Set < RHIConstants::VARIANT_DESCRIPTOR_SET_BASE)
                 binding.Set = i;
     
-    if (+desc.IsVariant)
+    if (desc.IsVariant)
     {
         ResourceLayout variantLayout = desc.VariantResourceLayout;
-
         for (auto& binding : variantLayout.Bindings)
             binding.Set = RHIConstants::VARIANT_DESCRIPTOR_SET_BASE;
-    
         resourceLayouts.push_back(variantLayout);
     }
 
