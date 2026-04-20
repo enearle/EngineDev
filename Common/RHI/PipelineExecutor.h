@@ -18,9 +18,9 @@ public:
     virtual void Wait() = 0;
     
     virtual void BeginPipeline(Pipeline* pipeline,
-                      const std::vector<void*>& colorViews,
-                      void* depthView,
-                      uint32_t width, uint32_t height) = 0;
+                               const std::vector<void*>& colorViews,
+                               void* depthView,
+                               uint32_t width, uint32_t height, bool isVariant) = 0;
     
     virtual void EndPipeline() = 0;
     
@@ -28,7 +28,7 @@ public:
     virtual void IssueImageMemoryBarrier(const ImageMemoryBarrier& barrier) = 0;
 
     virtual void DrawIndexed(uint64_t vertBufferID, uint32_t vertCount, uint64_t indexBufferID, uint32_t indexCount, 
-        void* pushConstants = nullptr, size_t pushConstantsSize = 0) = 0;
+        void* pushConstants = nullptr, size_t pushConstantsSize = 0, uint32_t vertexStride = sizeof(Vertex)) = 0;
     virtual void DrawFSQuad() = 0;
     
     virtual void BindDrawDescriptorSets(std::vector<uint64_t>* descriptorSets = nullptr, uint32_t numPipelineSets = 0) = 0;
@@ -52,16 +52,16 @@ public:
     void Wait() override;
     
     void BeginPipeline(Pipeline* pipeline,
-               const std::vector<void*>& colorViews,
-               void* depthView,
-               uint32_t width, uint32_t height) override;
+                       const std::vector<void*>& colorViews,
+                       void* depthView,
+                       uint32_t width, uint32_t height, bool isVariant = false) override;
     void EndPipeline() override;
     
     void IssueMemoryBarrier(const RHIStructures::MemoryBarrier& barrier) override;
     void IssueImageMemoryBarrier(const ImageMemoryBarrier& barrier) override;
 
     void DrawIndexed(uint64_t vertBufferID, uint32_t vertCount, uint64_t indexBufferID, uint32_t indexCount, 
-        void* pushConstant, size_t pushConstantSize) override;
+        void* pushConstant, size_t pushConstantSize, uint32_t vertexStride) override;
     void DrawFSQuad() override;
     
     void BindDrawDescriptorSets(std::vector<uint64_t>* descriptorSets, uint32_t numPipelineSets) override;
@@ -89,16 +89,16 @@ public:
     void Wait() override;
     
     void BeginPipeline(Pipeline* pipeline,
-               const std::vector<void*>& colorViews,
-               void* depthView,
-               uint32_t width, uint32_t height) override;
+                       const std::vector<void*>& colorViews,
+                       void* depthView,
+                       uint32_t width, uint32_t height, bool isVariant) override;
     void EndPipeline() override;
     
     void IssueMemoryBarrier(const RHIStructures::MemoryBarrier& barrier) override;
     void IssueImageMemoryBarrier(const ImageMemoryBarrier& barrier) override;
 
     void DrawIndexed(uint64_t vertBufferID, uint32_t vertCount, uint64_t indexBufferID, uint32_t indexCount, 
-        void* pushConstant, size_t pushConstantSize) override;
+        void* pushConstant, size_t pushConstantSize, uint32_t vertexStride) override;
     void DrawFSQuad() override;
     
     void BindDrawDescriptorSets(std::vector<uint64_t>* descriptorSets, uint32_t numPipelineSets) override;

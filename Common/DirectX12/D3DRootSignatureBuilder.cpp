@@ -12,14 +12,18 @@
 
 using namespace Win32ErrorHandler;
 
-ComPtr<ID3D12RootSignature> D3DRootSignatureBuilder::BuildRootSignature(uint32_t pipelineID, const std::vector<ResourceLayout>& layouts, const std::vector<PipelineConstant>& constants)
+ComPtr<ID3D12RootSignature> D3DRootSignatureBuilder::BuildRootSignature(
+    uint32_t pipelineID, 
+    const std::vector<ResourceLayout>& layouts, 
+    const std::vector<PipelineConstant>& constants, std::map<uint32_t, 
+    uint32_t>& outSetToRootParamMapping)
 {
     ComPtr<ID3D12Device> device = D3DCore::Instance().GetDevice();
     if (!device)
         throw std::runtime_error("D3D12 device is null");
     
     std::vector<RootParameter> rootParameters;
-    CreateRootParameters(pipelineID, layouts, constants, rootParameters);
+    CreateRootParameters(pipelineID, layouts, constants, rootParameters, outSetToRootParamMapping);
     
     std::vector<D3D12_ROOT_PARAMETER> parameters;
     parameters.reserve(rootParameters.size());
@@ -75,8 +79,12 @@ ComPtr<ID3D12RootSignature> D3DRootSignatureBuilder::BuildRootSignature(uint32_t
     return rootSignature;
 }
 
-void D3DRootSignatureBuilder::CreateRootParameters(uint32_t pipelineID, const std::vector<ResourceLayout>& layouts,
-    const std::vector<PipelineConstant>& constants, std::vector<RootParameter>& outRootParameters)
+void D3DRootSignatureBuilder::CreateRootParameters(
+    uint32_t pipelineID, 
+    const std::vector<ResourceLayout>& layouts,
+    const std::vector<PipelineConstant>& constants, 
+    std::vector<RootParameter>& outRootParameters,
+    std::map<uint32_t, uint32_t>& outSetToRootParamMapping) 
 {
     // Push constants always use space0 if present
     uint32_t spaceOffset = 0;
@@ -104,6 +112,9 @@ void D3DRootSignatureBuilder::CreateRootParameters(uint32_t pipelineID, const st
         const ResourceLayout& layout = layouts[i];
         
         BufferAllocator::GetInstance()->RegisterDescriptorSetLayout(pipelineID, layout);
+        
+        uint32_t setIndex = layout.Bindings.empty() ? i : layout.Bindings[0].Set;
+        uint32_t rootParamIndexForThisSet = outRootParameters.size();
                 
         std::vector<D3D12_DESCRIPTOR_RANGE> srvRanges;
         std::vector<D3D12_DESCRIPTOR_RANGE> uavRanges;
@@ -132,9 +143,12 @@ void D3DRootSignatureBuilder::CreateRootParameters(uint32_t pipelineID, const st
                 range.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;
                 range.NumDescriptors = binding.Count;
                 range.BaseShaderRegister = binding.Slot;
-                range.RegisterSpace = binding.Set + spaceOffset;
+                if (binding.Set >= 16)
+                    range.RegisterSpace = binding.Set;
+                else
+                    range.RegisterSpace = binding.Set + spaceOffset;
                 range.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
-                
+    
                 cbvRanges.push_back(range);
             }
             else if (binding.Type == DescriptorType::StorageBuffer || 
@@ -144,9 +158,12 @@ void D3DRootSignatureBuilder::CreateRootParameters(uint32_t pipelineID, const st
                 range.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
                 range.NumDescriptors = binding.Count;
                 range.BaseShaderRegister = binding.Slot;
-                range.RegisterSpace = binding.Set + spaceOffset;
+                if (binding.Set >= 16)
+                    range.RegisterSpace = binding.Set;
+                else
+                    range.RegisterSpace = binding.Set + spaceOffset;
                 range.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
-                
+    
                 srvRanges.push_back(range);
             }
             else if (binding.Type == DescriptorType::StorageImage)
@@ -155,10 +172,21 @@ void D3DRootSignatureBuilder::CreateRootParameters(uint32_t pipelineID, const st
                 range.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
                 range.NumDescriptors = binding.Count;
                 range.BaseShaderRegister = binding.Slot;
-                range.RegisterSpace = binding.Set + spaceOffset;
+                if (binding.Set >= 16)
+                    range.RegisterSpace = binding.Set;
+                else
+                    range.RegisterSpace = binding.Set + spaceOffset;
                 range.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
-                
+    
                 uavRanges.push_back(range);
+            }
+        }
+        
+        if (!cbvRanges.empty() || !srvRanges.empty() || !uavRanges.empty())
+        {
+            if (outSetToRootParamMapping.find(setIndex) == outSetToRootParamMapping.end())
+            {
+                outSetToRootParamMapping[setIndex] = rootParamIndexForThisSet;
             }
         }
         

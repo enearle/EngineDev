@@ -17,19 +17,20 @@ public:
     
     Mesh();
     Mesh(std::vector<RHIStructures::Vertex>* vertices, std::vector<uint32_t>* indices, uint32_t LocalMaterialIndex);
-    Mesh(std::vector<RHIStructures::SkinnedVertex>* vertices, std::vector<uint32_t>* indices, uint32_t LocalMaterialIndex);  // NEW
+    Mesh(std::vector<RHIStructures::SkinnedVertex>* vertices, std::vector<uint32_t>* indices, uint32_t LocalMaterialIndex, const  std::vector<DirectX::XMMATRIX>& boneOffsets = {});  // NEW
     ~Mesh();
 
     uint32_t GetVertexCount() const                     { return VertexCount; }
     uint32_t GetIndexCount() const                      { return IndexCount; }
     uint32_t GetLocalMaterialIndex() const              { return LocalMaterialIndex; }
     bool IsSkinned() const                              { return bIsSkinned; }
-    uint32_t GetVertexStride() const                    { return bIsSkinned ? sizeof(RHIStructures::SkinnedVertex) : sizeof(RHIStructures::Vertex); }  // NEW
+    uint32_t GetVertexStride() const                    { return bIsSkinned ? sizeof(RHIStructures::SkinnedVertex) : sizeof(RHIStructures::Vertex); }
     uint32_t GetPipelineVariantID() const               { return bIsSkinned ? 1 : 0; }
     uint64_t GetVertexBufferID() const                  { return VertexBufferID; }
     uint64_t GetIndexBufferID() const                   { return IndexBufferID; }
     void* GetVertexBufferHandle() const;
     void* GetIndexBufferHandle() const;
+    std::vector<DirectX::XMMATRIX> GetBoneOffsets() const { return BoneOffsets; }
     
 private:
     
@@ -40,6 +41,7 @@ private:
     
     uint64_t VertexBufferID = 0;
     uint64_t IndexBufferID = 0;
+    std::vector<DirectX::XMMATRIX> BoneOffsets;
     
 };
 

@@ -10,8 +10,12 @@ using namespace RHIStructures;
 class D3DRootSignatureBuilder
 {
 public:
-    static ComPtr<ID3D12RootSignature> BuildRootSignature(uint32_t pipelineID, const std::vector<ResourceLayout>& layouts, const std::vector<PipelineConstant>& constants);
-
+    static ComPtr<ID3D12RootSignature> BuildRootSignature(
+        uint32_t pipelineID, 
+        const std::vector<ResourceLayout>& layouts, 
+        const std::vector<PipelineConstant>& constants,
+        std::map<uint32_t, uint32_t>& outSetToRootParamMapping
+    );
 private:
     struct RootParameter
     {
@@ -19,6 +23,11 @@ private:
         std::vector<D3D12_DESCRIPTOR_RANGE> ranges; 
     };
     
-    static void CreateRootParameters(uint32_t pipelineID, const std::vector<ResourceLayout>& layouts, const std::vector<PipelineConstant>& constants, std::
-                                     vector<RootParameter>& outRootParameters);
+    static void CreateRootParameters(
+        uint32_t pipelineID, 
+        const std::vector<ResourceLayout>& layouts,
+        const std::vector<PipelineConstant>& constants, 
+        std::vector<RootParameter>& outRootParameters,
+        std::map<uint32_t, uint32_t>& outSetToRootParamMapping
+    ); 
 };

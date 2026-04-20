@@ -7,11 +7,10 @@ struct RootConstants
 };
 ConstantBuffer<RootConstants> ModelData : register(b0, space0);
 
-struct BoneBuffer
+cbuffer BoneData : register(b0, space16)
 {
     float4x4 bones[MAX_BONES];
 };
-ConstantBuffer<BoneBuffer> BoneData : register(b0, space16);
 
 struct CBVBuffer
 {
@@ -57,7 +56,7 @@ VSOutput main(VSInput input)
         if (weight > 0.0)
         {
             uint boneIndex = input.boneIndices[i];
-            float4x4 boneTransform = BoneData.bones[boneIndex];
+            float4x4 boneTransform = bones[boneIndex];
             
             skinnedPos += weight * mul(boneTransform, float4(input.position, 1.0));
             skinnedNormal += weight * mul((float3x3)boneTransform, input.normal);
@@ -70,10 +69,10 @@ VSOutput main(VSInput input)
     output.worldPosition = worldPos.xyz;
     output.position = mul(VPData.viewProjection, worldPos);
     
-    float3x3 normalMatrix = (float3x3)ModelData.normal;
-    output.normal = normalize(mul(normalMatrix, skinnedNormal));
-    output.tangent = normalize(mul(normalMatrix, skinnedTangent));
-    output.binormal = normalize(mul(normalMatrix, skinnedBinormal));
+    float3x3 modelRotation = (float3x3)ModelData.model;
+    output.normal = normalize(mul(modelRotation, skinnedNormal));
+    output.tangent = normalize(mul(modelRotation, skinnedTangent));
+    output.binormal = normalize(mul(modelRotation, skinnedBinormal));
     
     output.uv = input.uv;
     

@@ -1,4 +1,6 @@
 ﻿#pragma once
+#include <map>
+
 #include "RHIStructures.h"
 #include "../../Solution/RHI/RHI_API_Macro.h"
 
@@ -28,6 +30,8 @@ public:
     virtual size_t GetOwnedImageCount() const = 0;
     virtual void* GetOwnedImage(uint32_t index) = 0;
     virtual void* GetOwnedDepthImage() = 0;
+    virtual void* GetOwnedImageView(uint32_t index) = 0;
+    virtual void* GetOwnedDepthImageView() = 0;
     size_t GetPipelineVariantCount() const { return PipelineVariants.size(); }
 };
 
@@ -49,6 +53,14 @@ public:
     ComPtr<ID3D12Resource> GetOwnedDepthResource() const { return OwnedDepthResource; }
     D3D12_CPU_DESCRIPTOR_HANDLE GetOwnedDSV() const { return OwnedDSV; }
     void* GetOwnedDepthImage() override { return OwnedDepthResource.Get(); }
+    void* GetOwnedImageView(uint32_t index) override 
+    { 
+        return reinterpret_cast<void*>(OwnedRTVs[index].ptr);
+    }
+    void* GetOwnedDepthImageView() override 
+    { 
+        return reinterpret_cast<void*>(OwnedDSV.ptr);
+    }
     
 private:
     
@@ -60,6 +72,12 @@ private:
     D3D12_PRIMITIVE_TOPOLOGY Topology;
     ComPtr<ID3D12RootSignature> RootSignature;
     ComPtr<ID3D12PipelineState> PipelineState;
+    
+    std::map<uint32_t, uint32_t> SetIndexToRootParamIndex;
+
+public:
+    
+    const std::map<uint32_t, uint32_t>& GetSetToRootParamMapping() const { return SetIndexToRootParamIndex; }
 };
 
 class VulkanPipeline : public Pipeline
@@ -75,12 +93,20 @@ public:
     void* GetOwnedImage(uint32_t index) override { return OwnedImages[index]; }
     size_t GetOwnedImageCount() const override { return OwnedImages.size(); }
     std::vector<VkImage> GetOwnedImages() const { return OwnedImages; }
-    std::vector<VkImageView> GetOwnedImageViews() const { return OwnedImageViews; }
-    std::vector<VkDeviceMemory> GetOwnedImageMemory() const { return OwnedImageMemory; }
+    std::vector<VkImageView> GetOwnedVkImageViews() const { return OwnedImageViews; }
+    std::vector<VkDeviceMemory> GetOwnedVkImageMemory() const { return OwnedImageMemory; }
     VkImage GetOwnedDepthImage() const { return OwnedDepthImage; }
-    VkDeviceMemory GetOwnedDepthImageMemory() const { return OwnedDepthImageMemory; }
-    VkImageView GetOwnedDepthImageView() const { return OwnedDepthImageView; }
+    VkDeviceMemory GetOwnedDepthVkImageMemory() const { return OwnedDepthImageMemory; }
+    VkImageView GetOwnedDepthVkImageView() const { return OwnedDepthImageView; }
     void* GetOwnedDepthImage() override { return OwnedDepthImage; }
+    void* GetOwnedImageView(uint32_t index) override 
+    { 
+        return reinterpret_cast<void*>(OwnedImageViews[index]);
+    }
+    void* GetOwnedDepthImageView() override 
+    { 
+        return reinterpret_cast<void*>(OwnedDepthImageView);
+    }
     
     std::vector<VkAttachmentDescription> GetAttachmentDescriptions() const { return AttachmentDescriptions; }
     VkAttachmentDescription GetDepthAttachmentDescription() const { return DepthAttachmentDescription; }

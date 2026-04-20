@@ -61,8 +61,8 @@ Mesh::Mesh(std::vector<Vertex>* vertices, std::vector<uint32_t>* indices, uint32
     }
 }
 
-Mesh::Mesh(std::vector<SkinnedVertex>* vertices, std::vector<uint32_t>* indices, uint32_t LocalMaterialIndex) :
-    LocalMaterialIndex(LocalMaterialIndex), bIsSkinned(true)
+Mesh::Mesh(std::vector<SkinnedVertex>* vertices, std::vector<uint32_t>* indices, uint32_t LocalMaterialIndex, const  std::vector<DirectX::XMMATRIX>& boneOffsets) :
+    LocalMaterialIndex(LocalMaterialIndex), bIsSkinned(true), BoneOffsets(boneOffsets)
 {
     using namespace RHIStructures;
     

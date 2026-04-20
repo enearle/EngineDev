@@ -107,6 +107,7 @@ uint32_t Renderer::CreatePipelineFrameContext(Pipeline* pipeline, bool isQuad, b
     context.IsFSQuad = isQuad;
     context.IsPresented = isPresented;
     context.IndexedDrawBins.resize(pipeline->GetPipelineVariantCount() + 1);
+    
     PipelineFrameContexts.push_back(context);
     return PipelineFrameContexts.size() - 1;
 }
@@ -115,7 +116,8 @@ void Renderer::AddIndexedDrawToContext(uint32_t contextIndex, IndexedDraw draw)
 {
     if (PipelineFrameContexts[contextIndex].IndexedDrawBins.size() <= draw.PipelineVarientID)
     {
-        std::cout << "Pipeline variant ID out of range: " << draw.PipelineVarientID << std::endl;
+        std::cout << "Pipeline variant ID " << draw.PipelineVarientID << " out of range (max: " 
+          << PipelineFrameContexts[contextIndex].IndexedDrawBins.size() - 1 << ")" << std::endl;
         return;
     }
     PipelineFrameContexts[contextIndex].IndexedDrawBins[draw.PipelineVarientID].push_back(draw);
@@ -130,7 +132,7 @@ void Renderer::ExecutePipelineContext(uint32_t contextIndex, bool finalContext)
 {
     auto& context = PipelineFrameContexts[contextIndex];
     Pipeline* mainPipeline = context.ContextPipeline;
-    
+
     // Pre-draw attachment barriers
     ImageMemoryBarrier readToAttachmentBarrier = READ_TO_ATTACHMENT_BARRIER;
     for (int j = 0; j < mainPipeline->GetOwnedImageCount(); j++)
@@ -147,6 +149,24 @@ void Renderer::ExecutePipelineContext(uint32_t contextIndex, bool finalContext)
         Executor->IssueImageMemoryBarrier(depthBarrier);
     }
     
+    // Some of this is in BeginPipeline()
+    // But pipeline variants need a reference to main pipelines attachments 
+    std::vector<void*> attachmentViews;
+    void* depthViewToUse = nullptr;
+    if (!context.IsPresented)
+    {
+        for (int j = 0; j < mainPipeline->GetOwnedImageCount(); j++)
+            attachmentViews.push_back(mainPipeline->GetOwnedImageView(j));
+
+        depthViewToUse = mainPipeline->GetOwnedDepthImageView();
+    }
+    else
+    {
+        attachmentViews.push_back(CurrentBackBufferView);
+        depthViewToUse = nullptr;
+    }
+    
+    
     // Bind per-frame descriptors
     std::vector<uint64_t>* perFrameDescriptors = context.PerFrameDescriptors.size() > 0 
         ? &context.PerFrameDescriptors : nullptr;
@@ -155,13 +175,7 @@ void Renderer::ExecutePipelineContext(uint32_t contextIndex, bool finalContext)
     // Handle draws
     if (context.IsFSQuad)
     {
-        if (context.IsPresented)
-            Executor->BeginPipeline(mainPipeline, {CurrentBackBufferView}, nullptr, 
-                                   MainWindow->GetWidth(), MainWindow->GetHeight());
-        else
-            Executor->BeginPipeline(mainPipeline, {}, nullptr, 
-                                   MainWindow->GetWidth(), MainWindow->GetHeight());
-        
+        Executor->BeginPipeline(mainPipeline, attachmentViews, depthViewToUse, MainWindow->GetWidth(), MainWindow->GetHeight(), false);
         Executor->BindPipelineDescriptorSets(perFrameDescriptors);
         Executor->DrawFSQuad();
         Executor->EndPipeline();
@@ -174,25 +188,24 @@ void Renderer::ExecutePipelineContext(uint32_t contextIndex, bool finalContext)
         {
             if (context.IndexedDrawBins[i].empty())
                 continue;
-            
+
             if (i == 0)
                 currentPipeline = mainPipeline;
             else
                 currentPipeline = mainPipeline->PipelineVariants[i - 1];
             
-            if (context.IsPresented)
-                Executor->BeginPipeline(currentPipeline, {CurrentBackBufferView}, nullptr,
-                                       MainWindow->GetWidth(), MainWindow->GetHeight());
+            // Only pass attachments to variants the main pipeline can access its own
+            if (i > 0)
+                Executor->BeginPipeline(currentPipeline, attachmentViews, depthViewToUse,MainWindow->GetWidth(), MainWindow->GetHeight(), true);
             else
-                Executor->BeginPipeline(currentPipeline, {}, nullptr,
-                                       MainWindow->GetWidth(), MainWindow->GetHeight());
+                Executor->BeginPipeline(currentPipeline, {}, nullptr,MainWindow->GetWidth(), MainWindow->GetHeight(), false);
             
             Executor->BindPipelineDescriptorSets(perFrameDescriptors);
             
             for (int j = 0; j < context.IndexedDrawBins[i].size(); j++)
             {
                 IndexedDraw& draw = context.IndexedDrawBins[i][j];
-                
+
                 Executor->BindDrawDescriptorSets(&draw.PerDrawDescriptors, numFrameDescs);
                 Executor->DrawIndexed(
                     draw.VertexBufferID,
@@ -200,9 +213,11 @@ void Renderer::ExecutePipelineContext(uint32_t contextIndex, bool finalContext)
                     draw.IndexBufferID,
                     draw.IndexCount,
                     draw.PushConstants,
-                    draw.PushConstantSize
+                    draw.PushConstantSize,
+                    draw.VertexStride
                 );
             }
+            
             // End Pipeline
             Executor->EndPipeline();
         }

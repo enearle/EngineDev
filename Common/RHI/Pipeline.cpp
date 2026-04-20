@@ -114,6 +114,22 @@ D3DPipeline::D3DPipeline(const PipelineDesc& desc, std::vector<IOResource>* inpu
             if (binding.Set < RHIConstants::VARIANT_DESCRIPTOR_SET_BASE)
                 binding.Set = i;
     
+    std::vector<ResourceLayout> splitLayouts;
+    for (const auto& layout : resourceLayouts)
+    {
+        std::map<uint32_t, std::vector<DescriptorBinding>> bindingsBySet;
+        for (const auto& binding : layout.Bindings)
+            bindingsBySet[binding.Set].push_back(binding);
+    
+        for (const auto& [setIdx, bindings] : bindingsBySet)
+        {
+            ResourceLayout splitLayout = layout;
+            splitLayout.Bindings = bindings;
+            splitLayouts.push_back(splitLayout);
+        }
+    }
+    resourceLayouts = splitLayouts;
+    
     if (desc.IsVariant)
     {
         ResourceLayout variantLayout = desc.VariantResourceLayout;
@@ -124,16 +140,21 @@ D3DPipeline::D3DPipeline(const PipelineDesc& desc, std::vector<IOResource>* inpu
         resourceLayouts.push_back(variantLayout);
     }
     
-    RootSignature = D3DRootSignatureBuilder::BuildRootSignature(desc.PipelineID, resourceLayouts, desc.Constants);
+    RootSignature = D3DRootSignatureBuilder::BuildRootSignature(desc.PipelineID, resourceLayouts, desc.Constants, SetIndexToRootParamIndex);
     
     if (inputIOResources)
-        for (uint32_t i = desc.UseOwnResourceLayout ? 1 : 0; i < resourceLayouts.size(); i++)
+    {
+        // For variants, don't try to allocate the variant-specific layout (last one)
+        uint32_t layoutCount = desc.IsVariant ? resourceLayouts.size() - 1 : resourceLayouts.size();
+    
+        for (uint32_t i = desc.UseOwnResourceLayout ? 1 : 0; i < layoutCount; i++)
         {
             uint32_t inputIndex = desc.UseOwnResourceLayout ? i - 1 : i;
             uint64_t descriptorSetID = BufferAllocator::GetInstance()->AllocateDescriptorSet(
                 desc.PipelineID, i, inputIOResources->at(inputIndex).Bindings);
             PipelineInputDescriptorSetIDs.push_back(descriptorSetID);
         }
+    }
     
     
     // This is a DirectX-specific means to store 3D vertex data in the pipeline for later use.

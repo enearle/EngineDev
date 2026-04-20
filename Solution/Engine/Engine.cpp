@@ -2,6 +2,7 @@
 #include "EngineConstants.h"
 #include "Camera.h"
 #include "CameraController.h"
+#include "DerpMover.h"
 #include "InputEventSystem.h"
 #include "NoesisUILayer.h"
 #include "TempGameObject.h"
@@ -35,7 +36,11 @@ int main(int argc, char* argv[])
     
     // Load a game object WIP (gameobject/staticmesh/scenegraph not complete)
     new TempGameObject({"shells_0", "shells_1"},"shells.fbx", "Shells");
-    CameraController* CameraCon = new CameraController(Camera::ActiveCamera, 5.0f);
+    TempGameObject* derp = new TempGameObject({"derp_0"}, "Derp.fbx", "derp", true);
+    
+    // These aren't real objects they ar just a temporary placeholder
+    DerpMover* derpMover = new DerpMover(derp);
+    CameraController* cameraCon = new CameraController(Camera::ActiveCamera, 5.0f);
     
     Time::Init();
     
@@ -43,22 +48,16 @@ int main(int argc, char* argv[])
     {
         Time::UpdateTime();
         
-        
         InputEventSystem::PollInput(window->GetWindowHandle(), Time::GetDeltaTime());
         InputEventSystem::ProcessCommands(Time::GetDeltaTime());
         
-        
         NoesisUILayer::Instance().NoesisUpdate(Time::GetDeltaTime());
         
+        uint64_t deprBufferId = derp->GetBoneDescriptorSet();
         
-        //float radius = 15.0f;
-        //float speed = 0.5f;
-        //DirectX::XMFLOAT3 cameraPosition = {radius * sinf(Time::GetRunningTime() * speed), 10.0f, radius * cosf(Time::GetRunningTime() * speed)};
-        //Camera::ActiveCamera->SetPositionFloat3(cameraPosition);
-        //Camera::ActiveCamera->LookAtFloat3({});
-        CameraCon->MoveCamera(Time::GetDeltaTime());
+        derpMover->MoveTheDerp(Time::GetDeltaTime());
+        cameraCon->MoveCamera(Time::GetDeltaTime());
         Camera::UpdateMainCameraRenderData();
-        
         
         Renderer::DrawFrame();
     }

@@ -645,6 +645,7 @@ namespace RHIStructures
         uint64_t IndexBufferID = 0;
         uint32_t VertexCount = 0;
         uint32_t IndexCount = 0;
+        uint32_t VertexStride = 0;
         void* PushConstants = nullptr;
         size_t PushConstantSize = 0;
         std::vector<uint64_t> PerDrawDescriptors;

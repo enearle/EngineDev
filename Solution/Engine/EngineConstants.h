@@ -206,7 +206,7 @@ namespace EngineConstants
     {
         PipelineDesc skinnedVariant = {};
         
-        skinnedVariant.PipelineID = 1;
+        skinnedVariant.PipelineID = 0;
         skinnedVariant.IsVariant = true;
         skinnedVariant.VertexShader = ImportShader("vs_pbr_skinned", "main");
         
@@ -232,7 +232,7 @@ namespace EngineConstants
         boneStages.SetVertex(true);
         
         skinnedVariant.VariantResourceLayout.Bindings = {
-            { .Type = DescriptorType::UniformBuffer, .Slot = 0, .Count = 1 }
+            { .Type = DescriptorType::DynamicUniformBuffer, .Slot = 0, .Count = 1 }
         };
         skinnedVariant.VariantResourceLayout.VisibleStages = boneStages;
         

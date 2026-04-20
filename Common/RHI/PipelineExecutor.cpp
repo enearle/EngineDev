@@ -76,7 +76,7 @@ void D3DPipelineExecutor::Wait()
 void D3DPipelineExecutor::BeginPipeline(Pipeline* pipeline,
                                         const std::vector<void*>& colorViews,
                                         void* depthView,
-                                        uint32_t width, uint32_t height)
+                                        uint32_t width, uint32_t height, bool isVariant)
 {
     ID3D12GraphicsCommandList* cmdList = GetCommandList();
     CurrentPipeline = static_cast<D3DPipeline*>(pipeline);
@@ -106,7 +106,7 @@ void D3DPipelineExecutor::BeginPipeline(Pipeline* pipeline,
 
         if (depthView)
         {
-            dsvHandle = *reinterpret_cast<D3D12_CPU_DESCRIPTOR_HANDLE*>(depthView);
+            dsvHandle.ptr = reinterpret_cast<SIZE_T>(depthView);
             pDsvHandle = &dsvHandle;
         }
     }
@@ -132,28 +132,31 @@ void D3DPipelineExecutor::BeginPipeline(Pipeline* pipeline,
         pDsvHandle
     );
 
-    // Clear render targets
-    for (size_t i = 0; i < rtvHandles.size() && i < CurrentPipeline->GetClearColors().size(); ++i)
+    // Clear render targets if not a pipeline variant
+    if (!isVariant)
     {
-        float clearColor[] = {
-            CurrentPipeline->GetClearColors()[i].x,
-            CurrentPipeline->GetClearColors()[i].y,
-            CurrentPipeline->GetClearColors()[i].z,
-            CurrentPipeline->GetClearColors()[i].w
-        };
-        cmdList->ClearRenderTargetView(rtvHandles[i], clearColor, 0, nullptr);
-    }
+        for (size_t i = 0; i < rtvHandles.size() && i < CurrentPipeline->GetClearColors().size(); ++i)
+        {
+            float clearColor[] = {
+                CurrentPipeline->GetClearColors()[i].x,
+                CurrentPipeline->GetClearColors()[i].y,
+                CurrentPipeline->GetClearColors()[i].z,
+                CurrentPipeline->GetClearColors()[i].w
+            };
+            cmdList->ClearRenderTargetView(rtvHandles[i], clearColor, 0, nullptr);
+        }
 
-    if (pDsvHandle)
-    {
-        cmdList->ClearDepthStencilView(
-            *pDsvHandle,
-            D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL,
-            CurrentPipeline->GetDepthClearValue(),
-            0,
-            0,
-            nullptr
-        );
+        if (pDsvHandle)
+        {
+            cmdList->ClearDepthStencilView(
+                *pDsvHandle,
+                D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL,
+                CurrentPipeline->GetDepthClearValue(),
+                0,
+                0,
+                nullptr
+            );
+        }
     }
 
     cmdList->IASetPrimitiveTopology(dynamic_cast<D3DPipeline*>(pipeline)->GetTopology());
@@ -214,7 +217,7 @@ void D3DPipelineExecutor::IssueImageMemoryBarrier(const ImageMemoryBarrier& barr
 }
 
 void D3DPipelineExecutor::DrawIndexed(uint64_t vertBufferID, uint32_t vertCount, uint64_t indexBufferID, 
-    uint32_t indexCount, void* pushConstant, size_t pushConstantSize)
+    uint32_t indexCount, void* pushConstant, size_t pushConstantSize, uint32_t vertexStride)
 {
     ID3D12GraphicsCommandList* cmdList = GetCommandList();
     BufferAllocator* bufferAlloc = BufferAllocator::GetInstance();
@@ -236,7 +239,7 @@ void D3DPipelineExecutor::DrawIndexed(uint64_t vertBufferID, uint32_t vertCount,
     D3D12_VERTEX_BUFFER_VIEW vbv = {};
     vbv.BufferLocation = vertBufferData->GPUAddress;
     vbv.SizeInBytes = static_cast<UINT>(vertAlloc.Size);
-    vbv.StrideInBytes = sizeof(Vertex);
+    vbv.StrideInBytes = vertexStride;
     
     D3D12_INDEX_BUFFER_VIEW ibv = {};
     ibv.BufferLocation = indexBufferData->GPUAddress;
@@ -260,7 +263,7 @@ void D3DPipelineExecutor::BindDrawDescriptorSets(std::vector<uint64_t>* descript
     BufferAllocator* bufferAlloc = BufferAllocator::GetInstance();
     
     D3DPipeline* d3dPipeline = static_cast<D3DPipeline*>(CurrentPipeline);
-    uint32_t rootParamIndex = numPipelineSets + CurrentPipeline->GetPushConstantCount();
+    const auto& setToRootParamMapping = d3dPipeline->GetSetToRootParamMapping();
     
     if (descriptorSets)
     {
@@ -268,11 +271,21 @@ void D3DPipelineExecutor::BindDrawDescriptorSets(std::vector<uint64_t>* descript
         {
             uint64_t descriptorSetID = descriptorSets->at(i);
             DescriptorSetAllocation allocation = bufferAlloc->GetDescriptorSet(descriptorSetID);
-
+            
+            uint32_t setIndex = static_cast<uint32_t>(allocation.SetKey & 0xFFFFFFFF);
+            
+            auto it = setToRootParamMapping.find(setIndex);
+            if (it == setToRootParamMapping.end())
+            {
+                throw std::runtime_error("Descriptor set " + std::to_string(setIndex) + " not found in pipeline root signature");
+            }
+            
+            uint32_t rootParamIndex = it->second;
+            
             D3D12_GPU_DESCRIPTOR_HANDLE handle;
             handle.ptr = allocation.DescriptorAddress;
             
-            cmdList->SetGraphicsRootDescriptorTable(rootParamIndex++, handle);
+            cmdList->SetGraphicsRootDescriptorTable(rootParamIndex, handle);
         }
     }
 }
@@ -282,29 +295,52 @@ void D3DPipelineExecutor::BindPipelineDescriptorSets(std::vector<uint64_t>* desc
     ID3D12GraphicsCommandList* cmdList = GetCommandList();
     BufferAllocator* bufferAlloc = BufferAllocator::GetInstance();
     
-    uint32_t rootParamIndex = CurrentPipeline->GetPushConstantCount();
+    D3DPipeline* d3dPipeline = static_cast<D3DPipeline*>(CurrentPipeline);
+    const auto& setToRootParamMapping = d3dPipeline->GetSetToRootParamMapping();
     
     if (descriptorSets)
     {
         for (size_t i = 0; i < descriptorSets->size(); i++)
         {
             uint64_t descriptorSetID = descriptorSets->at(i);
+            
             DescriptorSetAllocation allocation = bufferAlloc->GetDescriptorSet(descriptorSetID);
+            
+            uint32_t setIndex = static_cast<uint32_t>(allocation.SetKey & 0xFFFFFFFF);
+            
+            auto it = setToRootParamMapping.find(setIndex);
+            if (it == setToRootParamMapping.end())
+            {
+                throw std::runtime_error("Descriptor set " + std::to_string(setIndex) + " not found in pipeline root signature");
+            }
+            
+            uint32_t rootParamIndex = it->second;
             
             D3D12_GPU_DESCRIPTOR_HANDLE handle;
             handle.ptr = allocation.DescriptorAddress;
             
-            cmdList->SetGraphicsRootDescriptorTable(rootParamIndex++, handle);
+            cmdList->SetGraphicsRootDescriptorTable(rootParamIndex, handle);
         }
     }
     
+    // Also bind input descriptor sets (G-buffer textures for lighting pass)
     for (uint64_t descriptorSetID : CurrentPipeline->GetInputDescriptorSetIDs())
     {
         DescriptorSetAllocation allocation = bufferAlloc->GetDescriptorSet(descriptorSetID);
         
+        uint32_t setIndex = static_cast<uint32_t>(allocation.SetKey & 0xFFFFFFFF);
+        
+        auto it = setToRootParamMapping.find(setIndex);
+        if (it == setToRootParamMapping.end())
+        {
+            throw std::runtime_error("Input descriptor set " + std::to_string(setIndex) + " not found in pipeline root signature");
+        }
+        
+        uint32_t rootParamIndex = it->second;
+        
         D3D12_GPU_DESCRIPTOR_HANDLE handle;
         handle.ptr = allocation.DescriptorAddress;
-        cmdList->SetGraphicsRootDescriptorTable(rootParamIndex++, handle);
+        cmdList->SetGraphicsRootDescriptorTable(rootParamIndex, handle);
     }
 }
 
@@ -387,7 +423,7 @@ void VulkanPipelineExecutor::Wait()
 void VulkanPipelineExecutor::BeginPipeline(Pipeline* pipeline,
                                            const std::vector<void*>& colorViews,
                                            void* depthView,
-                                           uint32_t width, uint32_t height)
+                                           uint32_t width, uint32_t height, bool isVariant)
 {
     CurrentPipeline = static_cast<VulkanPipeline*>(pipeline);
     VkCommandBuffer cmdBuffer = GetCommandBuffer();
@@ -398,18 +434,18 @@ void VulkanPipelineExecutor::BeginPipeline(Pipeline* pipeline,
     renderingInfo.renderArea.extent = {width, height};
     renderingInfo.layerCount = 1;
 
-    VkImageView depthStencilView = VK_NULL_HANDLE;
+    VkImageView depthStencilView = nullptr;
     std::vector<VkImageView> colourAttachmentViews;
     if (!colorViews.empty())
         for (const auto& colorView : colorViews)
             colourAttachmentViews.push_back(reinterpret_cast<VkImageView>(colorView));
     else
-        colourAttachmentViews = CurrentPipeline->GetOwnedImageViews();
+        colourAttachmentViews = CurrentPipeline->GetOwnedVkImageViews();
 
     if (depthView)
         depthStencilView = reinterpret_cast<VkImageView>(depthView);
     else 
-        depthStencilView = CurrentPipeline->GetOwnedDepthImageView();
+        depthStencilView = CurrentPipeline->GetOwnedDepthVkImageView();
 
     if (colourAttachmentViews.empty() && depthStencilView == VK_NULL_HANDLE)
         throw std::runtime_error("No attachments provided.");
@@ -539,7 +575,7 @@ void VulkanPipelineExecutor::IssueImageMemoryBarrier(const ImageMemoryBarrier& b
 }
 
 void VulkanPipelineExecutor::DrawIndexed(uint64_t vertBufferID, uint32_t vertCount, uint64_t indexBufferID, 
-    uint32_t indexCount, void* pushConstant, size_t pushConstantSize)
+                                         uint32_t indexCount, void* pushConstant, size_t pushConstantSize, uint32_t vertexStride)
 {
     VkCommandBuffer cmdBuffer = GetCommandBuffer();
     BufferAllocator* bufferAlloc = BufferAllocator::GetInstance();
@@ -579,34 +615,25 @@ void VulkanPipelineExecutor::BindDrawDescriptorSets(std::vector<uint64_t>* descr
     VkCommandBuffer cmdBuffer = GetCommandBuffer();
     BufferAllocator* bufferAlloc = BufferAllocator::GetInstance();
     
-    std::vector<VkDescriptorSet> combinedDescriptorSets;
-    std::vector<uint32_t> dynamicOffsets;
+    if (!descriptorSets || descriptorSets->empty()) return;
     
-    if (descriptorSets)
+    for (uint64_t ID : *descriptorSets)
     {
-        for (uint64_t ID : *descriptorSets)
-        {
-            DescriptorSetAllocation allocation = bufferAlloc->GetDescriptorSet(ID);
-            combinedDescriptorSets.push_back(reinterpret_cast<VkDescriptorSet>(allocation.DescriptorAddress));
-
-            dynamicOffsets.insert(dynamicOffsets.end(), 
-                                 allocation.DynamicOffsets.begin(), 
-                                 allocation.DynamicOffsets.end());
-        }
+        DescriptorSetAllocation allocation = bufferAlloc->GetDescriptorSet(ID);
+        uint32_t setIndex = static_cast<uint32_t>(allocation.SetKey & 0xFFFFFFFF);
+        VkDescriptorSet descriptorSet = reinterpret_cast<VkDescriptorSet>(allocation.DescriptorAddress);
+        
+        vkCmdBindDescriptorSets(
+            cmdBuffer,
+            VK_PIPELINE_BIND_POINT_GRAPHICS,
+            CurrentPipeline->GetPipelineLayout(),
+            setIndex,                               // Bind to actual set number (e.g., 0, 1, or 16)
+            1,                                      // Binding one set at a time
+            &descriptorSet,
+            allocation.DynamicOffsets.size(),       // Dynamic offset count for this set
+            allocation.DynamicOffsets.empty() ? nullptr : allocation.DynamicOffsets.data()
+        );
     }
-    
-    if (combinedDescriptorSets.empty()) return;
-    
-    vkCmdBindDescriptorSets(
-        cmdBuffer,
-        VK_PIPELINE_BIND_POINT_GRAPHICS,
-        CurrentPipeline->GetPipelineLayout(),
-        numPipelineSets,
-        combinedDescriptorSets.size(),
-        combinedDescriptorSets.data(),
-        dynamicOffsets.size(),           // NEW: Dynamic offset count
-        dynamicOffsets.data()             // NEW: Dynamic offsets array
-    );
 }
 
 void VulkanPipelineExecutor::BindPipelineDescriptorSets(std::vector<uint64_t>* descriptorSets)

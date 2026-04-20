@@ -163,6 +163,7 @@
   <ItemGroup>
     <ClCompile Include="Camera.cpp" />
     <ClCompile Include="CameraController.cpp" />
+    <ClCompile Include="DerpMover.cpp" />
     <ClCompile Include="Engine.cpp" />
     <ClCompile Include="InputEventSystem.cpp" />
     <ClCompile Include="NoesisUILayer.cpp" />
@@ -177,6 +178,7 @@
   <ItemGroup>
     <ClInclude Include="Camera.h" />
     <ClInclude Include="CameraController.h" />
+    <ClInclude Include="DerpMover.h" />
     <ClInclude Include="EngineConstants.h" />
     <ClInclude Include="InputEventSystem.h" />
     <ClInclude Include="NoesisUILayer.h" />
