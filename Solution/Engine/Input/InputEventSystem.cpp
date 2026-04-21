@@ -56,9 +56,9 @@ void InputEventSystem::PollInput(HWND hwnd, double deltaTime)
     bool isPressed = GetAsyncKeyState(VK_LBUTTON) & 0x8000;
     POINT mousePos;
     GetCursorPos(&mousePos);
+    ScreenToClient(hwnd, &mousePos);
     int x = mousePos.x;
     int y = mousePos.y;
-    ScreenToClient(hwnd, &mousePos);
     
     switch (sInputMode)
     {
