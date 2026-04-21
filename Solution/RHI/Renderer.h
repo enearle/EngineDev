@@ -1,7 +1,7 @@
 #pragma once
 #include <functional>
 #include <vector>
-#include "../../Common/RHI/RHIStructures.h"
+#include "RHI/RHIStructures.h"
 #include "RHI_API_Macro.h"
 
 class RHI_API Renderer

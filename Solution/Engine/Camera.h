@@ -1,8 +1,8 @@
 ﻿#pragma once
 #include <DirectXMath.h>
 
-#include "Common/RHI/BufferAllocator.h"
-#include "Common/RHI/RHIConstants.h"
+#include "RHI/BufferAllocator.h"
+#include "RHI/RHIConstants.h"
 
 struct VPData
 {

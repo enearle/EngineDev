@@ -2,12 +2,12 @@
 
 #include <algorithm>
 
-#include "../../Common/Window.h"
-#include "../../Common/RHI/Pipeline.h"
-#include "../../Common/RHI/RHIConstants.h"
-#include "../../Common/RHI/PipelineExecutor.h"
+#include "Window.h"
+#include "RHI/Pipeline.h"
+#include "RHI/RHIConstants.h"
+#include "RHI/PipelineExecutor.h"
 #include <DirectXMath.h>
-#include "../../Common/RHI/BufferAllocator.h"
+#include "RHI/BufferAllocator.h"
 
 using namespace RHIConstants;
 

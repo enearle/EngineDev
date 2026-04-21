@@ -1,10 +1,14 @@
 ﻿#include "TempGameObject.h"
-#include "Common/RHI/Material.h"
-#include "Common/RHI/Geometry/GeometryImport.h"
-#include "Solution/RHI/Renderer.h"
+
+#include <iostream>
+
+#include "RHI/Material.h"
+#include "RHI/Geometry/GeometryImport.h"
+#include "Renderer.h"
+#include "RHI/RHIConstants.h"
 
 void CollectBoneMatrices(const SceneNode& node, std::vector<DirectX::XMMATRIX>& outOffsetMatrices,
-    std::vector<DirectX::XMMATRIX>& outTransformMatrices)
+                         std::vector<DirectX::XMMATRIX>& outTransformMatrices)
 {
     for (size_t i = 0; i < node.GetMeshCount(); i++)
     {

@@ -136,13 +136,13 @@ namespace RHIStructures
         std::string path;
         if (GRAPHICS_SETTINGS.APIToUse == DirectX12)
         {
-            path = "../../Common/DirectX12/Shaders/CSO/";
+            path = "../RHI/DirectX12/Shaders/CSO/";
             path += filename;
             path += ".cso";
         }
         else if (GRAPHICS_SETTINGS.APIToUse == Vulkan)
         {
-            path = "../../Common/Vulkan/Shaders/SPIRV/";
+            path = "../RHI/Vulkan/Shaders/SPIRV/";
             path += filename;
             path += ".spv";
         }

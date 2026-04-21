@@ -4,7 +4,7 @@
 #include <mutex>
 #include "Data/Event.h"
 #include "Windows/WindowsHeaders.h"
-#include "../Solution/RHI/RHI_API_Macro.h"
+#include "RHI_API_Macro.h"
 
 enum WindowType
 {

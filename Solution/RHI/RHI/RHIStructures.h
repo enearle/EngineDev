@@ -4,7 +4,7 @@
 #include <dxgiformat.h>
 #include <string>
 #include <vector>
-#include "../../Solution/RHI/RHI_API_Macro.h"
+#include "../RHI_API_Macro.h"
 #include "../Windows/WindowsHeaders.h"
 #include <DirectXMath.h>
 #include <stdexcept>

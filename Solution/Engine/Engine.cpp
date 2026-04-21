@@ -3,13 +3,13 @@
 #include "Camera.h"
 #include "CameraController.h"
 #include "DerpMover.h"
-#include "InputEventSystem.h"
+#include "Input/InputEventSystem.h"
 #include "NoesisUILayer.h"
 #include "TempGameObject.h"
 #include "Time.h"
 #include "../RHI/Renderer.h"
-#include "Common/Window.h"
-#include "Common/RHI/RHIConstants.h"
+#include "Window.h"
+#include "RHI/RHIConstants.h"
 
 using namespace EngineConstants;
 using namespace std;

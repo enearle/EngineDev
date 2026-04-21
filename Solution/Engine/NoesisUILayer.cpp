@@ -2,7 +2,7 @@
 
 #include <iostream>
 
-#include "Common/ForwardInterface.h"
+#include "ForwardInterface.h"
 #include <NsApp/Interaction.h>
 #include <NsApp/BackgroundEffectBehavior.h>
 #include <NsApp/BehaviorCollection.h>
@@ -23,11 +23,11 @@
 #include <NsGui/ResourceDictionary.h>
 #include <NsGui/UICollection.h>
 #include <print>
-#include "Common/Window.h"
-#include "Solution/RHI/Renderer.h"
+#include "Window.h"
+#include "Renderer.h"
 #include <NsGui/Uri.h>
 
-#include "InputEventSystem.h"
+#include "Input/InputEventSystem.h"
 
 NoesisUILayer& NoesisUILayer::Instance()
 {

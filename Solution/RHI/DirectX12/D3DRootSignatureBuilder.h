@@ -1,5 +1,6 @@
 ﻿#pragma once
 #include <d3d12.h>
+#include <map>
 #include <vector>
 #include <wrl/client.h>
 #include "../RHI/RHIStructures.h"

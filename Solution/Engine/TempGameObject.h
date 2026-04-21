@@ -1,6 +1,6 @@
 ﻿#pragma once
 #include "EngineConstants.h"
-#include "Common/RHI/Geometry/Mesh.h"
+#include "RHI/Geometry/Mesh.h"
 
 class TempGameObject
 {

@@ -1,7 +1,7 @@
 #pragma once
 #include <string>
 #include <vector>
-#include "../../Solution/RHI/RHI_API_Macro.h"
+#include "../RHI_API_Macro.h"
 #include "BufferAllocator.h"
 
 namespace RHIStructures

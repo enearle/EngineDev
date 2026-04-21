@@ -1,13 +1,10 @@
-﻿#include "../../Common/RHI/BufferAllocator.h"
+﻿#include "../RHI/BufferAllocator.h"
 #include "D3DRootSignatureBuilder.h"
-
 #include <algorithm>
-
 #include "../Windows/Win32ErrorHandler.h"
 #include <stdexcept>
 #include <d3dcompiler.h>
 #include <iostream>
-
 #include "D3DCore.h"
 
 using namespace Win32ErrorHandler;

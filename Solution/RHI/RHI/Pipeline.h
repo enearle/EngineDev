@@ -2,7 +2,7 @@
 #include <map>
 
 #include "RHIStructures.h"
-#include "../../Solution/RHI/RHI_API_Macro.h"
+#include "../RHI_API_Macro.h"
 
 using namespace RHIStructures;
 using Microsoft::WRL::ComPtr;

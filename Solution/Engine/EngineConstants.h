@@ -1,6 +1,6 @@
 ﻿#pragma once
-#include "Common/RHI/RHIStructures.h"
-#include "Common/RHI/RHIConstants.h"
+#include "RHI/RHIStructures.h"
+#include "RHI/RHIConstants.h"
 
 
 namespace EngineConstants

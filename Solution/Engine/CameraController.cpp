@@ -1,7 +1,7 @@
 ﻿#include "CameraController.h"
 #include <windows.h>
 #include "Camera.h"
-#include "InputEventSystem.h"
+#include "Input/InputEventSystem.h"
 #include "DirectXMath.h"
 
 CameraController::CameraController(Camera* camera, float speed)
