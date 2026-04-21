@@ -131,9 +131,7 @@ Mesh GeometryImport::LoadSkinnedMesh(aiMesh* mesh, const XMMATRIX& transform)
         aiBone* bone = mesh->mBones[boneIndex];
         
         aiMatrix4x4 offsetMatrix = bone->mOffsetMatrix;
-        aiMatrix4x4 globalTransform = bone->mNode->mTransformation;
         boneOffsets[boneIndex] = XMMATRIX(&offsetMatrix.a1);
-        boneTransforms[boneIndex] = XMMATRIX(&globalTransform.a1);
         
         for (size_t weightIndex = 0; weightIndex < bone->mNumWeights; weightIndex++)
         {
