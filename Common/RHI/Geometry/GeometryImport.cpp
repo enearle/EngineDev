@@ -24,7 +24,7 @@ SceneNode GeometryImport::LoadNode(aiNode* node, const aiScene* scene, const XMM
         
         Mesh mesh;
         if (allowSkinned && assimpMesh->mNumBones > 0)
-            mesh = LoadSkinnedMesh(assimpMesh, newTransform);
+            mesh = LoadSkinnedMesh(assimpMesh, XMMATRIX(&node->mTransformation.a1) * transform);
         else
             mesh = LoadMesh(assimpMesh, newTransform);
         
@@ -118,9 +118,10 @@ Mesh GeometryImport::LoadSkinnedMesh(aiMesh* mesh, const XMMATRIX& transform)
         vertices[i].BoneIndices = XMUINT4(0, 0, 0, 0);
     }
     
-    
     std::vector<XMMATRIX> boneOffsets;
+    std::vector<XMMATRIX> boneTransforms;
     boneOffsets.resize(mesh->mNumBones);
+    boneTransforms.resize(mesh->mNumBones);
 
     // Convert from bone->vertices mapping to vertex->bones mapping and store inverse bind pose matrices
     std::vector<std::vector<std::pair<uint32_t, float>>> vertexBoneData(mesh->mNumVertices);
@@ -130,7 +131,9 @@ Mesh GeometryImport::LoadSkinnedMesh(aiMesh* mesh, const XMMATRIX& transform)
         aiBone* bone = mesh->mBones[boneIndex];
         
         aiMatrix4x4 offsetMatrix = bone->mOffsetMatrix;
-        boneOffsets[boneIndex] = XMMatrixTranspose(XMMATRIX(&offsetMatrix.a1));
+        aiMatrix4x4 globalTransform = bone->mNode->mTransformation;
+        boneOffsets[boneIndex] = XMMATRIX(&offsetMatrix.a1);
+        boneTransforms[boneIndex] = XMMATRIX(&globalTransform.a1);
         
         for (size_t weightIndex = 0; weightIndex < bone->mNumWeights; weightIndex++)
         {
@@ -184,7 +187,7 @@ Mesh GeometryImport::LoadSkinnedMesh(aiMesh* mesh, const XMMATRIX& transform)
             indices.push_back(face.mIndices[j]);
     }
     
-    return Mesh(&vertices, &indices, mesh->mMaterialIndex, boneOffsets);
+    return Mesh(&vertices, &indices, mesh->mMaterialIndex, boneOffsets, boneTransforms);
 }
 RootNode GeometryImport::CreateMeshGroup(std::string filePath, const std::string& name, const XMMATRIX& transform, bool allowSkinned)
 {

@@ -69,7 +69,7 @@ VSOutput main(VSInput input)
     output.worldPosition = worldPos.xyz;
     output.position = mul(VPData.viewProjection, worldPos);
     
-    float3x3 modelRotation = (float3x3)ModelData.model;
+    float3x3 modelRotation = (float3x3)ModelData.model; // this is the only thing that worked here, feels wrong but will come back to it when offsets are properly coded on engine side
     output.normal = normalize(mul(modelRotation, skinnedNormal));
     output.tangent = normalize(mul(modelRotation, skinnedTangent));
     output.binormal = normalize(mul(modelRotation, skinnedBinormal));

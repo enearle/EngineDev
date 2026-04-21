@@ -332,6 +332,35 @@ void VulkanBufferAllocator::RegisterDescriptorSetLayout(uint32_t pipelineID, con
         layoutInfoStore.Bindings = bindings;
         DescriptorSetLayouts[key] = layoutInfoStore;
     }
+    
+    // After creating all layouts with bindings, fill gaps with empty layouts
+    if (!bindingsBySet.empty())
+    {
+        uint32_t maxSetNumber = bindingsBySet.rbegin()->first;
+    
+        for (uint32_t setIndex = 0; setIndex <= maxSetNumber; setIndex++)
+        {
+            uint64_t key = MakeKey(pipelineID, setIndex);
+            
+            if (DescriptorSetLayouts.find(key) != DescriptorSetLayouts.end())
+                continue;
+            
+            VkDescriptorSetLayoutCreateInfo layoutInfo{};
+            layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+            layoutInfo.bindingCount = 0;
+            layoutInfo.pBindings = nullptr;
+        
+            VkDescriptorSetLayout descriptorSetLayout;
+            VkResult result = vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &descriptorSetLayout);
+            if (result != VK_SUCCESS)
+                throw std::runtime_error("Failed to create empty descriptor set layout");
+            
+            DescriptorSetLayoutInfo layoutInfoStore;
+            layoutInfoStore.Layout = descriptorSetLayout;
+            layoutInfoStore.Pool = VK_NULL_HANDLE; // No pool for empty layouts
+            DescriptorSetLayouts[key] = layoutInfoStore;
+        }
+    }
 }
 
 uint64_t VulkanBufferAllocator::AllocateDescriptorSet(uint32_t pipelineID, uint32_t setIndex, const std::vector<DescriptorSetBinding>& bindings)
@@ -480,6 +509,17 @@ void VulkanBufferAllocator::UpdateDescriptorSetDynamicOffsets(uint64_t setID, co
     allocation.DynamicOffsets = offsets;
 }
 
+VkDescriptorSetLayout VulkanBufferAllocator::GetRegisteredDescriptorSetLayout(uint32_t pipelineID, uint32_t setIndex)
+{
+    uint64_t key = MakeKey(pipelineID, setIndex);
+    auto iterator = DescriptorSetLayouts.find(key);
+    
+    if (iterator == DescriptorSetLayouts.end())
+        return VK_NULL_HANDLE;
+    
+    return iterator->second.Layout;
+}
+
 VulkanBufferAllocator::~VulkanBufferAllocator()
 {
     VkDevice device = VulkanCore::Instance().GetDevice();
@@ -487,7 +527,9 @@ VulkanBufferAllocator::~VulkanBufferAllocator()
     for (auto& [handle, allocation] : DescriptorSetLayouts)
     {
         vkDestroyDescriptorSetLayout(device, allocation.Layout, nullptr);
-        vkDestroyDescriptorPool(device, allocation.Pool, nullptr);       
+    
+        if (allocation.Pool != VK_NULL_HANDLE)  // ← ADD THIS CHECK
+            vkDestroyDescriptorPool(device, allocation.Pool, nullptr);
     }
     
     for (auto& [handle, allocation] : AllocatedBuffers)

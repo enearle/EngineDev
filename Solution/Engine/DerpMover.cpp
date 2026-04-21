@@ -47,14 +47,22 @@ void DerpMover::MoveTheDerp(double dt)
     DirectX::XMFLOAT4X4 bone1;
     DirectX::XMFLOAT4X4 bone2;
     
-    DirectX::XMMATRIX anim0 = DirectX::XMMatrixTranslation(xPos, yPos, 0);
-    DirectX::XMMATRIX anim1 = DirectX::XMMatrixRotationY(xRot);
-    DirectX::XMMATRIX anim2 = DirectX::XMMatrixRotationY(-xRot);
+    DirectX::XMMATRIX anim0 = DirectX::XMMatrixIdentity();//DirectX::XMMatrixTranslation(xPos, 0, yPos);
+    DirectX::XMMATRIX anim1 = DirectX::XMMatrixRotationZ(xRot * 0.5f);
+    DirectX::XMMATRIX anim2 = DirectX::XMMatrixRotationZ(xRot * 0.25f);
     
-    DirectX::XMMATRIX mat0 = anim0;
-    DirectX::XMMATRIX mat1 = anim1 * anim0 ;
-    DirectX::XMMATRIX mat2 = anim2 * anim1 * anim0;
-
+    DirectX::XMMATRIX bindPose0 = Derp->GetBoneOffsets()[0];
+    DirectX::XMMATRIX bindPose1 = Derp->GetBoneOffsets()[1];
+    DirectX::XMMATRIX bindPose2 = Derp->GetBoneOffsets()[2];
+    
+    DirectX::XMMATRIX globalInverse0 = DirectX::XMMatrixInverse(nullptr, Derp->GetBoneTransforms()[0]);
+    DirectX::XMMATRIX globalInverse1 = DirectX::XMMatrixInverse(nullptr, Derp->GetBoneTransforms()[1]);
+    DirectX::XMMATRIX globalInverse2 = DirectX::XMMatrixInverse(nullptr, Derp->GetBoneTransforms()[2]);
+    
+    DirectX::XMMATRIX mat0 = globalInverse0 * anim0 * bindPose0;
+    DirectX::XMMATRIX mat1 = globalInverse1 * mat0 * anim1 * bindPose1;
+    DirectX::XMMATRIX mat2 = globalInverse2 * mat1 * anim2 * bindPose2;
+    
     DirectX::XMStoreFloat4x4(&MappedDataAddr->BoneTransforms[0], mat0);
     DirectX::XMStoreFloat4x4(&MappedDataAddr->BoneTransforms[1], mat1);
     DirectX::XMStoreFloat4x4(&MappedDataAddr->BoneTransforms[2], mat2);

@@ -20,9 +20,9 @@ public:
     virtual void BeginPipeline(Pipeline* pipeline,
                                const std::vector<void*>& colorViews,
                                void* depthView,
-                               uint32_t width, uint32_t height, bool isVariant) = 0;
+                               uint32_t width, uint32_t height, bool isVariant = false, bool isFirstInContext = false) = 0;
     
-    virtual void EndPipeline() = 0;
+    virtual void EndPipeline(bool isLastInContext = false) = 0;
     
     virtual void IssueMemoryBarrier(const RHIStructures::MemoryBarrier& barrier) = 0;
     virtual void IssueImageMemoryBarrier(const ImageMemoryBarrier& barrier) = 0;
@@ -54,8 +54,8 @@ public:
     void BeginPipeline(Pipeline* pipeline,
                        const std::vector<void*>& colorViews,
                        void* depthView,
-                       uint32_t width, uint32_t height, bool isVariant = false) override;
-    void EndPipeline() override;
+                       uint32_t width, uint32_t height, bool isVariant, bool isFirstInContext) override;
+    void EndPipeline(bool isLastInContext = false) override;
     
     void IssueMemoryBarrier(const RHIStructures::MemoryBarrier& barrier) override;
     void IssueImageMemoryBarrier(const ImageMemoryBarrier& barrier) override;
@@ -91,8 +91,8 @@ public:
     void BeginPipeline(Pipeline* pipeline,
                        const std::vector<void*>& colorViews,
                        void* depthView,
-                       uint32_t width, uint32_t height, bool isVariant) override;
-    void EndPipeline() override;
+                       uint32_t width, uint32_t height, bool isVariant, bool isFirstInContext) override;
+    void EndPipeline(bool isLastInContext = false) override;
     
     void IssueMemoryBarrier(const RHIStructures::MemoryBarrier& barrier) override;
     void IssueImageMemoryBarrier(const ImageMemoryBarrier& barrier) override;

@@ -76,7 +76,8 @@ void D3DPipelineExecutor::Wait()
 void D3DPipelineExecutor::BeginPipeline(Pipeline* pipeline,
                                         const std::vector<void*>& colorViews,
                                         void* depthView,
-                                        uint32_t width, uint32_t height, bool isVariant)
+                                        uint32_t width, uint32_t height, 
+                                        bool isVariant, bool isFirstInContext)
 {
     ID3D12GraphicsCommandList* cmdList = GetCommandList();
     CurrentPipeline = static_cast<D3DPipeline*>(pipeline);
@@ -178,7 +179,7 @@ void D3DPipelineExecutor::BeginPipeline(Pipeline* pipeline,
     cmdList->RSSetScissorRects(1, &scissor);
 }
 
-void D3DPipelineExecutor::EndPipeline()
+void D3DPipelineExecutor::EndPipeline(bool isLastInContext)
 {
     // Empty atm
 
@@ -423,72 +424,75 @@ void VulkanPipelineExecutor::Wait()
 void VulkanPipelineExecutor::BeginPipeline(Pipeline* pipeline,
                                            const std::vector<void*>& colorViews,
                                            void* depthView,
-                                           uint32_t width, uint32_t height, bool isVariant)
+                                           uint32_t width, uint32_t height, 
+                                           bool isVariant, bool isFirstInContext)
 {
     CurrentPipeline = static_cast<VulkanPipeline*>(pipeline);
     VkCommandBuffer cmdBuffer = GetCommandBuffer();
 
-    VkRenderingInfo renderingInfo{};
-    renderingInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
-    renderingInfo.renderArea.offset = {0, 0};
-    renderingInfo.renderArea.extent = {width, height};
-    renderingInfo.layerCount = 1;
-
-    VkImageView depthStencilView = nullptr;
-    std::vector<VkImageView> colourAttachmentViews;
-    if (!colorViews.empty())
-        for (const auto& colorView : colorViews)
-            colourAttachmentViews.push_back(reinterpret_cast<VkImageView>(colorView));
-    else
-        colourAttachmentViews = CurrentPipeline->GetOwnedVkImageViews();
-
-    if (depthView)
-        depthStencilView = reinterpret_cast<VkImageView>(depthView);
-    else 
-        depthStencilView = CurrentPipeline->GetOwnedDepthVkImageView();
-
-    if (colourAttachmentViews.empty() && depthStencilView == VK_NULL_HANDLE)
-        throw std::runtime_error("No attachments provided.");
-
-    if (CurrentPipeline->GetClearColors().size() != colourAttachmentViews.size())
-        throw std::runtime_error("Number of clear colors does not match number of attachments.");
-
-    std::vector<VkAttachmentDescription> attachmentDescs = CurrentPipeline->GetAttachmentDescriptions();
-    VkAttachmentDescription depthStencilDesc = {};  // Initialize to zero
-    if (depthStencilView != VK_NULL_HANDLE) 
-        depthStencilDesc = CurrentPipeline->GetDepthAttachmentDescription();
-    std::vector<VkRenderingAttachmentInfo> colourAttachments;
-    size_t numColourAttachments = colourAttachmentViews.size();
-
-    for (size_t i = 0; i < numColourAttachments; ++i)
+    if (isFirstInContext)
     {
-        VkRenderingAttachmentInfo attachment{};
-        attachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-        attachment.imageView = colourAttachmentViews[i];
-        attachment.loadOp = attachmentDescs[i].loadOp;
-        attachment.storeOp = attachmentDescs[i].storeOp;
-        attachment.imageLayout = attachmentDescs[i].finalLayout;
-        attachment.clearValue.color = {CurrentPipeline->GetClearColors()[i].x, CurrentPipeline->GetClearColors()[i].y, CurrentPipeline->GetClearColors()[i].z, CurrentPipeline->GetClearColors()[i].w};
-        colourAttachments.push_back(attachment);
+        VkRenderingInfo renderingInfo{};
+        renderingInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+        renderingInfo.renderArea.offset = {0, 0};
+        renderingInfo.renderArea.extent = {width, height};
+        renderingInfo.layerCount = 1;
+
+        VkImageView depthStencilView = nullptr;
+        std::vector<VkImageView> colourAttachmentViews;
+        if (!colorViews.empty())
+            for (const auto& colorView : colorViews)
+                colourAttachmentViews.push_back(reinterpret_cast<VkImageView>(colorView));
+        else
+            colourAttachmentViews = CurrentPipeline->GetOwnedVkImageViews();
+
+        if (depthView)
+            depthStencilView = reinterpret_cast<VkImageView>(depthView);
+        else 
+            depthStencilView = CurrentPipeline->GetOwnedDepthVkImageView();
+
+        if (colourAttachmentViews.empty() && depthStencilView == VK_NULL_HANDLE)
+            throw std::runtime_error("No attachments provided.");
+
+        if (CurrentPipeline->GetClearColors().size() != colourAttachmentViews.size())
+            throw std::runtime_error("Number of clear colors does not match number of attachments.");
+
+        std::vector<VkAttachmentDescription> attachmentDescs = CurrentPipeline->GetAttachmentDescriptions();
+        VkAttachmentDescription depthStencilDesc = {};  // Initialize to zero
+        if (depthStencilView != VK_NULL_HANDLE) 
+            depthStencilDesc = CurrentPipeline->GetDepthAttachmentDescription();
+        std::vector<VkRenderingAttachmentInfo> colourAttachments;
+        size_t numColourAttachments = colourAttachmentViews.size();
+
+        for (size_t i = 0; i < numColourAttachments; ++i)
+        {
+            VkRenderingAttachmentInfo attachment{};
+            attachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+            attachment.imageView = colourAttachmentViews[i];
+            attachment.loadOp = isVariant ? VK_ATTACHMENT_LOAD_OP_LOAD : attachmentDescs[i].loadOp;
+            attachment.storeOp = attachmentDescs[i].storeOp;
+            attachment.imageLayout = attachmentDescs[i].finalLayout;
+            attachment.clearValue.color = {CurrentPipeline->GetClearColors()[i].x, CurrentPipeline->GetClearColors()[i].y, CurrentPipeline->GetClearColors()[i].z, CurrentPipeline->GetClearColors()[i].w};
+            colourAttachments.push_back(attachment);
+        }
+
+        renderingInfo.colorAttachmentCount = static_cast<uint32_t>(colourAttachments.size());
+        renderingInfo.pColorAttachments = colourAttachments.data();
+
+        VkRenderingAttachmentInfo depthAttachment{};
+        if (depthStencilView != VK_NULL_HANDLE)
+        {
+            depthAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+            depthAttachment.imageView = depthStencilView;
+            depthAttachment.loadOp = isVariant ? VK_ATTACHMENT_LOAD_OP_LOAD : depthStencilDesc.loadOp;
+            depthAttachment.storeOp = depthStencilDesc.storeOp;
+            depthAttachment.imageLayout = depthStencilDesc.finalLayout;
+            depthAttachment.clearValue.depthStencil = {CurrentPipeline->GetDepthClearValue(), 0};
+            renderingInfo.pDepthAttachment = &depthAttachment;
+        }
+
+        vkCmdBeginRendering(cmdBuffer, &renderingInfo);
     }
-
-    renderingInfo.colorAttachmentCount = static_cast<uint32_t>(colourAttachments.size());
-    renderingInfo.pColorAttachments = colourAttachments.data();
-
-    VkRenderingAttachmentInfo depthAttachment{};
-    if (depthStencilView != VK_NULL_HANDLE)
-    {
-        depthAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-        depthAttachment.imageView = depthStencilView;
-        depthAttachment.loadOp = depthStencilDesc.loadOp;
-        depthAttachment.storeOp = depthStencilDesc.storeOp;
-        depthAttachment.imageLayout = depthStencilDesc.finalLayout;
-        depthAttachment.clearValue.depthStencil = {CurrentPipeline->GetDepthClearValue(), 0};
-        renderingInfo.pDepthAttachment = &depthAttachment;
-    }
-
-    vkCmdBeginRendering(cmdBuffer, &renderingInfo);
-    
     
     // Bind pipeline
     vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, CurrentPipeline->GetVulkanPipeline());
@@ -510,10 +514,13 @@ void VulkanPipelineExecutor::BeginPipeline(Pipeline* pipeline,
     vkCmdSetScissor(cmdBuffer, 0, 1, &scissor);
 }
 
-void VulkanPipelineExecutor::EndPipeline()
+void VulkanPipelineExecutor::EndPipeline(bool isLastInContext)
 {
-    VkCommandBuffer cmdBuffer = GetCommandBuffer();
-    vkCmdEndRendering(cmdBuffer);
+    if (isLastInContext)
+    {
+        VkCommandBuffer cmdBuffer = GetCommandBuffer();
+        vkCmdEndRendering(cmdBuffer);
+    }
 }
 
 void VulkanPipelineExecutor::IssueMemoryBarrier(const RHIStructures::MemoryBarrier& barrier)
@@ -641,44 +648,32 @@ void VulkanPipelineExecutor::BindPipelineDescriptorSets(std::vector<uint64_t>* d
     VkCommandBuffer cmdBuffer = GetCommandBuffer();
     BufferAllocator* bufferAlloc = BufferAllocator::GetInstance();
     
-    std::vector<VkDescriptorSet> combinedDescriptorSets;
-    std::vector<uint32_t> dynamicOffsets;
-    
     if (descriptorSets)
     {
         for (uint64_t ID : *descriptorSets)
         {
             DescriptorSetAllocation allocation = bufferAlloc->GetDescriptorSet(ID);
-            combinedDescriptorSets.push_back(reinterpret_cast<VkDescriptorSet>(allocation.DescriptorAddress));
+            uint32_t setIndex = static_cast<uint32_t>(allocation.SetKey & 0xFFFFFFFF);
+            VkDescriptorSet descriptorSet = reinterpret_cast<VkDescriptorSet>(allocation.DescriptorAddress);
             
-            dynamicOffsets.insert(dynamicOffsets.end(), 
-                                 allocation.DynamicOffsets.begin(), 
-                                 allocation.DynamicOffsets.end());
+            vkCmdBindDescriptorSets(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                CurrentPipeline->GetPipelineLayout(), setIndex, 1, &descriptorSet,
+                allocation.DynamicOffsets.size(),
+                allocation.DynamicOffsets.empty() ? nullptr : allocation.DynamicOffsets.data());
         }
     }
-        
+    
     for (uint64_t ID : CurrentPipeline->GetInputDescriptorSetIDs())
     {
         DescriptorSetAllocation allocation = bufferAlloc->GetDescriptorSet(ID);
-        combinedDescriptorSets.push_back(reinterpret_cast<VkDescriptorSet>(allocation.DescriptorAddress));
+        uint32_t setIndex = static_cast<uint32_t>(allocation.SetKey & 0xFFFFFFFF);
+        VkDescriptorSet descriptorSet = reinterpret_cast<VkDescriptorSet>(allocation.DescriptorAddress);
         
-        dynamicOffsets.insert(dynamicOffsets.end(), 
-                             allocation.DynamicOffsets.begin(), 
-                             allocation.DynamicOffsets.end());
+        vkCmdBindDescriptorSets(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+            CurrentPipeline->GetPipelineLayout(), setIndex, 1, &descriptorSet,
+            allocation.DynamicOffsets.size(),
+            allocation.DynamicOffsets.empty() ? nullptr : allocation.DynamicOffsets.data());
     }
-    
-    if (combinedDescriptorSets.empty()) return;
-    
-    vkCmdBindDescriptorSets(
-        cmdBuffer,
-        VK_PIPELINE_BIND_POINT_GRAPHICS,
-        CurrentPipeline->GetPipelineLayout(),
-        0,
-        combinedDescriptorSets.size(),
-        combinedDescriptorSets.data(),
-        dynamicOffsets.size(),
-        dynamicOffsets.data()
-    );
 }
 
 void VulkanPipelineExecutor::StartNoesisContext(uint32_t width, uint32_t height)

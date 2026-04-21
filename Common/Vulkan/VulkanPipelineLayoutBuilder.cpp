@@ -8,8 +8,12 @@
 
 using namespace RHIStructures;
 
-VkPipelineLayout VulkanPipelineLayoutBuilder::BuildPipelineLayout(uint32_t pipelineID,
-    const std::vector<ResourceLayout>& layouts, std::vector<VkDescriptorSetLayout>& descriptorSetLayouts, const std::vector<PipelineConstant>& constants)
+VkPipelineLayout VulkanPipelineLayoutBuilder::BuildPipelineLayout(
+    uint32_t pipelineID,
+    const std::vector<ResourceLayout>& layouts, 
+    std::vector<VkDescriptorSetLayout>& descriptorSetLayouts,
+    const std::vector<PipelineConstant>& constants, 
+    std::map<uint32_t, uint32_t>& outSetToLayoutMapping)
 {
     VkDevice device = VulkanCore::Instance().GetDevice();
     if (!device)
@@ -36,6 +40,7 @@ VkPipelineLayout VulkanPipelineLayoutBuilder::BuildPipelineLayout(uint32_t pipel
 
     // Create descriptor set layouts
     // Collect all bindings from all resource layouts into a single map
+    // All layouts and descriptors are tracked in the buffer allocator for cleanup
     std::map<uint32_t, std::vector<DescriptorSetLayoutBinding>> bindingsBySet;
 
     for (uint32_t i = 0; i < layouts.size(); i++)
@@ -61,49 +66,25 @@ VkPipelineLayout VulkanPipelineLayoutBuilder::BuildPipelineLayout(uint32_t pipel
     // Create descriptor set layout array with proper indexing
     descriptorSetLayouts.reserve(maxSetNumber + 1);
 
+    VulkanBufferAllocator* bufferAlloc = static_cast<VulkanBufferAllocator*>(BufferAllocator::GetInstance());
+
     for (uint32_t setIndex = 0; setIndex <= maxSetNumber; setIndex++)
     {
-        VkDescriptorSetLayout descriptorSetLayout = VK_NULL_HANDLE;
-        
-        auto it = bindingsBySet.find(setIndex);
-        if (it != bindingsBySet.end())
+        // Try to reuse existing layout from BufferAllocator
+        VkDescriptorSetLayout descriptorSetLayout = bufferAlloc->GetRegisteredDescriptorSetLayout(pipelineID, setIndex);
+    
+        if (descriptorSetLayout != VK_NULL_HANDLE)
         {
-            // Create actual layout for this set
-            const std::vector<DescriptorSetLayoutBinding>& bindings = it->second;
-            std::vector<VkDescriptorSetLayoutBinding> vkBindings;
-            vkBindings.reserve(bindings.size());
-            
-            for (const auto& binding : bindings)
-            {
-                vkBindings.push_back(binding.binding);
-            }
-            
-            VkDescriptorSetLayoutCreateInfo layoutInfo{};
-            layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-            layoutInfo.bindingCount = static_cast<uint32_t>(vkBindings.size());
-            layoutInfo.pBindings = vkBindings.data();
-            layoutInfo.flags = 0;
-            
-            VkResult result = vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &descriptorSetLayout);
-            
-            if (result != VK_SUCCESS)
-                throw std::runtime_error("Failed to create descriptor set layout");
+            // Reuse set from main pipeline
+            outSetToLayoutMapping[setIndex] = setIndex;
         }
         else
         {
-            // Create empty layout for unused set numbers
-            VkDescriptorSetLayoutCreateInfo layoutInfo{};
-            layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-            layoutInfo.bindingCount = 0;
-            layoutInfo.pBindings = nullptr;
-            layoutInfo.flags = 0;
-            
-            VkResult result = vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &descriptorSetLayout);
-            
-            if (result != VK_SUCCESS)
-                throw std::runtime_error("Failed to create empty descriptor set layout");
+            // Layout should have been created in BufferAllocator
+            throw std::runtime_error("Descriptor set layout not found for pipeline " 
+                + std::to_string(pipelineID) + " set " + std::to_string(setIndex));
         }
-        
+    
         descriptorSetLayouts.push_back(descriptorSetLayout);
     }
     

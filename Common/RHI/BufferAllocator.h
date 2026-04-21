@@ -61,7 +61,7 @@ public:
     void FreeDescriptorSet(uint64_t setID) override;
     void UpdateDescriptorSetDynamicOffsets(uint64_t setID, const std::vector<uint32_t>& offsets) override;
     enum DescriptorType : uint8_t { SampledImage, StorageImage, UniformBuffer, StorageBuffer};
-    
+    VkDescriptorSetLayout GetRegisteredDescriptorSetLayout(uint32_t pipelineID, uint32_t setIndex);
     static uint32_t FindMemoryType(uint32_t allowdTypes, VkMemoryPropertyFlags flags);
     
 private:

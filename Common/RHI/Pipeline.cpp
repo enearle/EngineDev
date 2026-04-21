@@ -96,6 +96,7 @@ D3DPipeline::D3DPipeline(const PipelineDesc& desc, std::vector<IOResource>* inpu
     ClearColors = desc.AttachmentClearValues;
     DepthClearValue = desc.DepthClearValue;
     PushConstantCount = static_cast<uint32_t>(desc.Constants.size());
+    IsVariant = desc.IsVariant;
     
     ComPtr<ID3D12Device> device = D3DCore::Instance().GetDevice();
     Topology = DXPrimitiveTopology(desc.PrimitiveTopology);
@@ -140,7 +141,7 @@ D3DPipeline::D3DPipeline(const PipelineDesc& desc, std::vector<IOResource>* inpu
         resourceLayouts.push_back(variantLayout);
     }
     
-    RootSignature = D3DRootSignatureBuilder::BuildRootSignature(desc.PipelineID, resourceLayouts, desc.Constants, SetIndexToRootParamIndex);
+    RootSignature = D3DRootSignatureBuilder::BuildRootSignature(desc.PipelineID, resourceLayouts, desc.Constants, SetIndexToBuilderIndex);
     
     if (inputIOResources)
     {
@@ -466,6 +467,7 @@ VulkanPipeline::VulkanPipeline(const PipelineDesc& desc, std::vector<IOResource>
     ClearColors = desc.AttachmentClearValues;
     DepthClearValue = desc.DepthClearValue;
     PushConstantCount = static_cast<uint32_t>(desc.Constants.size());
+    IsVariant = desc.IsVariant;
     
     // Cache shader modules for cleanup
     // All shaders will allways be loaded. This is meh, but for my engine probably fine.
@@ -667,15 +669,21 @@ VulkanPipeline::VulkanPipeline(const PipelineDesc& desc, std::vector<IOResource>
         resourceLayouts.push_back(variantLayout);
     }
 
-    PipelineLayout = VulkanPipelineLayoutBuilder::BuildPipelineLayout(desc.PipelineID, resourceLayouts, SetLayouts, desc.Constants);
+    PipelineLayout = VulkanPipelineLayoutBuilder::BuildPipelineLayout(desc.PipelineID, resourceLayouts, SetLayouts, desc.Constants, SetIndexToBuilderIndex);
     
     if (inputIOResources)
-        for (uint32_t i = desc.UseOwnResourceLayout ? 1 : 0; i < resourceLayouts.size(); i++)
+    {
+        // For variants, don't try to allocate the variant-specific layout (last one)
+        uint32_t layoutCount = desc.IsVariant ? resourceLayouts.size() - 1 : resourceLayouts.size();
+    
+        for (uint32_t i = desc.UseOwnResourceLayout ? 1 : 0; i < layoutCount; i++)
         {
             uint32_t inputIndex = desc.UseOwnResourceLayout ? i - 1 : i;
-            uint64_t descriptorSetID = BufferAllocator::GetInstance()->AllocateDescriptorSet(desc.PipelineID, i, inputIOResources->at(inputIndex).Bindings);
+            uint64_t descriptorSetID = BufferAllocator::GetInstance()->AllocateDescriptorSet(
+                desc.PipelineID, i, inputIOResources->at(inputIndex).Bindings);
             PipelineInputDescriptorSetIDs.push_back(descriptorSetID);
         }
+    }
     
     std::vector<VkFormat> colorFormats;
     for (const auto& format : desc.RenderTargetFormats)
@@ -960,9 +968,6 @@ VulkanPipeline::~VulkanPipeline()
     
     for (int i = 0; i < PipelineVariants.size(); i++)
         delete PipelineVariants[i];
-    
-    for (VkDescriptorSetLayout setLayout : SetLayouts)
-        vkDestroyDescriptorSetLayout(device, setLayout, nullptr);
     
     if (Pipeline != VK_NULL_HANDLE)
         vkDestroyPipeline(device, Pipeline, nullptr);

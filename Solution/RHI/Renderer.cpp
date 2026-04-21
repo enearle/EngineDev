@@ -175,30 +175,52 @@ void Renderer::ExecutePipelineContext(uint32_t contextIndex, bool finalContext)
     // Handle draws
     if (context.IsFSQuad)
     {
-        Executor->BeginPipeline(mainPipeline, attachmentViews, depthViewToUse, MainWindow->GetWidth(), MainWindow->GetHeight(), false);
+        Executor->BeginPipeline(mainPipeline, attachmentViews, depthViewToUse, MainWindow->GetWidth(), MainWindow->GetHeight(), false, true);
         Executor->BindPipelineDescriptorSets(perFrameDescriptors);
         Executor->DrawFSQuad();
-        Executor->EndPipeline();
+        Executor->EndPipeline(true);
     }
     else
     {
         Pipeline* currentPipeline;
-        
+        bool renderingStarted = false;
+        int lastNonEmptyBinIndex = -1;
+
+        // Find last non-empty bin
+        for (int i = context.IndexedDrawBins.size() - 1; i >= 0; i--)
+        {
+            if (!context.IndexedDrawBins[i].empty())
+            {
+                lastNonEmptyBinIndex = i;
+                break;
+            }
+        }
+
         for (int i = 0; i < context.IndexedDrawBins.size(); i++)
         {
             if (context.IndexedDrawBins[i].empty())
-                continue;
-
+                continue;  // Skip empty bins entirely
+    
             if (i == 0)
                 currentPipeline = mainPipeline;
             else
                 currentPipeline = mainPipeline->PipelineVariants[i - 1];
-            
-            // Only pass attachments to variants the main pipeline can access its own
-            if (i > 0)
-                Executor->BeginPipeline(currentPipeline, attachmentViews, depthViewToUse,MainWindow->GetWidth(), MainWindow->GetHeight(), true);
+    
+            bool isFirstInContext = !renderingStarted;  // ✅ Correct!
+            bool isLastInContext = (i == lastNonEmptyBinIndex);  // ✅ Correct!
+            bool isVariant = (i > 0);
+    
+            // Begin pipeline
+            if (isVariant)
+                Executor->BeginPipeline(currentPipeline, attachmentViews, depthViewToUse, 
+                                       MainWindow->GetWidth(), MainWindow->GetHeight(), 
+                                       true, isFirstInContext);
             else
-                Executor->BeginPipeline(currentPipeline, {}, nullptr,MainWindow->GetWidth(), MainWindow->GetHeight(), false);
+                Executor->BeginPipeline(currentPipeline, {}, nullptr, 
+                                       MainWindow->GetWidth(), MainWindow->GetHeight(), 
+                                       false, isFirstInContext);
+    
+            renderingStarted = true;
             
             Executor->BindPipelineDescriptorSets(perFrameDescriptors);
             
@@ -219,7 +241,8 @@ void Renderer::ExecutePipelineContext(uint32_t contextIndex, bool finalContext)
             }
             
             // End Pipeline
-            Executor->EndPipeline();
+            
+            Executor->EndPipeline(isLastInContext);
         }
     }
     

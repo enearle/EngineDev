@@ -1,7 +1,7 @@
 ﻿#version 450
 #define MAX_BONES 128
 
-layout(push_constant) uniform RootConstants {
+layout(push_constant, row_major) uniform RootConstants {
     mat4 model;
     mat4 normal;
 } ModelData;
@@ -11,7 +11,7 @@ layout(set = 0, binding = 0, row_major) uniform VPData {
     vec4 cameraPosition;
 } vpData;
 
-layout(set = 16, binding = 0) uniform BoneBuffer {
+layout(set = 16, binding = 0, row_major) uniform BoneBuffer {
     mat4 bones[MAX_BONES];
 } BoneData;
 
@@ -41,21 +41,21 @@ void main() {
             uint boneIndex = inBoneIndices[i];
             mat4 boneTransform = BoneData.bones[boneIndex];
 
-            skinnedPos += weight * (boneTransform * vec4(inPosition, 1.0));
-            skinnedNormal += weight * (mat3(boneTransform) * inNormal);
-            skinnedTangent += weight * (mat3(boneTransform) * inTangent);
-            skinnedBinormal += weight * (mat3(boneTransform) * inBinormal);
+            skinnedPos += weight * (vec4(inPosition, 1.0) * boneTransform);
+            skinnedNormal += weight * (inNormal * mat3(boneTransform));
+            skinnedTangent += weight * (inTangent * mat3(boneTransform));
+            skinnedBinormal += weight * (inBinormal * mat3(boneTransform));
         }
     }
 
-    vec4 worldPos = ModelData.model * skinnedPos;
+    vec4 worldPos = skinnedPos * ModelData.model;
     outWorldPosition = worldPos.xyz;
-    gl_Position = vpData.viewProjection * worldPos;
-
-    mat3 normalMatrix = mat3(ModelData.normal);
-    outNormal = normalize(normalMatrix * skinnedNormal);
-    outTangent = normalize(normalMatrix * skinnedTangent);
-    outBinormal = normalize(normalMatrix * skinnedBinormal);
+    gl_Position = worldPos * vpData.viewProjection;
+    
+    mat3 modelRotation = mat3(ModelData.model); // this is the only thing that worked here, feels wrong but will come back to it when offsets are properly coded on engine side
+    outNormal = normalize(skinnedNormal * modelRotation);
+    outTangent = normalize(skinnedTangent * modelRotation);
+    outBinormal = normalize(skinnedBinormal * modelRotation);
 
     outUV = inUV;
 }

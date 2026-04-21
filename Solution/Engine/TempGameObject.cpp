@@ -3,21 +3,26 @@
 #include "Common/RHI/Geometry/GeometryImport.h"
 #include "Solution/RHI/Renderer.h"
 
-void CollectBoneMatrices(const SceneNode& node, std::vector<DirectX::XMMATRIX>& outBoneMatrices)
+void CollectBoneMatrices(const SceneNode& node, std::vector<DirectX::XMMATRIX>& outOffsetMatrices,
+    std::vector<DirectX::XMMATRIX>& outTransformMatrices)
 {
     for (size_t i = 0; i < node.GetMeshCount(); i++)
     {
         const Mesh* mesh = node.GetMesh(i);
         if (mesh && mesh->IsSkinned())
         {
-            const auto& boneOffsets = mesh->GetBoneOffsets();
-            if (boneOffsets.size() > outBoneMatrices.size())
+            const std::vector<DirectX::XMMATRIX>& boneOffsets = mesh->GetBoneOffsets();
+            const std::vector<DirectX::XMMATRIX>& boneTransforms = mesh->GetBoneTransforms();
+            
+            if (boneOffsets.size() > outOffsetMatrices.size())
             {
-                outBoneMatrices.resize(boneOffsets.size());
+                outOffsetMatrices.resize(boneOffsets.size());
+                outTransformMatrices.resize(boneTransforms.size());
             }
             for (size_t j = 0; j < boneOffsets.size(); j++)
             {
-                outBoneMatrices[j] = boneOffsets[j];
+                outOffsetMatrices[j] = boneOffsets[j];
+                outTransformMatrices[j] = boneTransforms[j];
             }
         }
     }
@@ -25,7 +30,7 @@ void CollectBoneMatrices(const SceneNode& node, std::vector<DirectX::XMMATRIX>& 
     const auto& children = node.GetChildren();
     for (const auto& child : children)
     {
-        CollectBoneMatrices(child, outBoneMatrices);
+        CollectBoneMatrices(child, outOffsetMatrices, outTransformMatrices);
     }
 }
 
@@ -43,7 +48,7 @@ TempGameObject::TempGameObject(std::vector<std::string> materials, std::string f
     {
         constexpr uint32_t MAX_BONES = 128;
         
-        CollectBoneMatrices(MeshRoot.GetSceneNode(), BoneOffsets);
+        CollectBoneMatrices(MeshRoot.GetSceneNode(), BoneOffsets, BoneTransforms);
     
         std::cout << "Collected " << BoneOffsets.size() << " bone offset matrices" << std::endl;
     

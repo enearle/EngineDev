@@ -18,6 +18,8 @@ protected:
     std::vector<DirectX::XMFLOAT4> ClearColors;
     float DepthClearValue = 1;
     uint32_t PushConstantCount = 0;
+    std::map<uint32_t, uint32_t> SetIndexToBuilderIndex;
+    bool IsVariant = false;
 
 public:
     static RHI_API Pipeline* Create(const PipelineDesc& desc, std::vector<IOResource>* inputIOResources = nullptr);
@@ -33,6 +35,7 @@ public:
     virtual void* GetOwnedImageView(uint32_t index) = 0;
     virtual void* GetOwnedDepthImageView() = 0;
     size_t GetPipelineVariantCount() const { return PipelineVariants.size(); }
+    const std::map<uint32_t, uint32_t>& GetSetToRootParamMapping() const { return SetIndexToBuilderIndex; }
 };
 
 class D3DPipeline : public Pipeline
@@ -73,11 +76,7 @@ private:
     ComPtr<ID3D12RootSignature> RootSignature;
     ComPtr<ID3D12PipelineState> PipelineState;
     
-    std::map<uint32_t, uint32_t> SetIndexToRootParamIndex;
 
-public:
-    
-    const std::map<uint32_t, uint32_t>& GetSetToRootParamMapping() const { return SetIndexToRootParamIndex; }
 };
 
 class VulkanPipeline : public Pipeline
@@ -99,15 +98,8 @@ public:
     VkDeviceMemory GetOwnedDepthVkImageMemory() const { return OwnedDepthImageMemory; }
     VkImageView GetOwnedDepthVkImageView() const { return OwnedDepthImageView; }
     void* GetOwnedDepthImage() override { return OwnedDepthImage; }
-    void* GetOwnedImageView(uint32_t index) override 
-    { 
-        return reinterpret_cast<void*>(OwnedImageViews[index]);
-    }
-    void* GetOwnedDepthImageView() override 
-    { 
-        return reinterpret_cast<void*>(OwnedDepthImageView);
-    }
-    
+    void* GetOwnedImageView(uint32_t index) override { return reinterpret_cast<void*>(OwnedImageViews[index]); }
+    void* GetOwnedDepthImageView() override { return reinterpret_cast<void*>(OwnedDepthImageView); }
     std::vector<VkAttachmentDescription> GetAttachmentDescriptions() const { return AttachmentDescriptions; }
     VkAttachmentDescription GetDepthAttachmentDescription() const { return DepthAttachmentDescription; }
 
