@@ -2,19 +2,17 @@
 
 layout(location = 0) in vec2 inUV;
 
-layout(set = 1, binding = 0) uniform sampler2D subAlbedo;
-layout(set = 1, binding = 1) uniform sampler2D subNormal;
-layout(set = 1, binding = 2) uniform sampler2D subMetalicRoughnessAO;
-layout(set = 1, binding = 3) uniform sampler2D subPosition;
-
 layout(set = 0, binding = 0) uniform VPData {
     mat4 viewProjection;
     vec4 cameraPosition;
 } vpData;
 
-layout(location = 0) out vec4 outColour;
+layout(set = 1, binding = 0) uniform sampler2DArray shadowMaps;
 
-#define PI 3.14159265358979323846
+layout(set = 2, binding = 0) uniform sampler2D subAlbedo;
+layout(set = 2, binding = 1) uniform sampler2D subNormal;
+layout(set = 2, binding = 2) uniform sampler2D subMetalicRoughnessAO;
+layout(set = 2, binding = 3) uniform sampler2D subPosition;
 
 struct Light
 {
@@ -22,7 +20,23 @@ struct Light
     vec3 Colour;
     float Intensity;
     float Radius;
+    uint Type;
+    float Angle;
+    uint ShadowIndex;
 };
+
+layout(set = 3, binding = 0) uniform LightData
+{
+    Light Lights[4];
+} lightData;
+
+layout(set = 4, binding = 0, row_major) uniform LightMatrices {
+    mat4 viewProjection[4];
+} lightMatrices;
+
+layout(location = 0) out vec4 outColour;
+
+#define PI 3.14159265358979323846
 
 vec3 albedo;
 vec3 normal;
@@ -103,6 +117,59 @@ vec3 AttenuateLight(Light light)
     return attenuation * light.Colour;
 }
 
+float Shadow(Light light, vec3 lightDirection)
+{
+    vec4 samplePos = vec4(fragPosition, 1) * lightMatrices.viewProjection[light.ShadowIndex];
+    
+    vec3 ndc = samplePos.xyz / samplePos.w;
+    ndc.y = -ndc.y;
+    vec2 sampleUV = ndc.xy * 0.5 + 0.5;
+
+    if (sampleUV.x < 0.0 || sampleUV.x > 1.0 || sampleUV.y < 0.0 || sampleUV.y > 1.0)
+    return 1.0;
+    
+    vec2 m1m2 = texture(shadowMaps, vec3(sampleUV, light.ShadowIndex)).xy;
+    
+    float t = abs(samplePos.w) / light.Radius;
+    
+    // No pcf
+   //float u = m1m2.x;
+   //float o2 = max(m1m2.y - u * u, 0.0001);
+   //
+   //if (t <= u)
+   //return 1.0;
+
+   //float pMax = o2 / (o2 + (t - u) * (t - u));
+   //
+   //return pMax;
+
+    // pcf
+    float shadowSum = 0.0;
+    vec2 texelSize = 1.0 / vec2(1024.0); // Shadow map size
+    
+    for(int x = -1; x <= 1; x++)
+    {
+        for(int y = -1; y <= 1; y++)
+        {
+            vec2 offset = vec2(x, y) * texelSize;
+            vec2 m1m2 = texture(shadowMaps, vec3(sampleUV + offset, light.ShadowIndex)).xy;
+    
+            float u = m1m2.x;
+            float o2 = max(m1m2.y - u * u, 0.00001) + 0.0001;
+    
+            if (t <= u)
+            shadowSum += 1.0;
+            else
+            {
+                float P = o2 / (o2 + (u-t) * (u-t));
+                shadowSum += max(P, 0.0);
+            }
+        }
+    }
+    
+    return shadowSum / 9.0;
+}
+
 // PBR lighting calculation
 vec3 LightPBR(Light light)
 {
@@ -121,24 +188,21 @@ vec3 LightPBR(Light light)
 
     vec3 bRDF = ((vec3(1) - fresnel) * (1.0 - metallic)) * lambert + cookTorrance;
 
-    return  bRDF * lightColour * max(dot(lightDirection, normal), 0.0001);
+    return  bRDF * lightColour * max(dot(lightDirection, normal), 0.0001) * Shadow(light, lightDirection);
 }
 
 void main()
 {
     init();
-    
-    Light light;
-    light.Position = vec3(-20.0, 20.0, -20.0);      // Light position in world space
-    light.Colour = vec3(1.0, 1.0, 1.0);             // White light
-    light.Intensity = 20.0;                         // Light intensity
-    light.Radius = 50.0;                            // Light radius
 
-    // Calculate lighting
-    vec3 outGoingLight = LightPBR(light);
+    vec3 outGoingLight = vec3(0, 0, 0);
+    for(uint i = 0; i < 4; i++)
+    {
+        if(lightData.Lights[i].Type == 1) 
+        {
+            outGoingLight += LightPBR(lightData.Lights[i]);
+        }
+    }
 
-    // Output final color (no clamp needed, handled by render target)
     outColour = vec4(outGoingLight, 1.0);
-    
-    
 }

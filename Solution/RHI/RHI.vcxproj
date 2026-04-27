@@ -149,11 +149,14 @@
     <Content Include="DirectX12\Shaders\ps_pbr.hlsl" />
     <Content Include="DirectX12\Shaders\ps_quad.hlsl" />
     <Content Include="DirectX12\Shaders\ps_rainbow.hlsl" />
+    <Content Include="DirectX12\Shaders\ps_vsm.hlsl" />
     <Content Include="DirectX12\Shaders\vs_lighting.hlsl" />
     <Content Include="DirectX12\Shaders\vs_pbr.hlsl" />
     <Content Include="DirectX12\Shaders\vs_pbr_skinned.hlsl" />
     <Content Include="DirectX12\Shaders\vs_quad.hlsl" />
     <Content Include="DirectX12\Shaders\vs_rainbow.hlsl" />
+    <Content Include="DirectX12\Shaders\vs_vsm_skinned.hlsl" />
+    <Content Include="DirectX12\Shaders\vs_vsm.hlsl" />
     <ClCompile Include="ForwardInterface.cpp" />
     <ClCompile Include="Input\InputState.cpp" />
     <ClCompile Include="main.cpp">
@@ -186,11 +189,14 @@
     <Content Include="Vulkan\Shaders\ps_pbr.glsl" />
     <Content Include="Vulkan\Shaders\ps_quad.glsl" />
     <Content Include="Vulkan\Shaders\ps_rainbow.glsl" />
+    <Content Include="Vulkan\Shaders\ps_vsm.glsl" />
     <Content Include="Vulkan\Shaders\vs_lighting.glsl" />
     <Content Include="Vulkan\Shaders\vs_pbr.glsl" />
     <Content Include="Vulkan\Shaders\vs_pbr_skinned.glsl" />
     <Content Include="Vulkan\Shaders\vs_quad.glsl" />
     <Content Include="Vulkan\Shaders\vs_rainbow.glsl" />
+    <Content Include="Vulkan\Shaders\vs_vsm.glsl" />
+    <Content Include="Vulkan\Shaders\vs_vsm_skinned.glsl" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Data\BitPool.h" />

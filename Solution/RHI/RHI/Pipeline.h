@@ -11,6 +11,7 @@ class Pipeline
 {
 public:
     std::vector<Pipeline*> PipelineVariants = {};
+    DirectX::XMINT2 ViewportSize = {0, 0};
     
 protected:
     std::vector<uint64_t> PipelineInputDescriptorSetIDs;
@@ -20,6 +21,8 @@ protected:
     uint32_t PushConstantCount = 0;
     std::map<uint32_t, uint32_t> SetIndexToBuilderIndex;
     bool IsVariant = false;
+    uint32_t ViewMask = 0;
+    uint32_t ArrayLayerCount = 1;
 
 public:
     static RHI_API Pipeline* Create(const PipelineDesc& desc, std::vector<IOResource>* inputIOResources = nullptr);
@@ -36,6 +39,8 @@ public:
     virtual void* GetOwnedDepthImageView() = 0;
     size_t GetPipelineVariantCount() const { return PipelineVariants.size(); }
     const std::map<uint32_t, uint32_t>& GetSetToRootParamMapping() const { return SetIndexToBuilderIndex; }
+    uint32_t GetViewMask() const { return ViewMask; }
+    uint32_t GetArrayLayerCount() const { return ArrayLayerCount; }
 };
 
 class D3DPipeline : public Pipeline

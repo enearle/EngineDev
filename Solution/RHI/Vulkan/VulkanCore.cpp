@@ -162,9 +162,14 @@ void VulkanCore::CreateLogicalDevice()
         
         queueCreateInfos.push_back(queueInfo);
     }
+    VkPhysicalDeviceMultiviewFeatures multiviewFeatures = {};
+    multiviewFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MULTIVIEW_FEATURES;
+    multiviewFeatures.multiview = VK_TRUE;
+    
     VkPhysicalDeviceDescriptorBufferFeaturesEXT descriptorBufferFeatures = {};
     descriptorBufferFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_BUFFER_FEATURES_EXT;
     descriptorBufferFeatures.descriptorBuffer = VK_TRUE;
+    descriptorBufferFeatures.pNext = &multiviewFeatures;
     
     VkPhysicalDeviceVulkan12Features deviceFeatures12 = {};
     deviceFeatures12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;

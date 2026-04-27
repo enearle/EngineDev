@@ -42,7 +42,7 @@ TempGameObject::TempGameObject(std::vector<std::string> materials, std::string f
 {
     for (std::string material : materials)
     {
-        Materials.push_back(Material(material, Material::PBR).LoadMaterial(0, 1));
+        Materials.push_back(Material(material, Material::PBR).LoadMaterial(1, 1));
     }
     
     MeshRoot = GeometryImport::CreateMeshGroup(filename, name, DirectX::XMMatrixIdentity(), useSkinning);
@@ -125,7 +125,14 @@ void TempGameObject::AddSceneNode(const SceneNode& node)
         indexedDraw.PushConstantSize = sizeof(EngineConstants::ModelData);
         indexedDraw.VertexStride = mesh->GetVertexStride();
         
-        Renderer::AddIndexedDrawToContext(0, indexedDraw);
+        //Janky but works for now.
+        IndexedDraw shadowDraw = indexedDraw;
+        shadowDraw.PerDrawDescriptors.clear();  // Shadow pass doesn't need material textures
+        if (mesh->IsSkinned())
+            shadowDraw.PerDrawDescriptors.push_back(BoneDescriptorSet); 
+        
+        Renderer::AddIndexedDrawToContext(0, shadowDraw);
+        Renderer::AddIndexedDrawToContext(1, indexedDraw);
     }
 
     std::vector<SceneNode> children = node.GetChildren();

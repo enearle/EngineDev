@@ -81,7 +81,7 @@ public:
     {
         InitializeBuffer(this);
         SetTransform(DirectX::XMMatrixTranslation(position.x, position.y, position.z) * DirectX::XMMatrixRotationRollPitchYaw(rotation.x, rotation.y, rotation.z));
-        FOV = fovDeg / 360 * DirectX::XM_2PI;
+        FOV = fovDeg / 180 * DirectX::XM_PI;
         Projection = DirectX::XMMatrixPerspectiveFovLH(FOV, AspectRatio, nearPlane, farPlane);
     }
     
@@ -89,7 +89,7 @@ public:
     {
         InitializeBuffer(this);
         isView ? SetView(transformOrView) : SetTransform(transformOrView);
-        FOV = fovDeg / 360 * DirectX::XM_2PI;
+        FOV = fovDeg / 180 * DirectX::XM_PI;
         Projection = DirectX::XMMatrixPerspectiveFovLH(FOV, AspectRatio, nearPlane, farPlane);
     }
     

@@ -310,6 +310,7 @@ namespace RHIStructures
         uint32_t Count;                 // For arrays
         SamplerType Sampler;
     };
+    
 
     struct ResourceLayout               // RootSignatureDesc 
     {
@@ -357,6 +358,8 @@ namespace RHIStructures
         bool IsVariant = false;
         std::vector<PipelineDesc> PipelineVariants = {};
         ResourceLayout VariantResourceLayout = {};
+        std::vector<uint32_t> InputPipelineIDs = {};
+        DirectX::XMINT2 ViewportSize = {0, 0};
         
         bool IsPresented = false;
         bool IsQuad = false;
@@ -368,6 +371,8 @@ namespace RHIStructures
         
         uint32_t AttachmentWidth = 0;
         uint32_t AttachmentHeight = 0;
+        uint32_t AttachmentArrayLayers = 1;
+        uint32_t ViewMask = 0;
         uint32_t OutputDescriptorSetIndex = 1;
         
         ShaderStage VertexShader = {};
@@ -583,8 +588,8 @@ namespace RHIStructures
     {
         uint32_t Width = 0;
         uint32_t Height = 0;
-        uint32_t Depth = 1;         // 3D Textures (ie. volumetrics, lattices, voxels)
-        uint32_t ArrayLayers = 1;   // Number of elements in 2D Array (ie. atlases, cubemaps)
+        uint32_t Depth = 1;
+        uint32_t ArrayLayers = 1;
         uint32_t MipLevels = 1;
         uint32_t SampleCount = 1;
         bool TilingLinear = false;
@@ -617,6 +622,11 @@ namespace RHIStructures
         uint32_t Binding;                       // Binding index
         uint64_t ResourceID;                    // Handle returned from CreateBuffer or CreateImage
         uint32_t DynamicOffset = 0;             // Used for dynamic descriptors
+    };
+    
+    struct PipelineDescriptorData {
+        uint32_t setIndex;
+        std::vector<DescriptorSetBinding> bindings;
     };
 
     struct DescriptorSetAllocation
@@ -662,4 +672,15 @@ namespace RHIStructures
         std::vector<uint64_t> PerFrameDescriptors;
     };
 
+    struct LightData
+    {
+        DirectX::XMFLOAT3 Position = {0.0f, 0.0f, 0.0f};
+        float _pad0;
+        DirectX::XMFLOAT3 Colour = {1.0f, 1.0f, 1.0f};
+        float Intensity = 1.0f;
+        float Radius = 1.0f;
+        uint32_t Type = 0;
+        float Angle = DirectX::XM_PIDIV2;
+        uint32_t ShadowIndex = 0;
+    };
 }

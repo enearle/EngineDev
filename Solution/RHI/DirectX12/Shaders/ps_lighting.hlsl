@@ -6,18 +6,20 @@ struct VSOutput
 
 #define PI 3.14159265358979323846
 
-Texture2D inAlbedo                : register(t0, space1);
-Texture2D inNormal                : register(t1, space1);
-Texture2D inMetallicRoughnessAO   : register(t2, space1);
-Texture2D inPosition              : register(t3, space1);
-SamplerState linearSampler        : register(s0, space0);
-SamplerState pointSampler         : register(s1, space0);
-
 cbuffer VPData : register(b0, space0)
 {
     float4x4 viewProjection;
     float4 cameraPosition;
 };
+
+Texture2D inShadow                : register(t0, space1);
+
+Texture2D inAlbedo                : register(t0, space2);
+Texture2D inNormal                : register(t1, space2);
+Texture2D inMetallicRoughnessAO   : register(t2, space2);
+Texture2D inPosition              : register(t3, space2);
+SamplerState linearSampler        : register(s0, space0);
+SamplerState pointSampler         : register(s1, space0);
 
 struct Light
 {
@@ -25,6 +27,14 @@ struct Light
     float3 Colour;
     float Intensity;
     float Radius;
+    uint Type;
+    float Angle;
+    uint ShadowIndex;
+};
+
+cbuffer LightData : register(b0, space3)
+{
+    Light Lights[4];
 };
 
 static float3 albedo;
@@ -130,13 +140,12 @@ float4 main(VSOutput input) : SV_TARGET
 {
     init(input);
     
-    Light light;
-    light.Position = float3(-20.0, 20.0, -20.0);
-    light.Colour = float3(1.0, 1.0, 1.0);
-    light.Intensity = 20.0;
-    light.Radius = 50.0;
-    
-    float3 outGoingLight = LightPBR(light);
+    float3 outGoingLight = float3(0,0,0);
+    for (uint i = 0; i < 4; i++)
+    {
+        if (Lights[i].Type == 1) outGoingLight += LightPBR(Lights[i]);
+    }
+    outGoingLight = clamp(outGoingLight, 0, 1);
     
     return float4(outGoingLight, 1.0);
 }

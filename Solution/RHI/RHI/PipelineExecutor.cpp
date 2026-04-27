@@ -169,13 +169,22 @@ void D3DPipelineExecutor::BeginPipeline(Pipeline* pipeline,
     viewport.Height = static_cast<FLOAT>(height);
     viewport.MinDepth = 0.0f;
     viewport.MaxDepth = 1.0f;
-    cmdList->RSSetViewports(1, &viewport);
     
     D3D12_RECT scissor{};
     scissor.left = 0;
     scissor.top = 0;
     scissor.right = static_cast<LONG>(width);
     scissor.bottom = static_cast<LONG>(height);
+    
+    if (pipeline->ViewportSize.x != 0 || pipeline->ViewportSize.y != 0) // It really should be both, if one is 0, the other is irrelevant
+    {
+        viewport.Width = static_cast<FLOAT>(pipeline->ViewportSize.x);
+        viewport.Height = static_cast<FLOAT>(pipeline->ViewportSize.y);
+        scissor.right = static_cast<LONG>(pipeline->ViewportSize.x);
+        scissor.bottom = static_cast<LONG>(pipeline->ViewportSize.y);
+    }
+    
+    cmdList->RSSetViewports(1, &viewport);
     cmdList->RSSetScissorRects(1, &scissor);
 }
 
@@ -437,6 +446,10 @@ void VulkanPipelineExecutor::BeginPipeline(Pipeline* pipeline,
         renderingInfo.renderArea.offset = {0, 0};
         renderingInfo.renderArea.extent = {width, height};
         renderingInfo.layerCount = 1;
+        renderingInfo.viewMask = pipeline->GetViewMask();
+        
+        if (pipeline->ViewportSize.x != 0 && pipeline->ViewportSize.y != 0)
+            renderingInfo.renderArea.extent = VkExtent2D(pipeline->ViewportSize.x, pipeline->ViewportSize.y);
 
         VkImageView depthStencilView = nullptr;
         std::vector<VkImageView> colourAttachmentViews;
@@ -505,12 +518,21 @@ void VulkanPipelineExecutor::BeginPipeline(Pipeline* pipeline,
     viewport.height = -static_cast<float>(height);
     viewport.minDepth = 0.0f;
     viewport.maxDepth = 1.0f;
-    vkCmdSetViewport(cmdBuffer, 0, 1, &viewport);
     
     // Set scissor
     VkRect2D scissor{};
     scissor.offset = {0, 0};
     scissor.extent = {width, height};
+    
+    if (pipeline->ViewportSize.x != 0 || pipeline->ViewportSize.y != 0)
+    {
+        viewport.y = static_cast<float>(pipeline->ViewportSize.y);
+        viewport.width = static_cast<float>(pipeline->ViewportSize.x);
+        viewport.height = -static_cast<float>(pipeline->ViewportSize.y);
+        scissor.extent = VkExtent2D(pipeline->ViewportSize.x, pipeline->ViewportSize.y);
+    }
+    
+    vkCmdSetViewport(cmdBuffer, 0, 1, &viewport);
     vkCmdSetScissor(cmdBuffer, 0, 1, &scissor);
 }
 

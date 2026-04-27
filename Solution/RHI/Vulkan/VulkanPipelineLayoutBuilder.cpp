@@ -46,7 +46,7 @@ VkPipelineLayout VulkanPipelineLayoutBuilder::BuildPipelineLayout(
     for (uint32_t i = 0; i < layouts.size(); i++)
     {
         const ResourceLayout& layout = layouts[i];
-        BufferAllocator::GetInstance()->RegisterDescriptorSetLayout(pipelineID, layout);
+        BufferAllocator::GetInstance()->RegisterDescriptorSetLayout(pipelineID, layout, i == layouts.size() - 1);
         
         for (const DescriptorBinding& binding : layout.Bindings)
         {
@@ -54,6 +54,7 @@ VkPipelineLayout VulkanPipelineLayoutBuilder::BuildPipelineLayout(
             bindingsBySet[binding.Set].push_back(setLayoutBinding);
         }
     }
+    
 
     // Find the maximum set number to determine array size
     uint32_t maxSetNumber = 0;

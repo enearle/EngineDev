@@ -35,7 +35,7 @@ public:
     
     virtual ~BufferAllocator() = default;
     
-    virtual void RegisterDescriptorSetLayout(uint32_t pipelineID, const ResourceLayout& layout) = 0;
+    virtual void RegisterDescriptorSetLayout(uint32_t pipelineID, const ResourceLayout& layout, bool fillEmptySets = false) = 0;
     virtual uint64_t AllocateDescriptorSet(uint32_t pipelineID, uint32_t setIndex, 
                                            const std::vector<DescriptorSetBinding>& bindings) = 0;
     virtual void FreeDescriptorSet(uint64_t setID) = 0;
@@ -55,7 +55,7 @@ public:
     VulkanBufferAllocator();
     ~VulkanBufferAllocator() override;
     
-    void RegisterDescriptorSetLayout(uint32_t pipelineID, const ResourceLayout& layout) override;
+    void RegisterDescriptorSetLayout(uint32_t pipelineID, const ResourceLayout& layout, bool fillEmptySets) override;
     uint64_t AllocateDescriptorSet(uint32_t pipelineID, uint32_t setIndex, 
                                            const std::vector<DescriptorSetBinding>& bindings) override;
     void FreeDescriptorSet(uint64_t setID) override;
@@ -95,7 +95,7 @@ public:
     DirectX12BufferAllocator();
     ~DirectX12BufferAllocator() override;
 
-    void RegisterDescriptorSetLayout(uint32_t pipelineID, const ResourceLayout& layout) override;
+    void RegisterDescriptorSetLayout(uint32_t pipelineID, const ResourceLayout& layout, bool fillEmptySets) override;
     uint64_t AllocateDescriptorSet(uint32_t pipelineID, uint32_t setIndex, 
                                            const std::vector<DescriptorSetBinding>& bindings) override;
     void FreeDescriptorSet(uint64_t setID) override;

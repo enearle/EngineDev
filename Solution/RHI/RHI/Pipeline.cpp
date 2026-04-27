@@ -97,6 +97,9 @@ D3DPipeline::D3DPipeline(const PipelineDesc& desc, std::vector<IOResource>* inpu
     DepthClearValue = desc.DepthClearValue;
     PushConstantCount = static_cast<uint32_t>(desc.Constants.size());
     IsVariant = desc.IsVariant;
+    ViewportSize = desc.ViewportSize;
+    ViewMask = desc.ViewMask;
+    ArrayLayerCount = desc.AttachmentArrayLayers;
     
     ComPtr<ID3D12Device> device = D3DCore::Instance().GetDevice();
     Topology = DXPrimitiveTopology(desc.PrimitiveTopology);
@@ -340,7 +343,7 @@ D3DPipeline::D3DPipeline(const PipelineDesc& desc, std::vector<IOResource>* inpu
         depthResourceDesc.Alignment = 0;
         depthResourceDesc.Width = desc.AttachmentWidth;
         depthResourceDesc.Height = desc.AttachmentHeight;
-        depthResourceDesc.DepthOrArraySize = 1;
+        depthResourceDesc.DepthOrArraySize = desc.AttachmentArrayLayers;
         depthResourceDesc.MipLevels = 1;
         depthResourceDesc.Format = DXFormat(desc.DepthStencilFormat);
         depthResourceDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
@@ -404,7 +407,7 @@ D3DPipeline::D3DPipeline(const PipelineDesc& desc, std::vector<IOResource>* inpu
         resourceDesc.Alignment = 0;
         resourceDesc.Width = desc.AttachmentWidth;
         resourceDesc.Height = desc.AttachmentHeight;
-        resourceDesc.DepthOrArraySize = 1;
+        resourceDesc.DepthOrArraySize = desc.AttachmentArrayLayers;
         resourceDesc.MipLevels = 1;
         resourceDesc.Format = DXFormat(desc.RenderTargetFormats[i]);
         resourceDesc.SampleDesc = sampleDesc;
@@ -468,6 +471,9 @@ VulkanPipeline::VulkanPipeline(const PipelineDesc& desc, std::vector<IOResource>
     DepthClearValue = desc.DepthClearValue;
     PushConstantCount = static_cast<uint32_t>(desc.Constants.size());
     IsVariant = desc.IsVariant;
+    ViewportSize = desc.ViewportSize;
+    ViewMask = desc.ViewMask;
+    ArrayLayerCount = desc.AttachmentArrayLayers;
     
     // Cache shader modules for cleanup
     // All shaders will allways be loaded. This is meh, but for my engine probably fine.
@@ -691,7 +697,7 @@ VulkanPipeline::VulkanPipeline(const PipelineDesc& desc, std::vector<IOResource>
     
     VkPipelineRenderingCreateInfo pipelineRenderingCreateInfo{};
     pipelineRenderingCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO_KHR;
-    pipelineRenderingCreateInfo.viewMask = 0;
+    pipelineRenderingCreateInfo.viewMask = desc.ViewMask;
     pipelineRenderingCreateInfo.colorAttachmentCount = static_cast<uint32_t>(desc.RenderTargetFormats.size());
     pipelineRenderingCreateInfo.pColorAttachmentFormats = colorFormats.empty() ? nullptr : colorFormats.data();
     pipelineRenderingCreateInfo.depthAttachmentFormat = VulkanFormat(desc.DepthStencilFormat);
@@ -803,7 +809,7 @@ VulkanPipeline::VulkanPipeline(const PipelineDesc& desc, std::vector<IOResource>
         depthImageInfo.extent.height = desc.AttachmentHeight;
         depthImageInfo.extent.depth = 1;
         depthImageInfo.mipLevels = 1;
-        depthImageInfo.arrayLayers = 1;
+        depthImageInfo.arrayLayers = desc.AttachmentArrayLayers;
         depthImageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
         depthImageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
         depthImageInfo.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
@@ -836,14 +842,14 @@ VulkanPipeline::VulkanPipeline(const PipelineDesc& desc, std::vector<IOResource>
         imageViewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
         imageViewInfo.image = OwnedDepthImage;
         imageViewInfo.format = VulkanFormat(desc.DepthStencilFormat);
-        imageViewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        imageViewInfo.viewType = (desc.AttachmentArrayLayers > 1) ? VK_IMAGE_VIEW_TYPE_2D_ARRAY : VK_IMAGE_VIEW_TYPE_2D;
         imageViewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
         if (desc.DepthStencilFormat == Format::D24_UNORM_S8_UINT || desc.DepthStencilFormat == Format::D32_FLOAT_S8X24_UINT)
             imageViewInfo.subresourceRange.aspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
         imageViewInfo.subresourceRange.baseMipLevel = 0;
         imageViewInfo.subresourceRange.levelCount = 1;
         imageViewInfo.subresourceRange.baseArrayLayer = 0;
-        imageViewInfo.subresourceRange.layerCount = 1;
+        imageViewInfo.subresourceRange.layerCount = desc.AttachmentArrayLayers;
 
         result = vkCreateImageView(VulkanCore::Instance().GetDevice(), &imageViewInfo, nullptr, &OwnedDepthImageView);
         if (result != VK_SUCCESS)
@@ -867,7 +873,6 @@ VulkanPipeline::VulkanPipeline(const PipelineDesc& desc, std::vector<IOResource>
         depthBindingData.ResourceID = BufferAllocator::GetInstance()->CacheImage(allocation);
     }
     
-    
     // Create pipeline local attachment images
     // For multipass rendering
     if (!desc.CreateOwnAttachments) return;
@@ -890,7 +895,7 @@ VulkanPipeline::VulkanPipeline(const PipelineDesc& desc, std::vector<IOResource>
         imageInfo.extent.height = desc.AttachmentHeight;
         imageInfo.extent.depth = 1;
         imageInfo.mipLevels = 1;
-        imageInfo.arrayLayers = 1;
+        imageInfo.arrayLayers = desc.AttachmentArrayLayers;
         imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
         imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
         imageInfo.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT; // Can be sampled by next pass
@@ -923,12 +928,12 @@ VulkanPipeline::VulkanPipeline(const PipelineDesc& desc, std::vector<IOResource>
         imageViewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
         imageViewInfo.image = OwnedImages[i];
         imageViewInfo.format = VulkanFormat(desc.RenderTargetFormats[i]);
-        imageViewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        imageViewInfo.viewType = (desc.AttachmentArrayLayers > 1) ? VK_IMAGE_VIEW_TYPE_2D_ARRAY : VK_IMAGE_VIEW_TYPE_2D;
         imageViewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
         imageViewInfo.subresourceRange.baseMipLevel = 0;
         imageViewInfo.subresourceRange.levelCount = 1;
         imageViewInfo.subresourceRange.baseArrayLayer = 0;
-        imageViewInfo.subresourceRange.layerCount = 1;
+        imageViewInfo.subresourceRange.layerCount = desc.AttachmentArrayLayers;
 
         result = vkCreateImageView(VulkanCore::Instance().GetDevice(), &imageViewInfo, nullptr, &OwnedImageViews[i]);
         if (result != VK_SUCCESS)

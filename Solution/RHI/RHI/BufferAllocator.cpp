@@ -262,7 +262,7 @@ uint64_t VulkanBufferAllocator::CreateImage(ImageDesc imageDesc)
     return CacheImage(allocation);
 }
 
-void VulkanBufferAllocator::RegisterDescriptorSetLayout(uint32_t pipelineID, const ResourceLayout& layout)
+void VulkanBufferAllocator::RegisterDescriptorSetLayout(uint32_t pipelineID, const ResourceLayout& layout, bool fillEmptySets)
 {
     VkDevice device = VulkanCore::Instance().GetDevice();
     
@@ -334,7 +334,7 @@ void VulkanBufferAllocator::RegisterDescriptorSetLayout(uint32_t pipelineID, con
     }
     
     // After creating all layouts with bindings, fill gaps with empty layouts
-    if (!bindingsBySet.empty())
+    if (!bindingsBySet.empty() && fillEmptySets)
     {
         uint32_t maxSetNumber = bindingsBySet.rbegin()->first;
     
@@ -383,6 +383,9 @@ uint64_t VulkanBufferAllocator::AllocateDescriptorSet(uint32_t pipelineID, uint3
     allocInfo.descriptorSetCount = 1;
     allocInfo.pSetLayouts = &layoutInfo.Layout;
     
+    if (layoutInfo.Pool == VK_NULL_HANDLE)
+        throw std::runtime_error("Cannot allocate from empty descriptor set layout for pipeline " + std::to_string(pipelineID) + " set " + std::to_string(setIndex));
+
     VkDescriptorSet descriptorSet;
     VkResult result = vkAllocateDescriptorSets(device, &allocInfo, &descriptorSet);
     if (result != VK_SUCCESS)
@@ -463,7 +466,9 @@ uint64_t VulkanBufferAllocator::AllocateDescriptorSet(uint32_t pipelineID, uint3
     allocation.DynamicOffsets = dynamicOffsets;
     allocation.DynamicDescriptorCount = static_cast<uint32_t>(dynamicOffsets.size());
     
-    return CacheDescriptorSet(allocation);
+    uint64_t id = CacheDescriptorSet(allocation);
+    std::cout << "Allocated descriptor set ID: " << id << ", pipelineID: " << pipelineID << ", setIndex: " << setIndex << std::endl;
+    return id;
 }
 
 void VulkanBufferAllocator::FreeDescriptorSet(uint64_t setID)
@@ -657,7 +662,7 @@ void VulkanBufferAllocator::TransitionImageLayout(VkImage image, VkImageLayout o
     imageMemoryBarrier.subresourceRange.baseMipLevel = 0;                      // starting mip level
     imageMemoryBarrier.subresourceRange.levelCount = 1;                        // number of mip levels
     imageMemoryBarrier.subresourceRange.baseArrayLayer = 0;                    // starting array layer
-    imageMemoryBarrier.subresourceRange.layerCount = 1;                        // number of array layers
+    imageMemoryBarrier.subresourceRange.layerCount = VK_REMAINING_ARRAY_LAYERS;// number of array layers
 
     VkPipelineStageFlags sourceStage;
     VkPipelineStageFlags destinationStage;
@@ -1084,7 +1089,7 @@ DirectX12BufferAllocator::~DirectX12BufferAllocator()
 
 }
 
-void DirectX12BufferAllocator::RegisterDescriptorSetLayout(uint32_t pipelineID, const ResourceLayout& layout)
+void DirectX12BufferAllocator::RegisterDescriptorSetLayout(uint32_t pipelineID, const ResourceLayout& layout, bool fillEmptySets)
 {
     std::map<uint32_t, std::vector<DescriptorBinding>> bindingsBySet;
     for (const DescriptorBinding& binding : layout.Bindings)

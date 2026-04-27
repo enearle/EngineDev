@@ -242,6 +242,7 @@
       <SDLCheck>true</SDLCheck>
       <LinkCompiled>true</LinkCompiled>
     </ClCompile>
+    <ClCompile Include="Light.cpp" />
     <ClCompile Include="NoesisUILayer.cpp" />
     <ClCompile Include="TempGameObject.cpp" />
     <ClCompile Include="Time.cpp" />
@@ -257,6 +258,7 @@
     <ClInclude Include="DerpMover.h" />
     <ClInclude Include="EngineConstants.h" />
     <ClInclude Include="Input\InputEventSystem.h" />
+    <ClInclude Include="Light.h" />
     <ClInclude Include="NoesisUILayer.h" />
     <ClInclude Include="TempGameObject.h" />
     <ClInclude Include="Time.h" />

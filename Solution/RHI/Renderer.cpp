@@ -55,6 +55,7 @@ void Renderer::DrawFrame()
             for (int j = 0; j < PipelineFrameContexts[i].ContextPipeline->GetOwnedImageCount(); j++)
             {
                 initBarrier.ImageResource = PipelineFrameContexts[i].ContextPipeline->GetOwnedImage(j);
+                initBarrier.ArrayLayerCount = PipelineFrameContexts[i].ContextPipeline->GetArrayLayerCount();
                 Executor->IssueImageMemoryBarrier(initBarrier);
             }
         
@@ -63,6 +64,7 @@ void Renderer::DrawFrame()
             if (PipelineFrameContexts[i].ContextPipeline->GetOwnedDepthImage())
             {
                 initDepthBarrier.ImageResource = PipelineFrameContexts[i].ContextPipeline->GetOwnedDepthImage();
+                initDepthBarrier.ArrayLayerCount = PipelineFrameContexts[i].ContextPipeline->GetArrayLayerCount();
                 Executor->IssueImageMemoryBarrier(initDepthBarrier);
             }
         
@@ -138,6 +140,7 @@ void Renderer::ExecutePipelineContext(uint32_t contextIndex, bool finalContext)
     for (int j = 0; j < mainPipeline->GetOwnedImageCount(); j++)
     {
         readToAttachmentBarrier.ImageResource = mainPipeline->GetOwnedImage(j);
+        readToAttachmentBarrier.ArrayLayerCount = mainPipeline->GetArrayLayerCount();
         Executor->IssueImageMemoryBarrier(readToAttachmentBarrier);
     }
     
@@ -146,6 +149,7 @@ void Renderer::ExecutePipelineContext(uint32_t contextIndex, bool finalContext)
     {
         ImageMemoryBarrier depthBarrier = READ_TO_DEPTH_ATTACHMENT_BARRIER;
         depthBarrier.ImageResource = mainPipeline->GetOwnedDepthImage();
+        depthBarrier.ArrayLayerCount = mainPipeline->GetArrayLayerCount();
         Executor->IssueImageMemoryBarrier(depthBarrier);
     }
     
@@ -252,6 +256,7 @@ void Renderer::ExecutePipelineContext(uint32_t contextIndex, bool finalContext)
     for (int j = 0; j < mainPipeline->GetOwnedImageCount(); j++)
     {
         gBufferBarrier.ImageResource = mainPipeline->GetOwnedImage(j);
+        gBufferBarrier.ArrayLayerCount = mainPipeline->GetArrayLayerCount();
         Executor->IssueImageMemoryBarrier(gBufferBarrier);
     }
     
@@ -260,6 +265,7 @@ void Renderer::ExecutePipelineContext(uint32_t contextIndex, bool finalContext)
     {
         ImageMemoryBarrier depthBarrier = DEPTH_ATTACHMENT_TO_READ_BARRIER;
         depthBarrier.ImageResource = mainPipeline->GetOwnedDepthImage();
+        depthBarrier.ArrayLayerCount = mainPipeline->GetArrayLayerCount();
         Executor->IssueImageMemoryBarrier(depthBarrier);
     }
 }
@@ -279,20 +285,50 @@ void Renderer::Wait()
     Executor->Wait();
 }
 
-void Renderer::CreatePipelines(std::vector<RHIStructures::PipelineDesc> pipelineDescs, std::vector<std::vector<DescriptorSetBinding>> vpBindings)
+void Renderer::CreatePipelines(std::vector<RHIStructures::PipelineDesc> pipelineDescs, std::vector<std::vector<PipelineDescriptorData>> pipelineDescriptors)
 {
     std::vector<class Pipeline*> pipelines;
+    
+    // Build registry of pipeline outputs by pipeline ID
+    std::map<uint32_t, IOResource*> pipelineOutputRegistry;
+    
     for (uint32_t i = 0; i < pipelineDescs.size(); ++i)
     {
-        if (i == 0 || pipelines[i-1]->GetOutputResource() == nullptr)
-            pipelines.push_back(Pipeline::Create(pipelineDescs[i]));
-        else
-        {    
-            std::vector<IOResource> inputResources = {*pipelines[i-1]->GetOutputResource()};
-            pipelines.push_back(Pipeline::Create(pipelineDescs[i], &inputResources));
+        std::vector<IOResource> inputResources;
+        
+        // Gather input resources from specified pipelines
+        if (!pipelineDescs[i].InputPipelineIDs.empty())
+        {
+            for (uint32_t inputPipelineID : pipelineDescs[i].InputPipelineIDs)
+            {
+                auto it = pipelineOutputRegistry.find(inputPipelineID);
+                if (it != pipelineOutputRegistry.end() && it->second != nullptr)
+                {
+                    inputResources.push_back(*it->second);
+                }
+            }
         }
-        uint64_t set = BufferAllocator::GetInstance()->AllocateDescriptorSet(pipelineDescs[i].PipelineID, 0, vpBindings[i]);
-        Renderer::CreatePipelineFrameContext(pipelines[i], pipelineDescs[i].IsQuad, pipelineDescs[i].IsPresented);
-        Renderer::AddDescriptorIDToContext(i, set);
+        
+        // Create pipeline with gathered input resources
+        Pipeline* pipeline = inputResources.empty() 
+            ? Pipeline::Create(pipelineDescs[i])
+            : Pipeline::Create(pipelineDescs[i], &inputResources);
+        
+        pipelines.push_back(pipeline);
+        
+        // Register this pipeline's output for future pipelines
+        if (pipeline->GetOutputResource() != nullptr)
+        {
+            pipelineOutputRegistry[pipelineDescs[i].PipelineID] = pipeline->GetOutputResource();
+        }
+        
+        
+        Renderer::CreatePipelineFrameContext(pipeline, pipelineDescs[i].IsQuad, pipelineDescs[i].IsPresented);
+        for (const auto& descData : pipelineDescriptors[i])
+        {
+            uint64_t set = BufferAllocator::GetInstance()->AllocateDescriptorSet(
+                pipelineDescs[i].PipelineID, descData.setIndex, descData.bindings);
+            Renderer::AddDescriptorIDToContext(i, set);
+        }
     }
 }
