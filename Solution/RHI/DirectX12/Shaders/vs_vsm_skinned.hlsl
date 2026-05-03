@@ -11,7 +11,23 @@ struct CBVBuffer
 {
     float4x4 viewProjection [4];
 };
-ConstantBuffer<CBVBuffer> LightData : register(b0, space1);
+ConstantBuffer<CBVBuffer> LightMatrices : register(b0, space1);
+
+struct Light
+{
+    float3 Position;
+    float3 Colour;
+    float Intensity;
+    float Radius;
+    uint Type;
+    float Angle;
+    uint ShadowIndex;
+};
+
+cbuffer LightData : register(b0, space2)
+{
+    Light Lights[4];
+};
 
 cbuffer BoneData : register(b0, space16)
 {
@@ -31,6 +47,7 @@ struct VSInput
 
 struct VSOutput {
     float4 position : SV_Position;
+    float depth : TEXCOORD0;
 };
 
 VSOutput main(VSInput input, uint viewID : SV_ViewID) {
@@ -50,6 +67,10 @@ VSOutput main(VSInput input, uint viewID : SV_ViewID) {
     }
     
     float4 worldPosition = mul(ModelData.model, skinnedPos);
-    output.position = mul(LightData.viewProjection[viewID], worldPosition);
+    float4 clipPos = mul(LightMatrices.viewProjection[viewID], worldPosition);
+    output.position = clipPos;
+
+    float linearZ = clipPos.w;
+    output.depth = linearZ / Lights[viewID].Radius;
     return output;
 }

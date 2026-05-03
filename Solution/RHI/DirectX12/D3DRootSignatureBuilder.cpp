@@ -145,7 +145,7 @@ void D3DRootSignatureBuilder::CreateRootParameters(
                 else
                     range.RegisterSpace = binding.Set + spaceOffset;
                 range.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
-    
+                
                 cbvRanges.push_back(range);
             }
             else if (binding.Type == DescriptorType::StorageBuffer || 
@@ -160,7 +160,7 @@ void D3DRootSignatureBuilder::CreateRootParameters(
                 else
                     range.RegisterSpace = binding.Set + spaceOffset;
                 range.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
-    
+                
                 srvRanges.push_back(range);
             }
             else if (binding.Type == DescriptorType::StorageImage)
@@ -174,7 +174,7 @@ void D3DRootSignatureBuilder::CreateRootParameters(
                 else
                     range.RegisterSpace = binding.Set + spaceOffset;
                 range.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
-    
+                
                 uavRanges.push_back(range);
             }
         }

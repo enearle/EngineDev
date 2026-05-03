@@ -12,14 +12,13 @@ cbuffer VPData : register(b0, space0)
     float4 cameraPosition;
 };
 
-Texture2D inShadow                : register(t0, space1);
-
-Texture2D inAlbedo                : register(t0, space2);
-Texture2D inNormal                : register(t1, space2);
-Texture2D inMetallicRoughnessAO   : register(t2, space2);
-Texture2D inPosition              : register(t3, space2);
-SamplerState linearSampler        : register(s0, space0);
-SamplerState pointSampler         : register(s1, space0);
+Texture2DArray shadowMaps           : register(t0, space1);
+Texture2D inAlbedo                  : register(t0, space2);
+Texture2D inNormal                  : register(t1, space2);
+Texture2D inMetallicRoughnessAO     : register(t2, space2);
+Texture2D inPosition                : register(t3, space2);
+SamplerState linearSampler          : register(s0, space0);
+SamplerState pointSampler           : register(s1, space0);
 
 struct Light
 {
@@ -35,6 +34,11 @@ struct Light
 cbuffer LightData : register(b0, space3)
 {
     Light Lights[4];
+};
+
+cbuffer LightMatrices : register(b0, space4)
+{
+    float4x4 lightVP[4];
 };
 
 static float3 albedo;
@@ -115,6 +119,34 @@ float3 AttenuateLight(Light light)
     return attenuation * light.Colour;
 }
 
+float Shadow(Light light, float3 lightDirection)
+{
+    float4 samplePos = mul(lightVP[light.ShadowIndex], float4(fragPosition, 1));
+    
+    float3 ndc = samplePos.xyz / samplePos.w;
+    ndc.y = -ndc.y;
+    float2 sampleUV = ndc.xy * 0.5 + 0.5;
+
+    if (sampleUV.x < 0.0 || sampleUV.x > 1.0 || sampleUV.y < 0.0 || sampleUV.y > 1.0)
+        return 1.0;
+    
+    float2 m1m2 = shadowMaps.Sample(linearSampler, float3(sampleUV, light.ShadowIndex)).xy;
+    
+    float t = abs(samplePos.w) / light.Radius;
+    
+    // No pcf
+    float u = m1m2.x;
+    float o2 = max(m1m2.y - u * u, 0.0001);
+    
+    if (t <= u)
+        return 1.0;
+
+    // Chebyshev's Inequality
+    float pMax = o2 / (o2 + (t - u) * (t - u));
+    
+    return pMax;
+}
+
 // PBR lighting calculation
 float3 LightPBR(Light light)
 {
@@ -133,7 +165,7 @@ float3 LightPBR(Light light)
 
     float3 bRDF = ((float3(1,1,1) - fresnel) * (1.0 - metallic)) * lambert + cookTorrance;
 
-    return  bRDF * lightColour * max(dot(lightDirection, normal), 0.0001);
+    return  bRDF * lightColour * max(dot(lightDirection, normal), 0.0001) * Shadow(light, lightDirection);
 }
 
 float4 main(VSOutput input) : SV_TARGET

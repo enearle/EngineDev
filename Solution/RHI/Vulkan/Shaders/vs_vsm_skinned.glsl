@@ -6,10 +6,6 @@ layout(location = 0) in vec3 inPosition;
 layout(location = 5) in vec4 inBoneWeights;
 layout(location = 6) in uvec4 inBoneIndices;
 
-layout(set = 0, binding = 0, row_major) uniform LightMatrices {
-    mat4 viewProjection[4];
-} lightMatrices;
-
 struct Light
 {
     vec3 Position;
@@ -20,6 +16,10 @@ struct Light
     float Angle;
     uint ShadowIndex;
 };
+
+layout(set = 0, binding = 0, row_major) uniform LightMatrices {
+    mat4 viewProjection[4];
+} lightMatrices;
 
 layout(set = 1, binding = 0) uniform LightData
 {

@@ -146,20 +146,17 @@ D3DPipeline::D3DPipeline(const PipelineDesc& desc, std::vector<IOResource>* inpu
     
     RootSignature = D3DRootSignatureBuilder::BuildRootSignature(desc.PipelineID, resourceLayouts, desc.Constants, SetIndexToBuilderIndex);
     
-    if (inputIOResources)
+    if (inputIOResources && !desc.IsVariant)
     {
-        // For variants, don't try to allocate the variant-specific layout (last one)
-        uint32_t layoutCount = desc.IsVariant ? resourceLayouts.size() - 1 : resourceLayouts.size();
-    
-        for (uint32_t i = desc.UseOwnResourceLayout ? 1 : 0; i < layoutCount; i++)
+        for (uint32_t i = 0; i < inputIOResources->size(); i++)
         {
-            uint32_t inputIndex = desc.UseOwnResourceLayout ? i - 1 : i;
+            uint32_t setIndex = desc.UseOwnResourceLayout ? i + 1 : i;
+        
             uint64_t descriptorSetID = BufferAllocator::GetInstance()->AllocateDescriptorSet(
-                desc.PipelineID, i, inputIOResources->at(inputIndex).Bindings);
+                desc.PipelineID, setIndex, inputIOResources->at(i).Bindings);
             PipelineInputDescriptorSetIDs.push_back(descriptorSetID);
         }
     }
-    
     
     // This is a DirectX-specific means to store 3D vertex data in the pipeline for later use.
     // A more modern (and API agnostic) approach is to handle additional 3D transformations (outside VS/GS)
@@ -434,10 +431,22 @@ D3DPipeline::D3DPipeline(const PipelineDesc& desc, std::vector<IOResource>* inpu
         
         D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
         srvDesc.Format = DXFormat(desc.RenderTargetFormats[i]);
-        srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
         srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-        srvDesc.Texture2D.MipLevels = 1;
-        srvDesc.Texture2D.MostDetailedMip = 0;
+
+        if (desc.AttachmentArrayLayers > 1)
+        {
+            srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2DARRAY;
+            srvDesc.Texture2DArray.MipLevels = 1;
+            srvDesc.Texture2DArray.MostDetailedMip = 0;
+            srvDesc.Texture2DArray.FirstArraySlice = 0;
+            srvDesc.Texture2DArray.ArraySize = desc.AttachmentArrayLayers;
+        }
+        else
+        {
+            srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+            srvDesc.Texture2D.MipLevels = 1;
+            srvDesc.Texture2D.MostDetailedMip = 0;
+        }
 
         DX12ImageData* imageData = new DX12ImageData();
         imageData->Image = OwnedColorResources[i];
@@ -677,16 +686,14 @@ VulkanPipeline::VulkanPipeline(const PipelineDesc& desc, std::vector<IOResource>
 
     PipelineLayout = VulkanPipelineLayoutBuilder::BuildPipelineLayout(desc.PipelineID, resourceLayouts, SetLayouts, desc.Constants, SetIndexToBuilderIndex);
     
-    if (inputIOResources)
+    if (inputIOResources && !desc.IsVariant)
     {
-        // For variants, don't try to allocate the variant-specific layout (last one)
-        uint32_t layoutCount = desc.IsVariant ? resourceLayouts.size() - 1 : resourceLayouts.size();
-    
-        for (uint32_t i = desc.UseOwnResourceLayout ? 1 : 0; i < layoutCount; i++)
+        for (uint32_t i = 0; i < inputIOResources->size(); i++)
         {
-            uint32_t inputIndex = desc.UseOwnResourceLayout ? i - 1 : i;
+            uint32_t setIndex = desc.UseOwnResourceLayout ? i + 1 : i;
+        
             uint64_t descriptorSetID = BufferAllocator::GetInstance()->AllocateDescriptorSet(
-                desc.PipelineID, i, inputIOResources->at(inputIndex).Bindings);
+                desc.PipelineID, setIndex, inputIOResources->at(i).Bindings);
             PipelineInputDescriptorSetIDs.push_back(descriptorSetID);
         }
     }

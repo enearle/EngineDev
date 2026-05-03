@@ -30,8 +30,8 @@ layout(set = 3, binding = 0) uniform LightData
     Light Lights[4];
 } lightData;
 
-layout(set = 4, binding = 0, row_major) uniform LightMatrices {
-    mat4 viewProjection[4];
+layout(set = 4, binding = 0) uniform LightMatrices {
+    mat4 lightVP[4];
 } lightMatrices;
 
 layout(location = 0) out vec4 outColour;
@@ -119,7 +119,7 @@ vec3 AttenuateLight(Light light)
 
 float Shadow(Light light, vec3 lightDirection)
 {
-    vec4 samplePos = vec4(fragPosition, 1) * lightMatrices.viewProjection[light.ShadowIndex];
+    vec4 samplePos = lightMatrices.lightVP[light.ShadowIndex] * vec4(fragPosition, 1);
     
     vec3 ndc = samplePos.xyz / samplePos.w;
     ndc.y = -ndc.y;
@@ -133,41 +133,16 @@ float Shadow(Light light, vec3 lightDirection)
     float t = abs(samplePos.w) / light.Radius;
     
     // No pcf
-   //float u = m1m2.x;
-   //float o2 = max(m1m2.y - u * u, 0.0001);
-   //
-   //if (t <= u)
-   //return 1.0;
+    float u = m1m2.x;
+    float o2 = max(m1m2.y - u * u, 0.0001);
+    
+    if (t <= u)
+    return 1.0;
 
-   //float pMax = o2 / (o2 + (t - u) * (t - u));
-   //
-   //return pMax;
-
-    // pcf
-    float shadowSum = 0.0;
-    vec2 texelSize = 1.0 / vec2(1024.0); // Shadow map size
+    // Chebyshev's Inequality
+    float pMax = o2 / (o2 + (t - u) * (t - u));
     
-    for(int x = -1; x <= 1; x++)
-    {
-        for(int y = -1; y <= 1; y++)
-        {
-            vec2 offset = vec2(x, y) * texelSize;
-            vec2 m1m2 = texture(shadowMaps, vec3(sampleUV + offset, light.ShadowIndex)).xy;
-    
-            float u = m1m2.x;
-            float o2 = max(m1m2.y - u * u, 0.00001) + 0.0001;
-    
-            if (t <= u)
-            shadowSum += 1.0;
-            else
-            {
-                float P = o2 / (o2 + (u-t) * (u-t));
-                shadowSum += max(P, 0.0);
-            }
-        }
-    }
-    
-    return shadowSum / 9.0;
+    return pMax;
 }
 
 // PBR lighting calculation
