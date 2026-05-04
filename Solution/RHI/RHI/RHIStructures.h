@@ -515,14 +515,6 @@ namespace RHIStructures
         Upload
     };
 
-    struct BufferUsage
-    {
-        bool TransferSource = false;
-        bool TransferDestination = false;
-        BufferType Type = BufferType::Constant;
-    };
-    VkBufferUsageFlags VulkanBufferUsage(BufferUsage usage);
-
     enum class ImageType : uint8_t
     {
         Sampled,
@@ -558,12 +550,19 @@ namespace RHIStructures
     D3D12_HEAP_TYPE DXMemoryType(MemoryAccess access);
     VkMemoryPropertyFlags VulkanMemoryType(MemoryAccess access);
 
+    struct BufferUsage
+    {
+        bool TransferSource = false;
+        bool TransferDestination = false;
+        MemoryAccess Access = MemoryAccess(0);
+        BufferType Type = BufferType::Constant;
+    };
+    VkBufferUsageFlags VulkanBufferUsage(BufferUsage usage);
+    
     struct BufferDesc
     {
         uint64_t Size = 0;
         BufferUsage Usage = {};
-        BufferType Type = BufferType::Constant;
-        MemoryAccess Access = MemoryAccess(0);
         const void* InitialData = nullptr;
     };
 
@@ -572,8 +571,6 @@ namespace RHIStructures
         void* Address = nullptr;
         uint64_t Size = 0;
         BufferUsage Usage = {};
-        MemoryAccess Access = MemoryAccess(0);
-        BufferType Type = BufferType::Constant;
         void* Buffer  = nullptr;
         bool IsMapped = false;
         uint64_t Descriptor = 0;

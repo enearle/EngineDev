@@ -1,7 +1,7 @@
 ﻿#pragma once
 #include <DirectXMath.h>
 
-#include "RHI/BufferAllocator.h"
+#include "Uploader.h"
 #include "RHI/RHIConstants.h"
 
 struct VPData
@@ -51,19 +51,14 @@ private:
         if (!BufferInitialized)
         {
             ActiveCamera = camera;
-            BufferDesc VPBufferDesc = RHIConstants::DefaultConstantBufferDesc;
-            VPBufferDesc.Size = 256;
-            VPBufferDesc.Access = MemoryAccess(9);
-            VPBufferDesc.InitialData = &ActiveVPData;
-            BufferID = BufferAllocator::GetInstance()->CreateBuffer(VPBufferDesc);
-            BufferAllocation vpAllocation = BufferAllocator::GetInstance()->GetBufferAllocation(BufferID);
+            BufferID = Uploader::UploadDynamic(256, &ActiveVPData);
+            BufferAllocation vpAllocation = Uploader::GetBufferAllocation(BufferID);
             if (!vpAllocation.IsMapped || vpAllocation.Address == nullptr)
                 throw std::runtime_error("VP buffer is not mapped! Check MemoryAccess flags.");
             
             MappedDataAddr = static_cast<VPData*>(vpAllocation.Address);
         }
     }
-    /////////////////////////////////////////////////////////////////////
     
 public:
     

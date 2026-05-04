@@ -7,7 +7,7 @@ class BitPool;
 using namespace RHIStructures;
 using Microsoft::WRL::ComPtr;
 
-class RHI_API BufferAllocator
+class BufferAllocator
 {
 protected:
     

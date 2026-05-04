@@ -24,7 +24,6 @@ Mesh::Mesh(std::vector<Vertex>* vertices, std::vector<uint32_t>* indices, uint32
     
     MemoryAccess memoryAccess{0};
     memoryAccess.SetGPURead(true);
-    memoryAccess.SetCPUWrite(true);
     
     BufferAllocator* bufferAlloc = BufferAllocator::GetInstance();
     
@@ -35,10 +34,9 @@ Mesh::Mesh(std::vector<Vertex>* vertices, std::vector<uint32_t>* indices, uint32
         vertexBufferDesc.Usage = BufferUsage{
             .TransferSource = false,
             .TransferDestination = true,
+            .Access = memoryAccess,
             .Type = BufferType::Vertex
         };
-        vertexBufferDesc.Type = BufferType::Vertex;
-        vertexBufferDesc.Access = memoryAccess;
         vertexBufferDesc.InitialData = vertices->data();
         
         VertexBufferID = bufferAlloc->CreateBuffer(vertexBufferDesc);
@@ -51,10 +49,9 @@ Mesh::Mesh(std::vector<Vertex>* vertices, std::vector<uint32_t>* indices, uint32
         indexBufferDesc.Usage = BufferUsage{
             .TransferSource = false,
             .TransferDestination = true,
+            .Access = memoryAccess,
             .Type = BufferType::Index
         };
-        indexBufferDesc.Type = BufferType::Index;
-        indexBufferDesc.Access = memoryAccess;
         indexBufferDesc.InitialData = indices->data();
         
         IndexBufferID = bufferAlloc->CreateBuffer(indexBufferDesc);
@@ -72,7 +69,6 @@ Mesh::Mesh(std::vector<SkinnedVertex>* vertices, std::vector<uint32_t>* indices,
     
     MemoryAccess memoryAccess{0};
     memoryAccess.SetGPURead(true);
-    memoryAccess.SetCPUWrite(true);
     
     BufferAllocator* bufferAlloc = BufferAllocator::GetInstance();
     
@@ -83,10 +79,9 @@ Mesh::Mesh(std::vector<SkinnedVertex>* vertices, std::vector<uint32_t>* indices,
         vertexBufferDesc.Usage = BufferUsage{
             .TransferSource = false,
             .TransferDestination = true,
+            .Access = memoryAccess,
             .Type = BufferType::Vertex
         };
-        vertexBufferDesc.Type = BufferType::Vertex;
-        vertexBufferDesc.Access = memoryAccess;
         vertexBufferDesc.InitialData = vertices->data();
         
         VertexBufferID = bufferAlloc->CreateBuffer(vertexBufferDesc);
@@ -99,10 +94,9 @@ Mesh::Mesh(std::vector<SkinnedVertex>* vertices, std::vector<uint32_t>* indices,
         indexBufferDesc.Usage = BufferUsage{
             .TransferSource = false,
             .TransferDestination = true,
+            .Access = memoryAccess,
             .Type = BufferType::Index
         };
-        indexBufferDesc.Type = BufferType::Index;
-        indexBufferDesc.Access = memoryAccess;
         indexBufferDesc.InitialData = indices->data();
         
         IndexBufferID = bufferAlloc->CreateBuffer(indexBufferDesc);

@@ -177,6 +177,7 @@
     <ClCompile Include="RHI\Pipeline.cpp" />
     <ClCompile Include="RHI\PipelineExecutor.cpp" />
     <ClCompile Include="RHI\RHIStructures.cpp" />
+    <ClCompile Include="Uploader.cpp" />
     <ClCompile Include="Vulkan\VulkanCore.cpp" />
     <ClCompile Include="Vulkan\VulkanPipelineLayoutBuilder.cpp" />
     <ClCompile Include="Vulkan\VulkanResource.cpp" />
@@ -221,6 +222,7 @@
     <ClInclude Include="RHI\RHIConstants.h" />
     <ClInclude Include="RHI\RHIStructures.h" />
     <ClInclude Include="RHI_API_Macro.h" />
+    <ClInclude Include="Uploader.h" />
     <ClInclude Include="Vulkan\VulkanCore.h" />
     <ClInclude Include="Vulkan\VulkanPipelineLayoutBuilder.h" />
     <ClInclude Include="Vulkan\VulkanResource.h" />

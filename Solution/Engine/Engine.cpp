@@ -8,6 +8,7 @@
 #include "NoesisUILayer.h"
 #include "TempGameObject.h"
 #include "Time.h"
+#include "Uploader.h"
 #include "../RHI/Renderer.h"
 #include "Window.h"
 #include "RHI/RHIConstants.h"
@@ -40,19 +41,8 @@ int main(int argc, char* argv[])
     std::vector<LightData> testLights = {testLightData, {}, {}, {}};
     std::vector<DirectX::XMFLOAT4X4> lightMatrices = {testLight.GetLightMatrix(), DirectX::XMFLOAT4X4(), DirectX::XMFLOAT4X4(), DirectX::XMFLOAT4X4()};
     
-    BufferDesc lightMatricesBuffer = RHIConstants::DefaultConstantBufferDesc;
-    lightMatricesBuffer.Size = 4 * sizeof(DirectX::XMFLOAT4X4);
-    lightMatricesBuffer.Access = MemoryAccess(9);
-    lightMatricesBuffer.InitialData = lightMatrices.data();
-    uint64_t lightMatricesBufferID = BufferAllocator::GetInstance()->CreateBuffer(lightMatricesBuffer);
-    BufferAllocation lightMatAllocation = BufferAllocator::GetInstance()->GetBufferAllocation(lightMatricesBufferID);
-    
-    BufferDesc lightDataBuffer = RHIConstants::DefaultConstantBufferDesc;
-    lightDataBuffer.Size = 4 * sizeof(LightData);
-    lightDataBuffer.Access = MemoryAccess(9);
-    lightDataBuffer.InitialData = testLights.data();
-    uint64_t lightDataBufferID = BufferAllocator::GetInstance()->CreateBuffer(lightDataBuffer);
-    BufferAllocation lightDataAllocation = BufferAllocator::GetInstance()->GetBufferAllocation(lightDataBufferID);
+    Uploader::BufferID lightMatricesBufferID = Uploader::UploadDynamic(4 * sizeof(DirectX::XMFLOAT4X4), lightMatrices.data());
+    Uploader::BufferID lightDataBufferID = Uploader::UploadDynamic(4 * sizeof(LightData), testLights.data());
     
     vector pipelineDescs = { ShadowVSMPipeline(), PBRGeometryPipeline(), DeferredLightingPipeline() };
     

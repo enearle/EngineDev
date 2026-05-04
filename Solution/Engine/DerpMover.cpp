@@ -1,6 +1,6 @@
 ﻿#include "DerpMover.h"
 #include "TempGameObject.h"
-#include "RHI/BufferAllocator.h"
+#include "Uploader.h"
 
 struct BoneData
 {
@@ -9,7 +9,7 @@ struct BoneData
 
 void DerpMover::MoveTheDerp(double dt)
 {
-    BufferAllocation bufferAllocation = BufferAllocator::GetInstance()->GetBufferAllocation(Derp->GetBoneBufferID());
+    BufferAllocation bufferAllocation = Uploader::GetBufferAllocation(Derp->GetBoneBufferID());
     if (!bufferAllocation.IsMapped || bufferAllocation.Address == nullptr)
         throw std::runtime_error("VP buffer is not mapped! Check MemoryAccess flags.");
             

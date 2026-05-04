@@ -43,11 +43,11 @@ uint64_t VulkanBufferAllocator::CreateBuffer(BufferDesc bufferDesc)
 {
     VulkanBufferData* vulkanBufferData = new VulkanBufferData();
     VkBufferUsageFlags bufferFlags = VulkanBufferUsage(bufferDesc.Usage);
-    VkMemoryPropertyFlags memoryFlags = VulkanMemoryType(bufferDesc.Access);
+    VkMemoryPropertyFlags memoryFlags = VulkanMemoryType(bufferDesc.Usage.Access);
     VkDevice device = VulkanCore::Instance().GetDevice();
     VkPhysicalDevice physicalDevice = VulkanCore::Instance().GetPhysicalDevice();
     
-    bool needsDeviceAddress = (bufferDesc.Type == BufferType::Constant || bufferDesc.Type == BufferType::ShaderStorage);
+    bool needsDeviceAddress = (bufferDesc.Usage.Type == BufferType::Constant || bufferDesc.Usage.Type == BufferType::ShaderStorage);
     if (needsDeviceAddress)
     {
         bufferFlags |= VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
@@ -100,10 +100,7 @@ uint64_t VulkanBufferAllocator::CreateBuffer(BufferDesc bufferDesc)
         
         // Upload initial data if provided
         if (bufferDesc.InitialData != nullptr)
-        {
             memcpy(mappedAddress, bufferDesc.InitialData, bufferDesc.Size);
-        }
-        // Keep mapped! Don't unmap
     }
     else if (bufferDesc.InitialData != nullptr)
     {
@@ -116,9 +113,7 @@ uint64_t VulkanBufferAllocator::CreateBuffer(BufferDesc bufferDesc)
     allocation.Address = mappedAddress;
     allocation.Size = bufferDesc.Size;
     allocation.Usage = bufferDesc.Usage;
-    allocation.Access = bufferDesc.Access;
     allocation.IsMapped = isHostVisible;
-    allocation.Type = bufferDesc.Type;
     allocation.Descriptor = 0;
     allocation.DescriptorType = 0;
     
@@ -504,11 +499,9 @@ void VulkanBufferAllocator::UpdateDescriptorSetDynamicOffsets(uint64_t setID, co
     uint32_t minAlignment = static_cast<uint32_t>(deviceProperties.limits.minUniformBufferOffsetAlignment);
     
     for (uint32_t offset : offsets)
-    {
         if (offset % minAlignment != 0)
             throw std::runtime_error("Dynamic offset " + std::to_string(offset) + 
                                     " not aligned to " + std::to_string(minAlignment) + " bytes");
-    }
     
     // Update cached offsets
     allocation.DynamicOffsets = offsets;
@@ -640,9 +633,8 @@ void VulkanBufferAllocator::TransitionImageLayout(VkImage image, VkImageLayout o
             throw std::runtime_error("vkWaitForFences failed in CopyBufferToImage().");
     }
     else if (fenceStatus != VK_SUCCESS)
-    {
         throw std::runtime_error("vkGetFenceStatus returned an error in CopyBufferToImage().");
-    }
+    
     
     vkResetFences(device, 1, &transferFence);
     vkResetCommandBuffer(commandBuffer, 0);
@@ -811,7 +803,7 @@ uint64_t DirectX12BufferAllocator::CreateBuffer(BufferDesc bufferDesc)
 
     ComPtr<ID3D12Resource> buffer;
     void* mappedAddress = nullptr;
-    bool isHostVisible = bufferDesc.Access.GetCPUWrite();
+    bool isHostVisible = bufferDesc.Usage.Access.GetCPUWrite();
 
     if (isHostVisible)
     {
@@ -928,8 +920,6 @@ uint64_t DirectX12BufferAllocator::CreateBuffer(BufferDesc bufferDesc)
     allocation.Size = bufferDesc.Size;
     allocation.Address = mappedAddress;  // CPU mapped address (or nullptr if not mapped)
     allocation.Usage = bufferDesc.Usage;
-    allocation.Access = bufferDesc.Access;
-    allocation.Type = bufferDesc.Type;
     allocation.IsMapped = (mappedAddress != nullptr);
 
     return CacheBuffer(allocation);

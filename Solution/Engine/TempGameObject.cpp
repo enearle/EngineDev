@@ -1,11 +1,9 @@
 ﻿#include "TempGameObject.h"
-
 #include <iostream>
-
 #include "RHI/Material.h"
 #include "RHI/Geometry/GeometryImport.h"
 #include "Renderer.h"
-#include "RHI/RHIConstants.h"
+#include "Uploader.h"
 
 void CollectBoneMatrices(const SceneNode& node, std::vector<DirectX::XMMATRIX>& outOffsetMatrices,
                          std::vector<DirectX::XMMATRIX>& outTransformMatrices)
@@ -50,39 +48,17 @@ TempGameObject::TempGameObject(std::vector<std::string> materials, std::string f
     
     if (useSkinning)
     {
-        constexpr uint32_t MAX_BONES = 128;
-        
         CollectBoneMatrices(MeshRoot.GetSceneNode(), BoneOffsets, BoneTransforms);
-    
-        std::cout << "Collected " << BoneOffsets.size() << " bone offset matrices" << std::endl;
-    
+        
         std::vector<DirectX::XMFLOAT4X4> boneMatrices(MAX_BONES);
         for (uint32_t i = 0; i < MAX_BONES; i++)
         {
             DirectX::XMStoreFloat4x4(&boneMatrices[i], DirectX::XMMatrixIdentity());
         }
-    
-        BufferAllocator* bufferAlloc = BufferAllocator::GetInstance();
-        constexpr size_t BONE_BUFFER_SIZE = MAX_BONES * sizeof(DirectX::XMFLOAT4X4);
-        BufferDesc boneBufferDesc = RHIConstants::DefaultConstantBufferDesc;
-        boneBufferDesc.Size = BONE_BUFFER_SIZE;
-        boneBufferDesc.InitialData = boneMatrices.data();
         
-        BoneBufferID = bufferAlloc->CreateBuffer(boneBufferDesc);
-        std::cout << "Created bone buffer ID: " << BoneBufferID << ", size: " << BONE_BUFFER_SIZE << std::endl;
-        std::vector<DescriptorSetBinding> bindings;
-        bindings.emplace_back(DescriptorSetBinding {
-            .Binding = 0,
-            .ResourceID = BoneBufferID,
-            .DynamicOffset = 0
-        });
-        
-        BoneDescriptorSet = bufferAlloc->AllocateDescriptorSet(
-            0,
-            RHIConstants::VARIANT_DESCRIPTOR_SET_BASE,
-            bindings
-        );
-        std::cout << "Created bone descriptor set ID: " << BoneDescriptorSet << std::endl;
+        size_t BONE_BUFFER_SIZE = MAX_BONES * sizeof(DirectX::XMFLOAT4X4);
+        BoneBufferID = Uploader::UploadDynamic(BONE_BUFFER_SIZE, boneMatrices.data());
+        BoneDescriptorSet = Uploader::AllocateDescriptor(BoneBufferID);
     }
     
     AddSceneNode(MeshRoot.GetSceneNode());

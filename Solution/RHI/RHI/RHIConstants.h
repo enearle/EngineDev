@@ -120,19 +120,33 @@ namespace RHIConstants
         .InitialData = nullptr
     };
     
-    inline constexpr BufferUsage DefaultUniformBufferUsage
+    inline constexpr BufferUsage DefaultDynamicBufferUsage
     {
         .TransferSource = true,
         .TransferDestination = false,
+        .Access = MemoryAccess(9),
         .Type = BufferType::Constant,
     };
     
-    inline constexpr BufferDesc DefaultConstantBufferDesc
+    inline constexpr BufferDesc DefaultDynamicBufferDesc
     {
         .Size = 0,
-        .Usage = DefaultUniformBufferUsage,
+        .Usage = DefaultDynamicBufferUsage,
+        .InitialData = nullptr
+    };
+    
+    inline constexpr BufferUsage DefaultStaticUploadBufferUsage
+    {
+        .TransferSource = false,
+        .TransferDestination = true,
+        .Access = MemoryAccess(8),
         .Type = BufferType::Constant,
-        .Access = MemoryAccess(9),
+    };
+    
+    inline constexpr BufferDesc DefaultStaticUploadBufferDesc
+    {
+        .Size = 0,
+        .Usage = DefaultDynamicBufferUsage,
         .InitialData = nullptr
     };
     
