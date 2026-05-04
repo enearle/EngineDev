@@ -17,7 +17,7 @@ struct Light
     uint ShadowIndex;
 };
 
-layout(set = 0, binding = 0, row_major) uniform LightMatrices {
+layout(set = 0, binding = 0) uniform LightMatrices {
     mat4 viewProjection[4];
 } lightMatrices;
 
@@ -26,12 +26,12 @@ layout(set = 1, binding = 0) uniform LightData
     Light Lights[4];
 } lightData;
 
-layout(push_constant, row_major) uniform ModelData {
+layout(push_constant) uniform ModelData {
     mat4 model;
     mat4 normal;
 } modelData;
 
-layout(set = 16, binding = 0, row_major) uniform BoneBuffer {
+layout(set = 16, binding = 0) uniform BoneBuffer {
     mat4 bones[MAX_BONES];
 } BoneData;
 
@@ -46,12 +46,12 @@ void main() {
             uint boneIndex = inBoneIndices[i];
             mat4 boneTransform = BoneData.bones[boneIndex];
     
-            skinnedPos += weight * (vec4(inPosition, 1.0) * boneTransform);
+            skinnedPos += weight * (boneTransform * vec4(inPosition, 1.0));
         }
     }
     
-    vec4 worldPosition = skinnedPos * modelData.model;
-    vec4 clipPos = worldPosition * lightMatrices.viewProjection[gl_ViewIndex];
+    vec4 worldPosition = modelData.model * skinnedPos;
+    vec4 clipPos = lightMatrices.viewProjection[gl_ViewIndex] * worldPosition;
     gl_Position = clipPos;
 
     float linearZ = clipPos.w;

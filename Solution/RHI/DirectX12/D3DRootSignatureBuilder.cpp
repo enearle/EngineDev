@@ -83,9 +83,7 @@ void D3DRootSignatureBuilder::CreateRootParameters(
     std::vector<RootParameter>& outRootParameters,
     std::map<uint32_t, uint32_t>& outSetToRootParamMapping) 
 {
-    // Push constants always use space0 if present
-    uint32_t spaceOffset = 0;
-    
+    // Push constants use space 999 to avoid conflicts with descriptor sets
     std::vector<D3D12_ROOT_PARAMETER> constantRanges;
     uint32_t constantSlot = 0;
     for (const PipelineConstant& constant : constants)
@@ -93,16 +91,12 @@ void D3DRootSignatureBuilder::CreateRootParameters(
         D3D12_ROOT_PARAMETER parameter = {};
         parameter.ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
         parameter.Constants.ShaderRegister = constantSlot++;
-        parameter.Constants.RegisterSpace = 0;
+        parameter.Constants.RegisterSpace = 999;
         parameter.Constants.Num32BitValues = constant.Size / 4;
         parameter.ShaderVisibility = DXShaderStageFlags(constant.VisibleStages);
         constantRanges.push_back(parameter);
     }
     outRootParameters.insert(outRootParameters.end(), constantRanges.begin(), constantRanges.end());
-    
-    // If we have push constants, offset descriptor sets by 1
-    if (!constants.empty())
-        spaceOffset = 1;
     
     for (uint32_t i = 0; i < layouts.size(); i++)
     {
@@ -126,10 +120,7 @@ void D3DRootSignatureBuilder::CreateRootParameters(
                 RootParameter parameter = {};
                 parameter.parameter.ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
                 parameter.parameter.Descriptor.ShaderRegister = binding.Slot;
-                if (binding.Set >= 16)
-                    parameter.parameter.Descriptor.RegisterSpace = binding.Set;
-                else
-                    parameter.parameter.Descriptor.RegisterSpace = binding.Set + spaceOffset;
+                parameter.parameter.Descriptor.RegisterSpace = binding.Set;
                 parameter.parameter.ShaderVisibility = visibility;
                 
                 outRootParameters.push_back(parameter);
@@ -140,10 +131,7 @@ void D3DRootSignatureBuilder::CreateRootParameters(
                 range.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;
                 range.NumDescriptors = binding.Count;
                 range.BaseShaderRegister = binding.Slot;
-                if (binding.Set >= 16)
-                    range.RegisterSpace = binding.Set;
-                else
-                    range.RegisterSpace = binding.Set + spaceOffset;
+                range.RegisterSpace = binding.Set;
                 range.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
                 
                 cbvRanges.push_back(range);
@@ -155,10 +143,7 @@ void D3DRootSignatureBuilder::CreateRootParameters(
                 range.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
                 range.NumDescriptors = binding.Count;
                 range.BaseShaderRegister = binding.Slot;
-                if (binding.Set >= 16)
-                    range.RegisterSpace = binding.Set;
-                else
-                    range.RegisterSpace = binding.Set + spaceOffset;
+                range.RegisterSpace = binding.Set;
                 range.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
                 
                 srvRanges.push_back(range);
@@ -169,10 +154,7 @@ void D3DRootSignatureBuilder::CreateRootParameters(
                 range.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
                 range.NumDescriptors = binding.Count;
                 range.BaseShaderRegister = binding.Slot;
-                if (binding.Set >= 16)
-                    range.RegisterSpace = binding.Set;
-                else
-                    range.RegisterSpace = binding.Set + spaceOffset;
+                range.RegisterSpace = binding.Set;
                 range.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
                 
                 uavRanges.push_back(range);

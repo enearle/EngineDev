@@ -6,12 +6,12 @@ layout(location = 2) in vec3 inTangent;
 layout(location = 3) in vec3 inBinormal;
 layout(location = 4) in vec2 inUV;
 
-layout(set = 0, binding = 0, row_major) uniform VPData {
+layout(set = 0, binding = 0) uniform VPData {
     mat4 viewProjection;
     vec4 cameraPosition;
 } vpData;
 
-layout(push_constant, row_major) uniform ModelData {
+layout(push_constant) uniform ModelData {
     mat4 model;
     mat4 normal;
 
@@ -24,14 +24,14 @@ layout(location = 3) out vec3 outBinormal;
 layout(location = 4) out vec2 outUV;
 
 void main() {
-    vec4 worldPosition = vec4(inPosition, 1.0) * modelData.model;
+    vec4 worldPosition = modelData.model * vec4(inPosition, 1.0);
     mat3 normalMatrix = mat3(modelData.normal);
     
-    gl_Position = worldPosition * vpData.viewProjection;
+    gl_Position = vpData.viewProjection * worldPosition;
     outWorldPosition = worldPosition.xyz;
-    outNormal   = normalize(inNormal * normalMatrix);
-    outTangent  = normalize(inTangent * normalMatrix);
-    outBinormal = normalize(inBinormal * normalMatrix);
+    outNormal   = normalize(normalMatrix * inNormal);
+    outTangent  = normalize(normalMatrix * inTangent);
+    outBinormal = normalize(normalMatrix * inBinormal);
 
     outUV = inUV;
 }

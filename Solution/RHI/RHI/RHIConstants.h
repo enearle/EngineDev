@@ -146,7 +146,7 @@ namespace RHIConstants
     inline constexpr BufferDesc DefaultStaticUploadBufferDesc
     {
         .Size = 0,
-        .Usage = DefaultDynamicBufferUsage,
+        .Usage = DefaultStaticUploadBufferUsage,
         .InitialData = nullptr
     };
     

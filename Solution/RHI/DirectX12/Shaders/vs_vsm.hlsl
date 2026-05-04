@@ -3,7 +3,7 @@ struct RootConstants
     float4x4 model;
     float4x4 normal;
 };
-ConstantBuffer<RootConstants> ModelData : register(b0, space0);
+ConstantBuffer<RootConstants> ModelData : register(b0, space999);
 
 struct Light
 {
@@ -20,9 +20,9 @@ struct CBVBuffer
 {
     float4x4 viewProjection [4];
 };
-ConstantBuffer<CBVBuffer> LightMatrices : register(b0, space1);
+ConstantBuffer<CBVBuffer> LightMatrices : register(b0, space0);
 
-cbuffer LightData : register(b0, space2)
+cbuffer LightData : register(b0, space1)
 {
     Light Lights[4];
 };

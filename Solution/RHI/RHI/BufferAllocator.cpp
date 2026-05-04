@@ -103,10 +103,8 @@ uint64_t VulkanBufferAllocator::CreateBuffer(BufferDesc bufferDesc)
             memcpy(mappedAddress, bufferDesc.InitialData, bufferDesc.Size);
     }
     else if (bufferDesc.InitialData != nullptr)
-    {
         // Device-local: use staging buffer
         CopyToDeviceLocalBuffer(vulkanBufferData->Buffer, bufferDesc.InitialData, bufferDesc.Size);
-    }
     
     BufferAllocation allocation;
     allocation.Buffer = vulkanBufferData;
@@ -166,28 +164,43 @@ void VulkanBufferAllocator::CopyToDeviceLocalBuffer(VkBuffer dstBuffer, const vo
     VkCommandBufferBeginInfo beginInfo = {};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-
+    
+    // Ensure command buffer is ready to be recorded
+    // First wait for any previous operation to complete
+    VkResult fenceStatus = vkGetFenceStatus(device, transferFence);
+    if (fenceStatus == VK_NOT_READY)  // Previous operation still running
+    {
+        vkWaitForFences(device, 1, &transferFence, VK_TRUE, UINT64_MAX);
+    }
+    
+    // Now reset the command buffer and fence for new recording
+    vkResetCommandBuffer(commandBuffer, 0);
+    vkResetFences(device, 1, &transferFence);
+    
     vkBeginCommandBuffer(commandBuffer, &beginInfo);
-
+    
     VkBufferCopy copyRegion = {};
     copyRegion.srcOffset = 0;
     copyRegion.dstOffset = 0;
     copyRegion.size = size;
-
+    
     vkCmdCopyBuffer(commandBuffer, stagingBuffer, dstBuffer, 1, &copyRegion);
-
+    
     vkEndCommandBuffer(commandBuffer);
     
     VkSubmitInfo submitInfo = {};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     submitInfo.commandBufferCount = 1;
     submitInfo.pCommandBuffers = &commandBuffer;
-
-    vkQueueSubmit(transferQueue, 1, &submitInfo, transferFence);
     
-    vkWaitForFences(device, 1, &transferFence, VK_TRUE, UINT64_MAX);
-    vkResetFences(device, 1, &transferFence);
-    vkResetCommandBuffer(commandBuffer, 0);
+    result = vkQueueSubmit(transferQueue, 1, &submitInfo, transferFence);
+    if (result != VK_SUCCESS)
+        throw std::runtime_error("Failed to submit transfer command buffer");
+    
+    // Wait for THIS operation to complete before cleaning up staging buffer
+    result = vkWaitForFences(device, 1, &transferFence, VK_TRUE, UINT64_MAX);
+    if (result != VK_SUCCESS)
+        throw std::runtime_error("Failed to wait for transfer fence");
     
     vkDestroyBuffer(device, stagingBuffer, nullptr);
     vkFreeMemory(device, stagingMemory, nullptr);
@@ -462,7 +475,6 @@ uint64_t VulkanBufferAllocator::AllocateDescriptorSet(uint32_t pipelineID, uint3
     allocation.DynamicDescriptorCount = static_cast<uint32_t>(dynamicOffsets.size());
     
     uint64_t id = CacheDescriptorSet(allocation);
-    std::cout << "Allocated descriptor set ID: " << id << ", pipelineID: " << pipelineID << ", setIndex: " << setIndex << std::endl;
     return id;
 }
 
