@@ -1,25 +1,32 @@
-struct VSOutput
+static const float2 _22[6] = { (-1.0f).xx, float2(-1.0f, 1.0f), float2(1.0f, -1.0f), float2(1.0f, -1.0f), float2(-1.0f, 1.0f), 1.0f.xx };
+
+static float4 gl_Position;
+static int gl_VertexIndex;
+static float2 outUV;
+
+struct SPIRV_Cross_Input
 {
-    float4 position : SV_POSITION;
-    float2 uv       : TEXCOORD;
+    uint gl_VertexIndex : SV_VertexID;
 };
 
-static float3 positions[6] = 
+struct SPIRV_Cross_Output
 {
-    float3(-1.0f, 1.0f, 0.0f),
-    float3(-1.0f, -1.0f, 0.0f),
-    float3(1.0f, -1.0f, 0.0f),
-    float3(-1.0f, 1.0f, 0.0f),
-    float3(1.0f, -1.0f, 0.0f),
-    float3(1.0f, 1.0f, 0.0f)
+    float2 outUV : TEXCOORD0;
+    float4 gl_Position : SV_Position;
 };
 
-VSOutput main(uint vertexID : SV_VertexID)
+void vert_main()
 {
-    VSOutput output;
-    
-    output.position = float4(positions[vertexID], 1.0f);
-    output.uv = (positions[vertexID].xy * float2(1, -1) + float2(1,1)) * 0.5f;
-    
-    return output;
+    gl_Position = float4(_22[gl_VertexIndex], 0.0f, 1.0f);
+    outUV = ((_22[gl_VertexIndex] * float2(1.0f, -1.0f)) + 1.0f.xx) * 0.5f;
+}
+
+SPIRV_Cross_Output main(SPIRV_Cross_Input stage_input)
+{
+    gl_VertexIndex = int(stage_input.gl_VertexIndex);
+    vert_main();
+    SPIRV_Cross_Output stage_output;
+    stage_output.gl_Position = gl_Position;
+    stage_output.outUV = outUV;
+    return stage_output;
 }

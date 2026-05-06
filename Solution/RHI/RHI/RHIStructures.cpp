@@ -201,7 +201,6 @@ namespace RHIStructures
         return bytecode;
     }
     
-    // Semantic names
     constexpr std::array<std::string_view, 9> SEMANTIC_NAMES = {
         "POSITION",
         "NORMAL",
@@ -212,8 +211,8 @@ namespace RHIStructures
         "BLENDWEIGHT",
         "BLENDINDICES",
         "PSIZE"
-        
     };
+    
     const char* SemanticNameString(SemanticName semanticName)
     {
         const auto index = static_cast<uint8_t>(semanticName);
@@ -221,8 +220,7 @@ namespace RHIStructures
             return SEMANTIC_NAMES[index].data();
         return nullptr;
     }
-
-    // PrimitiveTopology Mappings
+    
     constexpr std::array<VkPrimitiveTopology, 14> VULKAN_PRIMITIVE_TOPOLOGIES = {
         VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,   // TriangleList = 0
         VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP,  // TriangleStrip = 1

@@ -55,8 +55,8 @@ void init()
     fragPosition = texture(subPosition, inUV).rgb;
     
     metallic = materialData.r;
-    roughness = max(materialData.g, 0.04);
-    roughness = max(roughness * roughness, 0.001);
+    roughness = max(materialData.g, 0.04f);
+    roughness = max(roughness * roughness, 0.001f);
     ambientOcclusion = materialData.b;
     
     vec3 camPosition = vpData.cameraPosition.rgb;
@@ -67,10 +67,10 @@ void init()
 float NormalDistribution(vec3 inHalfwayVector)
 {
     float roughness2 = roughness * roughness;
-    float nDotH2 = max(dot(normal, inHalfwayVector), 0.0001);
+    float nDotH2 = max(dot(normal, inHalfwayVector), 0.0001f);
     nDotH2 *= nDotH2;
-    float denominator = nDotH2 * (roughness2 - 1) + 1;
-    denominator = max(denominator * denominator * PI, 0.0001);
+    float denominator = nDotH2 * (roughness2 - 1.0f) + 1.0f;
+    denominator = max(denominator * denominator * PI, 0.0001f);
 
     return roughness2 / denominator;
 }
@@ -78,11 +78,11 @@ float NormalDistribution(vec3 inHalfwayVector)
 // Schlick-Beckman geometry shadowing
 float GeomertryShadowingSupport(vec3 inVector)
 {
-    float nDotV = max(dot(normal, inVector), 0.0001);
+    float nDotV = max(dot(normal, inVector), 0.0001f);
 
-    float halfRoughness = roughness * 0.5;
-    float denominator = nDotV * (1.0 - halfRoughness) + halfRoughness;
-    denominator = max(denominator, 0.0001);
+    float halfRoughness = roughness * 0.5f;
+    float denominator = nDotV * (1.0f - halfRoughness) + halfRoughness;
+    denominator = max(denominator, 0.0001f);
 
     return nDotV / denominator;
 }
@@ -95,12 +95,12 @@ float GeometryShadowing(vec3 lightVector)
 // Fresnel
 vec3 Fresnel(vec3 inHalfwayVector)
 {
-    float f5 = 1 - max(dot(viewVector, inHalfwayVector), 0.0);
+    float f5 = 1 - max(dot(viewVector, inHalfwayVector), 0.0f);
     f5 = f5 * f5 * f5 * f5 * f5;
 
-    vec3 F0 = mix(vec3(0.04), albedo, metallic);
+    vec3 F0 = mix(vec3(0.04f), albedo, metallic);
 
-    return F0 + (vec3(1) - F0) * f5;
+    return F0 + (vec3(1.0f) - F0) * f5;
 }
 
 // Attenuation for point light
@@ -111,7 +111,7 @@ vec3 AttenuateLight(Light light)
     float distance = length(lightVector);
 
     // Smooth attenuation
-    float attenuation = 1.0 - clamp(distance / light.Radius, 0.0, 1.0);
+    float attenuation = 1.0f - clamp(distance / light.Radius, 0.0f, 1.0f);
     attenuation = attenuation * attenuation * light.Intensity;
 
     return attenuation * light.Colour;
@@ -119,14 +119,14 @@ vec3 AttenuateLight(Light light)
 
 float Shadow(Light light, vec3 lightDirection)
 {
-    vec4 samplePos = lightMatrices.lightVP[light.ShadowIndex] * vec4(fragPosition, 1);
+    vec4 samplePos = lightMatrices.lightVP[light.ShadowIndex] * vec4(fragPosition, 1.0f);
     
     vec3 ndc = samplePos.xyz / samplePos.w;
     ndc.y = -ndc.y;
-    vec2 sampleUV = ndc.xy * 0.5 + 0.5;
+    vec2 sampleUV = ndc.xy * 0.5f + 0.5f;
 
-    if (sampleUV.x < 0.0 || sampleUV.x > 1.0 || sampleUV.y < 0.0 || sampleUV.y > 1.0)
-    return 1.0;
+    if (sampleUV.x < 0.0f || sampleUV.x > 1.0f || sampleUV.y < 0.0f || sampleUV.y > 1.0f)
+    return 1.0f;
     
     vec2 m1m2 = texture(shadowMaps, vec3(sampleUV, light.ShadowIndex)).xy;
     
@@ -134,10 +134,10 @@ float Shadow(Light light, vec3 lightDirection)
     
     // No pcf
     float u = m1m2.x;
-    float o2 = max(m1m2.y - u * u, 0.0001);
+    float o2 = max(m1m2.y - u * u, 0.0001f);
     
     if (t <= u)
-    return 1.0;
+    return 1.0f;
 
     // Chebyshev's Inequality
     float pMax = o2 / (o2 + (t - u) * (t - u));
@@ -157,20 +157,20 @@ vec3 LightPBR(Light light)
     vec3 lambert = albedo / PI;
 
     vec3 cookTorranceNumerator = NormalDistribution(halfwayVector) * GeometryShadowing(lightDirection) * fresnel;
-    float cookTorranceDenominator = 4.0 * max(dot(viewVector, normal), 0.0001) * max(dot(lightDirection, normal), 0.0001);
-    cookTorranceDenominator = max(cookTorranceDenominator, 0.0001);
+    float cookTorranceDenominator = 4.0f * max(dot(viewVector, normal), 0.0001f) * max(dot(lightDirection, normal), 0.0001f);
+    cookTorranceDenominator = max(cookTorranceDenominator, 0.0001f);
     vec3 cookTorrance = cookTorranceNumerator / cookTorranceDenominator;
 
-    vec3 bRDF = ((vec3(1) - fresnel) * (1.0 - metallic)) * lambert + cookTorrance;
+    vec3 bRDF = ((vec3(1) - fresnel) * (1.0f - metallic)) * lambert + cookTorrance;
 
-    return  bRDF * lightColour * max(dot(lightDirection, normal), 0.0001) * Shadow(light, lightDirection);
+    return  bRDF * lightColour * max(dot(lightDirection, normal), 0.0001f) * Shadow(light, lightDirection);
 }
 
 void main()
 {
     init();
 
-    vec3 outGoingLight = vec3(0, 0, 0);
+    vec3 outGoingLight = vec3(0.0f);
     for(uint i = 0; i < 4; i++)
     {
         if(lightData.Lights[i].Type == 1) 
@@ -179,5 +179,5 @@ void main()
         }
     }
 
-    outColour = vec4(outGoingLight, 1.0);
+    outColour = vec4(outGoingLight, 1.0f);
 }

@@ -1,41 +1,57 @@
-Texture2D albedoMap : register(t0, space1);
-Texture2D normalMap : register(t1, space1);
-Texture2D metallicRoughnessMap : register(t2, space1);
-SamplerState linearSampler : register(s0, space0);
+Texture2D<float4> albedoMap : register(t0, space1);
+SamplerState _albedoMap_sampler : register(s0, space1);
+Texture2D<float4> normalMap : register(t1, space1);
+SamplerState _normalMap_sampler : register(s1, space1);
+Texture2D<float4> metallicRoughnessMap : register(t2, space1);
+SamplerState _metallicRoughnessMap_sampler : register(s2, space1);
 
-struct PSInput
+static float2 inUV;
+static float3 inTangent;
+static float3 inBitangent;
+static float3 inNormal;
+static float4 outAlbedo;
+static float4 outNormal;
+static float4 outMRA;
+static float4 outPosition;
+static float3 inWorldPosition;
+
+struct SPIRV_Cross_Input
 {
-    float4 position : SV_POSITION;
-    float3 worldPosition : POSITION0;
-    float3 normal : NORMAL;
-    float3 tangent : TANGENT;
-    float3 binormal : BINORMAL;
-    float2 uv : TEXCOORD;
+    float3 inWorldPosition : TEXCOORD0;
+    float3 inNormal : TEXCOORD1;
+    float3 inTangent : TEXCOORD2;
+    float3 inBitangent : TEXCOORD3;
+    float2 inUV : TEXCOORD4;
 };
 
-struct PSOutput
+struct SPIRV_Cross_Output
 {
-    float4 albedo : SV_TARGET0;
-    float4 normal : SV_TARGET1;
-    float4 metallicRoughness : SV_TARGET2;
-    float4 position : SV_TARGET3;
+    float4 outAlbedo : SV_Target0;
+    float4 outNormal : SV_Target1;
+    float4 outMRA : SV_Target2;
+    float4 outPosition : SV_Target3;
 };
 
-PSOutput main(PSInput input)
+void frag_main()
 {
-    PSOutput output;
-    float3 tangentNormal = normalMap.Sample(linearSampler, input.uv).rgb * 2.0 - 1.0;
-    float3x3 TBN = float3x3(
-       normalize(input.tangent), 
-       -normalize(input.binormal), 
-       normalize(input.normal)
-   );
-    
-    float3 worldNormal = normalize(mul(tangentNormal, TBN));
-    output.albedo = albedoMap.Sample(linearSampler, input.uv);
-    output.normal = float4(worldNormal, 1.0f);
-    output.metallicRoughness = metallicRoughnessMap.Sample(linearSampler, input.uv);
-    output.position = float4(input.worldPosition, 1.0);
-    
-    return output;
+    outAlbedo = float4(albedoMap.Sample(_albedoMap_sampler, inUV).xyz, 1.0f);
+    outNormal = float4(normalize(mul((normalMap.Sample(_normalMap_sampler, inUV).xyz * 2.0f) - 1.0f.xxx, float3x3(float3(normalize(inTangent)), float3(-normalize(inBitangent)), float3(normalize(inNormal))))), 1.0f);
+    outMRA = float4(metallicRoughnessMap.Sample(_metallicRoughnessMap_sampler, inUV).xyz, 1.0f);
+    outPosition = float4(inWorldPosition, 1.0f);
+}
+
+SPIRV_Cross_Output main(SPIRV_Cross_Input stage_input)
+{
+    inUV = stage_input.inUV;
+    inTangent = stage_input.inTangent;
+    inBitangent = stage_input.inBitangent;
+    inNormal = stage_input.inNormal;
+    inWorldPosition = stage_input.inWorldPosition;
+    frag_main();
+    SPIRV_Cross_Output stage_output;
+    stage_output.outAlbedo = outAlbedo;
+    stage_output.outNormal = outNormal;
+    stage_output.outMRA = outMRA;
+    stage_output.outPosition = outPosition;
+    return stage_output;
 }

@@ -1,50 +1,73 @@
-struct RootConstants
+cbuffer VPData : register(b0, space0)
 {
-    float4x4 model;
-    float4x4 normal;
-};
-ConstantBuffer<RootConstants> ModelData : register(b0, space999);
-
-struct CBVBuffer
-{
-    float4x4 viewProjection;
-    float4 cameraPosition;
-};
-ConstantBuffer<CBVBuffer> VPData : register(b0, space0);
-
-struct VSInput
-{
-    float3 position : POSITION;
-    float3 normal : NORMAL;
-    float3 tangent : TANGENT;
-    float3 binormal : BINORMAL;
-    float2 uv : TEXCOORD;
+    row_major float4x4 vpData_viewProjection : packoffset(c0);
+    float4 vpData_cameraPosition : packoffset(c4);
 };
 
-struct VSOutput
+cbuffer ModelData : register(b0, space999)
 {
-    float4 position : SV_POSITION;
-    float3 worldPosition : POSITION0;
-    float3 normal : NORMAL;
-    float3 tangent : TANGENT;
-    float3 binormal : BINORMAL;
-    float2 uv : TEXCOORD;
+    row_major float4x4 modelData_model : packoffset(c0);
+    row_major float4x4 modelData_normal : packoffset(c4);
 };
 
-VSOutput main(VSInput input)
+
+static float4 gl_Position;
+static float3 inPosition;
+static float3 outWorldPosition;
+static float3 outNormal;
+static float3 inNormal;
+static float3 outTangent;
+static float3 inTangent;
+static float3 outBinormal;
+static float3 inBinormal;
+static float2 outUV;
+static float2 inUV;
+
+struct SPIRV_Cross_Input
 {
-    VSOutput output;
-    
-    float4 worldPos = mul(ModelData.model, float4(input.position, 1.0));
-    output.worldPosition = worldPos.xyz;
-    output.position = mul(VPData.viewProjection, worldPos);
-    
-    float3x3 normalMatrix = (float3x3)ModelData.normal;
-    output.normal = normalize(mul(normalMatrix, input.normal));
-    output.tangent = normalize(mul(normalMatrix, input.tangent));
-    output.binormal = normalize(mul(normalMatrix, input.binormal));
-    
-    output.uv = input.uv;
-    
-    return output;
+    float3 inPosition : POSITION;
+    float3 inNormal : NORMAL;
+    float3 inTangent : TANGENT;
+    float3 inBinormal : BINORMAL;
+    float2 inUV : TEXCOORD;
+};
+
+struct SPIRV_Cross_Output
+{
+    float3 outWorldPosition : TEXCOORD0;
+    float3 outNormal : TEXCOORD1;
+    float3 outTangent : TEXCOORD2;
+    float3 outBinormal : TEXCOORD3;
+    float2 outUV : TEXCOORD4;
+    float4 gl_Position : SV_Position;
+};
+
+void vert_main()
+{
+    float4 _52 = mul(float4(inPosition, 1.0f), modelData_model);
+    float3x3 _61 = float3x3(modelData_normal[0].xyz, modelData_normal[1].xyz, modelData_normal[2].xyz);
+    gl_Position = mul(_52, vpData_viewProjection);
+    outWorldPosition = _52.xyz;
+    outNormal = normalize(mul(inNormal, _61));
+    outTangent = normalize(mul(inTangent, _61));
+    outBinormal = normalize(mul(inBinormal, _61));
+    outUV = inUV;
+}
+
+SPIRV_Cross_Output main(SPIRV_Cross_Input stage_input)
+{
+    inPosition = stage_input.inPosition;
+    inNormal = stage_input.inNormal;
+    inTangent = stage_input.inTangent;
+    inBinormal = stage_input.inBinormal;
+    inUV = stage_input.inUV;
+    vert_main();
+    SPIRV_Cross_Output stage_output;
+    stage_output.gl_Position = gl_Position;
+    stage_output.outWorldPosition = outWorldPosition;
+    stage_output.outNormal = outNormal;
+    stage_output.outTangent = outTangent;
+    stage_output.outBinormal = outBinormal;
+    stage_output.outUV = outUV;
+    return stage_output;
 }

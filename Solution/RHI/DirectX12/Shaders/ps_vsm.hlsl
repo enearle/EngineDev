@@ -1,20 +1,27 @@
-struct PSOutput
+static float2 depth;
+static float inDepth;
+
+struct SPIRV_Cross_Input
 {
-    float2 depth : SV_TARGET0;
+    float inDepth : TEXCOORD0;
 };
 
-struct PSInput
+struct SPIRV_Cross_Output
 {
-    float4 position : SV_POSITION;
-    float depth : TEXCOORD0;
+    float2 depth : SV_Target0;
 };
 
-PSOutput main(PSInput input)
+void frag_main()
 {
-    PSOutput output;
-    output.depth.x = input.depth;
-    output.depth.y = output.depth.x * output.depth.x;
-    return output;
+    depth.x = inDepth;
+    depth.y = depth.x * depth.x;
 }
-    
-    
+
+SPIRV_Cross_Output main(SPIRV_Cross_Input stage_input)
+{
+    inDepth = stage_input.inDepth;
+    frag_main();
+    SPIRV_Cross_Output stage_output;
+    stage_output.depth = depth;
+    return stage_output;
+}

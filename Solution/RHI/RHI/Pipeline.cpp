@@ -259,6 +259,14 @@ D3DPipeline::D3DPipeline(const PipelineDesc& desc, std::vector<IOResource>* inpu
         inputElements.push_back(element);
     }
     
+    printf("Pipeline %d Input Layout:\n", desc.PipelineID);
+    for (const auto& elem : inputElements) {
+        printf("  %s%d: Format=%d, Offset=%d, Slot=%d\n", 
+               elem.SemanticName, elem.SemanticIndex, elem.Format, 
+               elem.AlignedByteOffset, elem.InputSlot);
+    }
+    fflush(stdout);
+    
     if (!inputElements.empty())
     {
         inputLayoutDesc.pInputElementDescs = inputElements.data();

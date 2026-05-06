@@ -1,18 +1,3 @@
-#define MAX_BONES 128
-
-struct RootConstants
-{
-    float4x4 model;
-    float4x4 normal;
-};
-ConstantBuffer<RootConstants> ModelData : register(b0, space999);
-
-struct CBVBuffer
-{
-    float4x4 viewProjection [4];
-};
-ConstantBuffer<CBVBuffer> LightMatrices : register(b0, space0);
-
 struct Light
 {
     float3 Position;
@@ -24,53 +9,73 @@ struct Light
     uint ShadowIndex;
 };
 
+cbuffer BoneBuffer : register(b0, space16)
+{
+    row_major float4x4 BoneData_bones[128] : packoffset(c0);
+};
+
+cbuffer LightMatrices : register(b0, space0)
+{
+    row_major float4x4 lightMatrices_viewProjection[4] : packoffset(c0);
+};
+
 cbuffer LightData : register(b0, space1)
 {
-    Light Lights[4];
+    Light lightData_Lights[4] : packoffset(c0);
 };
 
-cbuffer BoneData : register(b0, space16)
+cbuffer ModelData : register(b0, space999)
 {
-    float4x4 bones[MAX_BONES];
+    row_major float4x4 modelData_model : packoffset(c0);
+    row_major float4x4 modelData_normal : packoffset(c4);
 };
 
-struct VSInput
+
+static float4 gl_Position;
+static uint gl_ViewIndex;
+static float4 inBoneWeights;
+static uint4 inBoneIndices;
+static float3 inPosition;
+static float outDepth;
+
+struct SPIRV_Cross_Input
 {
-    float3 position : POSITION;
-    float3 normal : NORMAL;
-    float3 tangent : TANGENT;
-    float3 binormal : BINORMAL;
-    float2 uv : TEXCOORD;
-    float4 boneWeights : BLENDWEIGHT;
-    uint4 boneIndices : BLENDINDICES;
+    float3 inPosition : POSITION;
+    float4 inBoneWeights : BLENDWEIGHT;
+    uint4 inBoneIndices : BLENDINDICES;
+    uint gl_ViewIndex : SV_ViewID;
 };
 
-struct VSOutput {
-    float4 position : SV_Position;
-    float depth : TEXCOORD0;
+struct SPIRV_Cross_Output
+{
+    float outDepth : TEXCOORD0;
+    float4 gl_Position : SV_Position;
 };
 
-VSOutput main(VSInput input, uint viewID : SV_ViewID) {
-    VSOutput output;
-    
-    float4 skinnedPos = float4(0, 0, 0, 0);
+void vert_main()
+{
+    float4 skinnedPos = 0.0f.xxxx;
     for (int i = 0; i < 4; i++)
     {
-        float weight = input.boneWeights[i];
-        if (weight > 0.0)
+        if (inBoneWeights[i] > 0.0f)
         {
-            uint boneIndex = input.boneIndices[i];
-            float4x4 boneTransform = bones[boneIndex];
-            
-            skinnedPos += weight * mul(boneTransform, float4(input.position, 1.0));
+            skinnedPos += (mul(float4(inPosition, 1.0f), BoneData_bones[inBoneIndices[i]]) * inBoneWeights[i]);
         }
     }
-    
-    float4 worldPosition = mul(ModelData.model, skinnedPos);
-    float4 clipPos = mul(LightMatrices.viewProjection[viewID], worldPosition);
-    output.position = clipPos;
+    float4 _100 = mul(mul(skinnedPos, modelData_model), lightMatrices_viewProjection[gl_ViewIndex]);
+    gl_Position = _100;
+    outDepth = _100.w / lightData_Lights[gl_ViewIndex].Radius;
+}
 
-    float linearZ = clipPos.w;
-    output.depth = linearZ / Lights[viewID].Radius;
-    return output;
+SPIRV_Cross_Output main(SPIRV_Cross_Input stage_input)
+{
+    gl_ViewIndex = stage_input.gl_ViewIndex;
+    inBoneWeights = stage_input.inBoneWeights;
+    inBoneIndices = stage_input.inBoneIndices;
+    inPosition = stage_input.inPosition;
+    vert_main();
+    SPIRV_Cross_Output stage_output;
+    stage_output.gl_Position = gl_Position;
+    stage_output.outDepth = outDepth;
+    return stage_output;
 }
