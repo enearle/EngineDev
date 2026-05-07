@@ -40,7 +40,7 @@ TempGameObject::TempGameObject(std::vector<std::string> materials, std::string f
 {
     for (std::string material : materials)
     {
-        Materials.push_back(Material(material, Material::PBR).LoadMaterial(1, 1));
+        Materials.push_back(Material(material, Material::PBR).LoadMaterial(1, 2));
     }
     
     MeshRoot = GeometryImport::CreateMeshGroup(filename, name, DirectX::XMMatrixIdentity(), useSkinning);

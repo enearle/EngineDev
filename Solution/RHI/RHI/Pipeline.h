@@ -41,6 +41,7 @@ public:
     const std::map<uint32_t, uint32_t>& GetSetToRootParamMapping() const { return SetIndexToBuilderIndex; }
     uint32_t GetViewMask() const { return ViewMask; }
     uint32_t GetArrayLayerCount() const { return ArrayLayerCount; }
+    bool GetIsVariant() { return IsVariant; }
 };
 
 class D3DPipeline : public Pipeline

@@ -47,20 +47,17 @@ int main(int argc, char* argv[])
     vector pipelineDescs = { ShadowVSMPipeline(), PBRGeometryPipeline(), DeferredLightingPipeline() };
     
     vector<vector<PipelineDescriptorData>> pipelineDescriptors = {
-        // Pipeline 0: Shadow - only Set 0
         {
-            {0, {{0, lightMatricesBufferID, 0}}},
-            {1, {{0, lightDataBufferID, 0}}} 
+            {1, {{0, lightMatricesBufferID, 0}}},
+            {2, {{0, lightDataBufferID, 0}}} 
         },
-    
-        // Pipeline 1: PBR - only Set 0
-        { {0, {{0, Camera::GetBufferID(), 0}}} },
-    
-        // Pipeline 2: Deferred Lighting - Set 0 AND Set 3
+
+        { {1, {{0, Camera::GetBufferID(), 0}}} },
+
         { 
-            {0, {{0, Camera::GetBufferID(), 0}}},
-            {3, {{0, lightDataBufferID, 0}}},
-            {4, {{0, lightMatricesBufferID, 0}}}
+            {1, {{0, Camera::GetBufferID(), 0}}},
+            {4, {{0, lightDataBufferID, 0}}},
+            {5, {{0, lightMatricesBufferID, 0}}}
         }
     };
     

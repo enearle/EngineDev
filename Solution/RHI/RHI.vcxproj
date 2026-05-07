@@ -147,14 +147,10 @@
     <ClCompile Include="DirectX12\D3DRootSignatureBuilder.cpp" />
     <Content Include="DirectX12\Shaders\ps_lighting.hlsl" />
     <Content Include="DirectX12\Shaders\ps_pbr.hlsl" />
-    <Content Include="DirectX12\Shaders\ps_quad.hlsl" />
-    <Content Include="DirectX12\Shaders\ps_rainbow.hlsl" />
     <Content Include="DirectX12\Shaders\ps_vsm.hlsl" />
     <Content Include="DirectX12\Shaders\vs_lighting.hlsl" />
     <Content Include="DirectX12\Shaders\vs_pbr.hlsl" />
     <Content Include="DirectX12\Shaders\vs_pbr_skinned.hlsl" />
-    <Content Include="DirectX12\Shaders\vs_quad.hlsl" />
-    <Content Include="DirectX12\Shaders\vs_rainbow.hlsl" />
     <Content Include="DirectX12\Shaders\vs_vsm_skinned.hlsl" />
     <Content Include="DirectX12\Shaders\vs_vsm.hlsl" />
     <ClCompile Include="ForwardInterface.cpp" />

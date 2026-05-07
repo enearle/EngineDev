@@ -1,6 +1,6 @@
-Texture2D albedoMap : register(t0, space1);
-Texture2D normalMap : register(t1, space1);
-Texture2D metallicRoughnessMap : register(t2, space1);
+Texture2D albedoMap : register(t0, space2);
+Texture2D normalMap : register(t1, space2);
+Texture2D metallicRoughnessMap : register(t2, space2);
 SamplerState linearSampler : register(s0, space0);
 
 struct PSInput

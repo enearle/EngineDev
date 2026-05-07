@@ -313,9 +313,7 @@ void D3DPipelineExecutor::BindPipelineDescriptorSets(std::vector<uint64_t>* desc
         for (size_t i = 0; i < descriptorSets->size(); i++)
         {
             uint64_t descriptorSetID = descriptorSets->at(i);
-            
             DescriptorSetAllocation allocation = bufferAlloc->GetDescriptorSet(descriptorSetID);
-            
             uint32_t setIndex = static_cast<uint32_t>(allocation.SetKey & 0xFFFFFFFF);
             
             auto it = setToRootParamMapping.find(setIndex);
@@ -328,7 +326,6 @@ void D3DPipelineExecutor::BindPipelineDescriptorSets(std::vector<uint64_t>* desc
             
             D3D12_GPU_DESCRIPTOR_HANDLE handle;
             handle.ptr = allocation.DescriptorAddress;
-            
             cmdList->SetGraphicsRootDescriptorTable(rootParamIndex, handle);
         }
     }
@@ -337,7 +334,6 @@ void D3DPipelineExecutor::BindPipelineDescriptorSets(std::vector<uint64_t>* desc
     for (uint64_t descriptorSetID : CurrentPipeline->GetInputDescriptorSetIDs())
     {
         DescriptorSetAllocation allocation = bufferAlloc->GetDescriptorSet(descriptorSetID);
-        
         uint32_t setIndex = static_cast<uint32_t>(allocation.SetKey & 0xFFFFFFFF);
         
         auto it = setToRootParamMapping.find(setIndex);
@@ -670,6 +666,18 @@ void VulkanPipelineExecutor::BindPipelineDescriptorSets(std::vector<uint64_t>* d
     VkCommandBuffer cmdBuffer = GetCommandBuffer();
     BufferAllocator* bufferAlloc = BufferAllocator::GetInstance();
     
+    VkDescriptorSet globalSamplerSet = VulkanCore::Instance().GetGlobalSamplerSet();
+    if (!CurrentPipeline->GetIsVariant())
+    {
+        vkCmdBindDescriptorSets(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+            CurrentPipeline->GetPipelineLayout(), 
+            0,                  // Set index 0
+            1,                  // Bind 1 set
+            &globalSamplerSet,  // The global sampler set
+            0,                  // No dynamic offsets
+            nullptr);
+    }
+    
     if (descriptorSets)
     {
         for (uint64_t ID : *descriptorSets)
@@ -678,10 +686,13 @@ void VulkanPipelineExecutor::BindPipelineDescriptorSets(std::vector<uint64_t>* d
             uint32_t setIndex = static_cast<uint32_t>(allocation.SetKey & 0xFFFFFFFF);
             VkDescriptorSet descriptorSet = reinterpret_cast<VkDescriptorSet>(allocation.DescriptorAddress);
             
-            vkCmdBindDescriptorSets(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                CurrentPipeline->GetPipelineLayout(), setIndex, 1, &descriptorSet,
-                allocation.DynamicOffsets.size(),
-                allocation.DynamicOffsets.empty() ? nullptr : allocation.DynamicOffsets.data());
+            if (descriptorSet != VK_NULL_HANDLE && CurrentPipeline->GetPipelineLayout() != VK_NULL_HANDLE)
+            {
+                vkCmdBindDescriptorSets(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                    CurrentPipeline->GetPipelineLayout(), setIndex, 1, &descriptorSet,
+                    allocation.DynamicOffsets.size(),
+                    allocation.DynamicOffsets.empty() ? nullptr : allocation.DynamicOffsets.data());
+            }
         }
     }
     

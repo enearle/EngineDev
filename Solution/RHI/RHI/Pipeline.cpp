@@ -1,5 +1,6 @@
 ﻿#include "Pipeline.h"
 
+#include <algorithm>
 #include <iostream>
 #include <stdexcept>
 #include "BufferAllocator.h"
@@ -116,7 +117,7 @@ D3DPipeline::D3DPipeline(const PipelineDesc& desc, std::vector<IOResource>* inpu
     for (uint32_t i = desc.UseOwnResourceLayout ? 1 : 0; i < resourceLayouts.size(); i++)
         for (auto& binding : resourceLayouts[i].Bindings)
             if (binding.Set < RHIConstants::VARIANT_DESCRIPTOR_SET_BASE)
-                binding.Set = i;
+                binding.Set = desc.UseOwnResourceLayout ? i + 1 : i;
     
     std::vector<ResourceLayout> splitLayouts;
     for (const auto& layout : resourceLayouts)
@@ -134,6 +135,13 @@ D3DPipeline::D3DPipeline(const PipelineDesc& desc, std::vector<IOResource>* inpu
     }
     resourceLayouts = splitLayouts;
     
+    std::sort(resourceLayouts.begin(), resourceLayouts.end(), 
+    [](const ResourceLayout& a, const ResourceLayout& b) {
+        uint32_t setA = a.Bindings.empty() ? 0 : a.Bindings[0].Set;
+        uint32_t setB = b.Bindings.empty() ? 0 : b.Bindings[0].Set;
+        return setA < setB;
+    });
+    
     if (desc.IsVariant)
     {
         ResourceLayout variantLayout = desc.VariantResourceLayout;
@@ -150,10 +158,12 @@ D3DPipeline::D3DPipeline(const PipelineDesc& desc, std::vector<IOResource>* inpu
     {
         for (uint32_t i = 0; i < inputIOResources->size(); i++)
         {
-            uint32_t setIndex = desc.UseOwnResourceLayout ? i + 1 : i;
+            // Use the set index from the first binding (after reassignment has been applied)
+            const IOResource& ioResource = inputIOResources->at(i);
+            uint32_t setIndex = ioResource.Layout.Bindings.empty() ? 0 : ioResource.Layout.Bindings[0].Set;
         
             uint64_t descriptorSetID = BufferAllocator::GetInstance()->AllocateDescriptorSet(
-                desc.PipelineID, setIndex, inputIOResources->at(i).Bindings);
+                desc.PipelineID, setIndex, ioResource.Bindings);
             PipelineInputDescriptorSetIDs.push_back(descriptorSetID);
         }
     }
@@ -674,7 +684,7 @@ VulkanPipeline::VulkanPipeline(const PipelineDesc& desc, std::vector<IOResource>
     for (uint32_t i = desc.UseOwnResourceLayout ? 1 : 0; i < resourceLayouts.size(); i++)
         for (auto& binding : resourceLayouts[i].Bindings)
             if (binding.Set < RHIConstants::VARIANT_DESCRIPTOR_SET_BASE)
-                binding.Set = i;
+                binding.Set = desc.UseOwnResourceLayout ? i + 1 : i; 
     
     if (desc.IsVariant)
     {
@@ -690,10 +700,12 @@ VulkanPipeline::VulkanPipeline(const PipelineDesc& desc, std::vector<IOResource>
     {
         for (uint32_t i = 0; i < inputIOResources->size(); i++)
         {
-            uint32_t setIndex = desc.UseOwnResourceLayout ? i + 1 : i;
+            // Use the set index from the first binding (preserved from OutputDescriptorSetIndex)
+            const IOResource& ioResource = inputIOResources->at(i);
+            uint32_t setIndex = ioResource.Layout.Bindings.empty() ? 0 : ioResource.Layout.Bindings[0].Set;
         
             uint64_t descriptorSetID = BufferAllocator::GetInstance()->AllocateDescriptorSet(
-                desc.PipelineID, setIndex, inputIOResources->at(i).Bindings);
+                desc.PipelineID, setIndex, ioResource.Bindings);
             PipelineInputDescriptorSetIDs.push_back(descriptorSetID);
         }
     }

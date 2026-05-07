@@ -14,194 +14,6 @@ namespace EngineConstants
         DirectX::XMFLOAT4X4 NormalMatrix;
     };
     
-    static PipelineDesc CreateRainbowTrianglePipeline()
-    {
-        PipelineDesc rainbowTrianglePipeline = {};
-
-        // 1. Shader stages
-        rainbowTrianglePipeline.VertexShader = ImportShader("vs_rainbow", "main");
-        rainbowTrianglePipeline.FragmentShader = ImportShader("ps_rainbow", "main");
-
-        if (!rainbowTrianglePipeline.VertexShader.ByteCode || rainbowTrianglePipeline.VertexShader.ByteCodeSize == 0)
-            throw std::runtime_error("Failed to load vertex shader!");
-        if (!rainbowTrianglePipeline.FragmentShader.ByteCode || rainbowTrianglePipeline.FragmentShader.ByteCodeSize == 0)
-            throw std::runtime_error("Failed to load fragment shader!");
-        
-        // 2. Vertex input layout
-        rainbowTrianglePipeline.VertexAttributes = {};  // Empty - shader uses SV_VertexID
-        rainbowTrianglePipeline.VertexBindings = {};    // Empty - no bindings needed
-
-        // 3. Primitive topology
-        rainbowTrianglePipeline.PrimitiveTopology = PrimitiveTopology::TriangleList;
-
-        // 4. Rasterizer state
-        rainbowTrianglePipeline.RasterizerState = {
-            FillMode::Solid,                        // Solid fill
-            CullMode::None,                         // Don't cull any faces
-            false,                                  // Front face clockwise
-            0.0f,                                   // No depth bias
-            0.0f,                                   // No slope depth bias
-            0.0f,                                   // No depth bias clamp
-            true                                    // Enable depth clipping
-        };
-
-        // 5. Depth/stencil state
-        rainbowTrianglePipeline.DepthStencilState = {
-            false,                                  // Depth test disabled
-            false,                                  // Depth write disabled
-            CompareOp::Always,                      // Comparison op
-            false,                                  // No depth bounds test
-            0.0f,                                   // Min depth
-            1.0f,                                   // Max depth
-            false,                                  // Stencil test disabled
-            0xFF,                                   // Stencil read mask
-            0xFF,                                   // Stencil write mask
-            {CompareOp::Always, StencilOp::Keep, StencilOp::Keep, StencilOp::Keep},  // Front
-            {CompareOp::Always, StencilOp::Keep, StencilOp::Keep, StencilOp::Keep}   // Back
-        };
-
-        // 6. Blend state
-        rainbowTrianglePipeline.BlendAttachmentStates = {
-            {
-                BlendOp::Add,                       // Color blend op
-                BlendFactor::SrcAlpha,              // Source color factor
-                BlendFactor::InvSrcAlpha,           // Dest color factor
-                BlendOp::Add,                       // Alpha blend op
-                BlendFactor::One,                   // Source alpha factor
-                BlendFactor::Zero,                  // Dest alpha factor
-                false                               // Blending DISABLED
-            }
-        };
-
-        // 7. Render target format
-        rainbowTrianglePipeline.RenderTargetFormats = {
-            Format::R8G8B8A8_UNORM                  // Standard RGBA color format
-        };
-
-        // 8. No depth stencil
-        rainbowTrianglePipeline.DepthStencilFormat = Format::Unknown;
-
-        // 9. Multisampling
-        rainbowTrianglePipeline.MultisampleState = {
-            1,                                      // Sample count (no MSAA)
-            false                                   // No alpha to coverage
-        };
-
-        // 10. No resource bindings needed for simple triangle
-        ResourceLayout resourceLayout = {};
-        rainbowTrianglePipeline.ResourceLayout = resourceLayout;
-        
-        ShaderStageMask visibleStages = ShaderStageMask(0);
-
-        // 11. Attachment load/store operations
-        rainbowTrianglePipeline.ColorLoadOps = {AttachmentLoadOp::Clear};
-        rainbowTrianglePipeline.ColorStoreOps = {AttachmentStoreOp::Store};
-        rainbowTrianglePipeline.DepthLoadOp = AttachmentLoadOp::Load;
-        rainbowTrianglePipeline.DepthStoreOp = AttachmentStoreOp::Store;
-
-        return rainbowTrianglePipeline;
-    }
-    
-    static PipelineDesc TexturedQuadPipeline()
-    {
-        PipelineDesc TexturedQuadDesc = {};
-
-        // 1. Shader stages
-        TexturedQuadDesc.VertexShader = ImportShader("vs_quad", "main");
-        TexturedQuadDesc.FragmentShader = ImportShader("ps_quad", "main");
-
-        if (!TexturedQuadDesc.VertexShader.ByteCode || TexturedQuadDesc.VertexShader.ByteCodeSize == 0)
-            throw std::runtime_error("Failed to load vertex shader!");
-        if (!TexturedQuadDesc.FragmentShader.ByteCode || TexturedQuadDesc.FragmentShader.ByteCodeSize == 0)
-            throw std::runtime_error("Failed to load fragment shader!");
-        
-        // 2. Vertex input layout
-        TexturedQuadDesc.VertexAttributes = {};     // Empty - shader uses SV_VertexID
-        TexturedQuadDesc.VertexBindings = {};       // Empty - no bindings needed
-
-        // 3. Primitive topology
-        TexturedQuadDesc.PrimitiveTopology = PrimitiveTopology::TriangleList;
-
-        // 4. Rasterizer state
-        TexturedQuadDesc.RasterizerState = {
-            FillMode::Solid,                        // Solid fill
-            CullMode::None,                         // Don't cull any faces
-            false,                                  // Front face clockwise
-            0.0f,                                   // No depth bias
-            0.0f,                                   // No slope depth bias
-            0.0f,                                   // No depth bias clamp
-            true                                    // Enable depth clipping
-        };
-
-        // 5. Depth/stencil state
-        TexturedQuadDesc.DepthStencilState = {
-            false,                                  // Depth test disabled
-            false,                                  // Depth write disabled
-            CompareOp::Always,                      // Comparison op
-            false,                                  // No depth bounds test
-            0.0f,                                   // Min depth
-            1.0f,                                   // Max depth
-            false,                                  // Stencil test disabled
-            0xFF,                                   // Stencil read mask
-            0xFF,                                   // Stencil write mask
-            {CompareOp::Always, StencilOp::Keep, StencilOp::Keep, StencilOp::Keep},  // Front
-            {CompareOp::Always, StencilOp::Keep, StencilOp::Keep, StencilOp::Keep}   // Back
-        };
-
-        // 6. Blend state
-        TexturedQuadDesc.BlendAttachmentStates = {
-            {
-                BlendOp::Add,                       // Color blend op
-                BlendFactor::SrcAlpha,              // Source color factor
-                BlendFactor::InvSrcAlpha,           // Dest color factor
-                BlendOp::Add,                       // Alpha blend op
-                BlendFactor::One,                   // Source alpha factor
-                BlendFactor::Zero,                  // Dest alpha factor
-                false                               // Blending DISABLED
-            }
-        };
-
-        // 7. Render target format
-        TexturedQuadDesc.RenderTargetFormats = {
-            Format::R8G8B8A8_UNORM                  // Standard RGBA color format
-        };
-        
-        // 8. No depth stencil
-        TexturedQuadDesc.DepthStencilFormat = Format::Unknown;
-
-        // 9. Multisampling
-        TexturedQuadDesc.MultisampleState = {
-            1,                                      // Sample count (no MSAA)
-            false                                   // No alpha to coverage
-        };
-        
-        // 10. Binding texture
-        std::vector<DescriptorBinding> bindings {
-            {
-                .Type = DescriptorType::SampledImage,
-               .Slot = 0,
-               .Set = 0,
-               .Count = 1
-            }
-        };
-        
-        ShaderStageMask descriptorVisibleStages = ShaderStageMask(0);
-        descriptorVisibleStages.SetFragment(true);
-        
-        TexturedQuadDesc.ResourceLayout = {
-            .Bindings = bindings,
-            .VisibleStages = descriptorVisibleStages
-        };
-
-        // 11. Attachment load/store operations
-        TexturedQuadDesc.ColorLoadOps = {AttachmentLoadOp::Clear};
-        TexturedQuadDesc.ColorStoreOps = {AttachmentStoreOp::Store};
-        TexturedQuadDesc.DepthLoadOp = AttachmentLoadOp::Load;
-        TexturedQuadDesc.DepthStoreOp = AttachmentStoreOp::Store;
-
-        return TexturedQuadDesc;
-    }
-    
     static PipelineDesc SkinnedPBRVariant()
     {
         PipelineDesc skinnedVariant = {};
@@ -248,7 +60,7 @@ namespace EngineConstants
         PBRDescGeometry.PipelineVariants.push_back(SkinnedPBRVariant());
         
         PBRDescGeometry.CreateOwnAttachments = true;
-        PBRDescGeometry.OutputDescriptorSetIndex = 0;
+        PBRDescGeometry.OutputDescriptorSetIndex = 3;
         PBRDescGeometry.AttachmentWidth = 1280;
         PBRDescGeometry.AttachmentHeight = 720;
 
@@ -351,10 +163,10 @@ namespace EngineConstants
         
         // 10. Binding texture
         std::vector<DescriptorBinding> bindings {
-        { .Type = DescriptorType::SampledImage,         .Slot = 0, .Set = 1, .Count = 1, .Sampler = SamplerType::Linear }, // Albedo
-        { .Type = DescriptorType::SampledImage,         .Slot = 1, .Set = 1, .Count = 1, .Sampler = SamplerType::Linear }, // Normal
-        { .Type = DescriptorType::SampledImage,         .Slot = 2, .Set = 1, .Count = 1, .Sampler = SamplerType::Linear }, // MetallicRoughness
-        { .Type = DescriptorType::DynamicUniformBuffer, .Slot = 0, .Set = 0, .Count = 1, .Sampler = SamplerType::Linear }  // Camera VP data
+        { .Type = DescriptorType::SampledImage,         .Slot = 0, .Set = 2, .Count = 1, .Sampler = SamplerType::Linear }, // Albedo
+        { .Type = DescriptorType::SampledImage,         .Slot = 1, .Set = 2, .Count = 1, .Sampler = SamplerType::Linear }, // Normal
+        { .Type = DescriptorType::SampledImage,         .Slot = 2, .Set = 2, .Count = 1, .Sampler = SamplerType::Linear }, // MetallicRoughness
+        { .Type = DescriptorType::DynamicUniformBuffer, .Slot = 0, .Set = 1, .Count = 1, .Sampler = SamplerType::Linear }  // Camera VP data
         };
         
         ShaderStageMask visibleStages = ShaderStageMask(0);
@@ -463,9 +275,9 @@ namespace EngineConstants
 
         // 10. Resource layout
         std::vector<DescriptorBinding> bindings {
-            { .Type = DescriptorType::DynamicUniformBuffer, .Slot = 0, .Set = 0, .Count = 1, .Sampler = SamplerType::Linear },  // Camera VP data
-            { .Type = DescriptorType::DynamicUniformBuffer, .Slot = 0, .Set = 3, .Count = 1, .Sampler = SamplerType::Linear },  // Light buffer
-            { .Type = DescriptorType::DynamicUniformBuffer, .Slot = 0, .Set = 4, .Count = 1, .Sampler = SamplerType::Linear }
+            { .Type = DescriptorType::DynamicUniformBuffer, .Slot = 0, .Set = 1, .Count = 1, .Sampler = SamplerType::Linear },  // Camera VP data
+            { .Type = DescriptorType::DynamicUniformBuffer, .Slot = 0, .Set = 4, .Count = 1, .Sampler = SamplerType::Linear },  // Light buffer
+            { .Type = DescriptorType::DynamicUniformBuffer, .Slot = 0, .Set = 5, .Count = 1, .Sampler = SamplerType::Linear }
         };
     
         ShaderStageMask visibleStages = ShaderStageMask(0);
@@ -544,7 +356,7 @@ namespace EngineConstants
         shadowDesc.PipelineVariants.push_back(SkinnedVSMVariant());
         
         shadowDesc.CreateOwnAttachments = true;
-        shadowDesc.OutputDescriptorSetIndex = 1;
+        shadowDesc.OutputDescriptorSetIndex = 2;
         shadowDesc.AttachmentWidth = 1024;
         shadowDesc.AttachmentHeight = 1024;
         shadowDesc.AttachmentArrayLayers = 4;
@@ -614,8 +426,8 @@ namespace EngineConstants
         };
         
         std::vector<DescriptorBinding> bindings {
-            { .Type = DescriptorType::DynamicUniformBuffer, .Slot = 0, .Set = 0, .Count = 1, .Sampler = SamplerType::Linear },
-            { .Type = DescriptorType::DynamicUniformBuffer, .Slot = 0, .Set = 1, .Count = 1, .Sampler = SamplerType::Linear }
+            { .Type = DescriptorType::DynamicUniformBuffer, .Slot = 0, .Set = 1, .Count = 1, .Sampler = SamplerType::Linear },
+            { .Type = DescriptorType::DynamicUniformBuffer, .Slot = 0, .Set = 2, .Count = 1, .Sampler = SamplerType::Linear }
         };
         
         ShaderStageMask visibleStages = ShaderStageMask(0);

@@ -61,6 +61,8 @@ void VulkanCore::Cleanup()
         vkFreeMemory(Device, NoesisStencilMemory[i], nullptr);
     }
     vkDestroyRenderPass(Device, NoesisCompatibilityRenderPass, nullptr);
+    vkDestroyDescriptorPool(Device, GlobalSamplerDescriptorPool, nullptr);
+    vkDestroyDescriptorSetLayout(Device, GlobalSamplerSetLayout, nullptr);
     vkDestroySampler(Device, PointSampler, nullptr);
     vkDestroySampler(Device, LinearSampler, nullptr);
     for (uint32_t i = 0; i < SwapChainImageCount; i++)
@@ -453,10 +455,65 @@ void VulkanCore::CreateSamplers()
     samplerInfo.minFilter = VK_FILTER_NEAREST;
     samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
     
-    
     result = vkCreateSampler(Device, &samplerInfo, nullptr, &PointSampler);
     if (result != VK_SUCCESS)
         throw std::runtime_error("Failed to create texture sampler.");
+    
+    // Create Set 0 descriptor set layout with immutable samplers
+    VkSampler immutableSamplers[2] = { LinearSampler, PointSampler };
+    
+    VkDescriptorSetLayoutBinding samplerBindings[2] = {};
+    
+    // Linear sampler at binding 0
+    samplerBindings[0].binding = 0;
+    samplerBindings[0].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
+    samplerBindings[0].descriptorCount = 1;
+    samplerBindings[0].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_VERTEX_BIT;
+    samplerBindings[0].pImmutableSamplers = &immutableSamplers[0];
+    
+    // Point/Nearest sampler at binding 1
+    samplerBindings[1].binding = 1;
+    samplerBindings[1].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
+    samplerBindings[1].descriptorCount = 1;
+    samplerBindings[1].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_VERTEX_BIT;
+    samplerBindings[1].pImmutableSamplers = &immutableSamplers[1];
+    
+    VkDescriptorSetLayoutCreateInfo layoutInfo{};
+    layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    layoutInfo.bindingCount = 2;
+    layoutInfo.pBindings = samplerBindings;
+    
+    result = vkCreateDescriptorSetLayout(Device, &layoutInfo, nullptr, &GlobalSamplerSetLayout);
+    if (result != VK_SUCCESS)
+        throw std::runtime_error("Failed to create global sampler descriptor set layout.");
+    
+    // Create a descriptor pool for this single set
+    VkDescriptorPoolSize poolSize{};
+    poolSize.type = VK_DESCRIPTOR_TYPE_SAMPLER;
+    poolSize.descriptorCount = 2;
+    
+    VkDescriptorPoolCreateInfo poolInfo{};
+    poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    poolInfo.maxSets = 1;
+    poolInfo.poolSizeCount = 1;
+    poolInfo.pPoolSizes = &poolSize;
+    
+    result = vkCreateDescriptorPool(Device, &poolInfo, nullptr, &GlobalSamplerDescriptorPool);
+    if (result != VK_SUCCESS)
+        throw std::runtime_error("Failed to create sampler descriptor pool.");
+    
+    // Allocate the descriptor set
+    VkDescriptorSetAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    allocInfo.descriptorPool = GlobalSamplerDescriptorPool;
+    allocInfo.descriptorSetCount = 1;
+    allocInfo.pSetLayouts = &GlobalSamplerSetLayout;
+    
+    result = vkAllocateDescriptorSets(Device, &allocInfo, &GlobalSamplerSet);
+    if (result != VK_SUCCESS)
+        throw std::runtime_error("Failed to allocate global sampler descriptor set.");
+    
+    // Note: No need to update the descriptor set since samplers are immutable
 }
 
 void VulkanCore::CreateNoesisCompatibilityRenderPass()

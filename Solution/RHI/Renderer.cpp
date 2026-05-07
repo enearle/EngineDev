@@ -210,8 +210,8 @@ void Renderer::ExecutePipelineContext(uint32_t contextIndex, bool finalContext)
             else
                 currentPipeline = mainPipeline->PipelineVariants[i - 1];
     
-            bool isFirstInContext = !renderingStarted;  // ✅ Correct!
-            bool isLastInContext = (i == lastNonEmptyBinIndex);  // ✅ Correct!
+            bool isFirstInContext = !renderingStarted;
+            bool isLastInContext = (i == lastNonEmptyBinIndex);
             bool isVariant = (i > 0);
     
             // Begin pipeline

@@ -39,8 +39,6 @@ VkPipelineLayout VulkanPipelineLayoutBuilder::BuildPipelineLayout(
     }
 
     // Create descriptor set layouts
-    // Collect all bindings from all resource layouts into a single map
-    // All layouts and descriptors are tracked in the buffer allocator for cleanup
     std::map<uint32_t, std::vector<DescriptorSetLayoutBinding>> bindingsBySet;
 
     for (uint32_t i = 0; i < layouts.size(); i++)
@@ -54,7 +52,6 @@ VkPipelineLayout VulkanPipelineLayoutBuilder::BuildPipelineLayout(
             bindingsBySet[binding.Set].push_back(setLayoutBinding);
         }
     }
-    
 
     // Find the maximum set number to determine array size
     uint32_t maxSetNumber = 0;
@@ -64,29 +61,72 @@ VkPipelineLayout VulkanPipelineLayoutBuilder::BuildPipelineLayout(
             maxSetNumber = setIndex;
     }
 
-    // Create descriptor set layout array with proper indexing
+    // Reserve space for all sets from 0 to maxSetNumber (inclusive)
     descriptorSetLayouts.reserve(maxSetNumber + 1);
 
     VulkanBufferAllocator* bufferAlloc = static_cast<VulkanBufferAllocator*>(BufferAllocator::GetInstance());
 
-    for (uint32_t setIndex = 0; setIndex <= maxSetNumber; setIndex++)
+    // Always create Set 0 first with global samplers
     {
+        VkDescriptorSetLayout set0Layout = VulkanCore::Instance().GetGlobalSamplerSetLayout();
+        if (set0Layout == VK_NULL_HANDLE)
+            throw std::runtime_error("Global sampler set layout is not initialized");
+        
+        descriptorSetLayouts.push_back(set0Layout);
+        outSetToLayoutMapping[0] = 0;
+    }
+
+    // Then create layouts for sets 1 through maxSetNumber
+    for (uint32_t setIndex = 1; setIndex <= maxSetNumber; setIndex++)
+    {
+        VkDescriptorSetLayout descriptorSetLayout = VK_NULL_HANDLE;
+        
         // Try to reuse existing layout from BufferAllocator
-        VkDescriptorSetLayout descriptorSetLayout = bufferAlloc->GetRegisteredDescriptorSetLayout(pipelineID, setIndex);
-    
+        descriptorSetLayout = bufferAlloc->GetRegisteredDescriptorSetLayout(pipelineID, setIndex);
+        
         if (descriptorSetLayout != VK_NULL_HANDLE)
         {
-            // Reuse set from main pipeline
+            // Found registered layout
+            descriptorSetLayouts.push_back(descriptorSetLayout);
+            outSetToLayoutMapping[setIndex] = setIndex;
+        }
+        else if (bindingsBySet.find(setIndex) != bindingsBySet.end())
+        {
+            // Set has bindings but no registered layout - this shouldn't happen normally
+            // but we'll create it anyway for robustness
+            std::vector<VkDescriptorSetLayoutBinding> vkBindings;
+            for (const auto& binding : bindingsBySet[setIndex])
+            {
+                vkBindings.push_back(binding.binding);
+            }
+
+            VkDescriptorSetLayoutCreateInfo layoutInfo{};
+            layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+            layoutInfo.bindingCount = static_cast<uint32_t>(vkBindings.size());
+            layoutInfo.pBindings = vkBindings.data();
+
+            VkResult result = vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &descriptorSetLayout);
+            if (result != VK_SUCCESS)
+                throw std::runtime_error("Failed to create descriptor set layout for Set " + std::to_string(setIndex));
+
+            descriptorSetLayouts.push_back(descriptorSetLayout);
             outSetToLayoutMapping[setIndex] = setIndex;
         }
         else
         {
-            // Layout should have been created in BufferAllocator
-            throw std::runtime_error("Descriptor set layout not found for pipeline " 
-                + std::to_string(pipelineID) + " set " + std::to_string(setIndex));
+            // Empty set - create an empty layout to maintain set indexing
+            VkDescriptorSetLayoutCreateInfo layoutInfo{};
+            layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+            layoutInfo.bindingCount = 0;
+            layoutInfo.pBindings = nullptr;
+
+            VkResult result = vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &descriptorSetLayout);
+            if (result != VK_SUCCESS)
+                throw std::runtime_error("Failed to create empty descriptor set layout for Set " + std::to_string(setIndex));
+
+            descriptorSetLayouts.push_back(descriptorSetLayout);
+            outSetToLayoutMapping[setIndex] = setIndex;
         }
-    
-        descriptorSetLayouts.push_back(descriptorSetLayout);
     }
     
     // Define push constant ranges

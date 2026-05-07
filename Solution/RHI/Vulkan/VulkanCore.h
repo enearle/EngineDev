@@ -49,6 +49,9 @@ class VulkanCore
     
     VkSampler LinearSampler                             = VK_NULL_HANDLE;
     VkSampler PointSampler                              = VK_NULL_HANDLE;
+    VkDescriptorSetLayout GlobalSamplerSetLayout        = VK_NULL_HANDLE;
+    VkDescriptorPool GlobalSamplerDescriptorPool        = VK_NULL_HANDLE;
+    VkDescriptorSet GlobalSamplerSet                    = VK_NULL_HANDLE;
     
     VkRenderPass NoesisCompatibilityRenderPass          = VK_NULL_HANDLE;
     std::vector<VkFramebuffer> NoesisFramebuffers;
@@ -75,8 +78,11 @@ class VulkanCore
     PFN_vkCmdBindDescriptorBuffersEXT        vkCmdBindDescriptorBuffersEXT_FnPtr = nullptr;
     PFN_vkCmdSetDescriptorBufferOffsetsEXT   vkCmdSetDescriptorBufferOffsetsEXT_FnPtr = nullptr;
     PFN_vkGetDescriptorEXT vkGetDescriptorEXT_FnPtr = nullptr;
-public:
+    
 
+    
+public:
+    
     static VulkanCore& Instance();
     
     void InitVulkan(Window* window, RHIStructures::CoreInitData data);
@@ -115,6 +121,10 @@ public:
     uint32_t GetQueueFamilyIndex() { return FindQueueFamilies(PhysicalDevice).GraphicsFamily; }
     VkRenderPass GetNoesisRenderPass() { return NoesisCompatibilityRenderPass; }
     VkFramebuffer GetCurrentNoesisFramebuffer() { return NoesisFramebuffers[CurrentSwapchainImageIndex]; }
+    VkSampler* GetLinearSampler() { return &LinearSampler; }
+    VkSampler* GetNearestSampler() { return &PointSampler; }
+    VkDescriptorSet GetGlobalSamplerSet() const { return GlobalSamplerSet; }
+    VkDescriptorSetLayout GetGlobalSamplerSetLayout() const { return GlobalSamplerSetLayout; }
     
 private:
     
@@ -157,7 +167,9 @@ private:
     bool CheckDeviceExtensionSupport(VkPhysicalDevice device);
     bool CheckDeviceSuitability(VkPhysicalDevice device);
     bool CheckValidationLayerSupport();
+    
 public:
+    
     QueueFamilyIndicesData FindQueueFamilies(VkPhysicalDevice device);  
 
 private:

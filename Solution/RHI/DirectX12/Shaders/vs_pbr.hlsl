@@ -3,6 +3,8 @@ struct RootConstants
     float4x4 model;
     float4x4 normal;
 };
+
+[[vk::push_constant]]
 ConstantBuffer<RootConstants> ModelData : register(b0, space999);
 
 struct CBVBuffer
@@ -10,7 +12,7 @@ struct CBVBuffer
     float4x4 viewProjection;
     float4 cameraPosition;
 };
-ConstantBuffer<CBVBuffer> VPData : register(b0, space0);
+ConstantBuffer<CBVBuffer> VPData : register(b0, space1);
 
 struct VSInput
 {

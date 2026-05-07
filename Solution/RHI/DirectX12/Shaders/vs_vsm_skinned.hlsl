@@ -5,13 +5,15 @@ struct RootConstants
     float4x4 model;
     float4x4 normal;
 };
+
+[[vk::push_constant]]
 ConstantBuffer<RootConstants> ModelData : register(b0, space999);
 
 struct CBVBuffer
 {
     float4x4 viewProjection [4];
 };
-ConstantBuffer<CBVBuffer> LightMatrices : register(b0, space0);
+ConstantBuffer<CBVBuffer> LightMatrices : register(b0, space1);
 
 struct Light
 {
@@ -24,7 +26,7 @@ struct Light
     uint ShadowIndex;
 };
 
-cbuffer LightData : register(b0, space1)
+cbuffer LightData : register(b0, space2)
 {
     Light Lights[4];
 };
