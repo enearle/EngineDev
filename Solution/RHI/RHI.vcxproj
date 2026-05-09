@@ -182,18 +182,6 @@
     <ClCompile Include="Windows\Win32Window.cpp" />
     <Content Include="CodingStandard.txt" />
     <Content Include="CompileShaders.bat" />
-    <Content Include="Vulkan\Shaders\ps_lighting.glsl" />
-    <Content Include="Vulkan\Shaders\ps_pbr.glsl" />
-    <Content Include="Vulkan\Shaders\ps_quad.glsl" />
-    <Content Include="Vulkan\Shaders\ps_rainbow.glsl" />
-    <Content Include="Vulkan\Shaders\ps_vsm.glsl" />
-    <Content Include="Vulkan\Shaders\vs_lighting.glsl" />
-    <Content Include="Vulkan\Shaders\vs_pbr.glsl" />
-    <Content Include="Vulkan\Shaders\vs_pbr_skinned.glsl" />
-    <Content Include="Vulkan\Shaders\vs_quad.glsl" />
-    <Content Include="Vulkan\Shaders\vs_rainbow.glsl" />
-    <Content Include="Vulkan\Shaders\vs_vsm.glsl" />
-    <Content Include="Vulkan\Shaders\vs_vsm_skinned.glsl" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Data\BitPool.h" />

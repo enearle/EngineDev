@@ -25,7 +25,6 @@ class D3DCore
     
     ComPtr<IDXGIFactory6> Factory;
     ComPtr<ID3D12Device> Device;
-    
 
     static const int SwapChainBufferCount = 3;
     int CurrentBackBuffer = 0;
@@ -68,10 +67,11 @@ public:
     static D3DCore& Instance();
     
     void InitDirect3D(Window* window, RHIStructures::CoreInitData data);
-    void WaitForGPU();
+    void WaitForGpu();
     void Reset();
     void BeginFrame();
     void EndFrame();
+    void ResetWindow();
 
     void DeferUploadBufferRelease(ComPtr<ID3D12Resource> resource);
     ComPtr<ID3D12Device> GetDevice() const { return Device; }
@@ -109,10 +109,7 @@ private:
     void CreateSwapChainDescriptorHeaps();
     void CreateNoesisDepthStencilBuffers();
     void WaitForFrame(uint32_t frameIndex);
-public:
 
-    
-private:
     std::vector<ComPtr<ID3D12Resource>> DeferredUploadReleases[SwapChainBufferCount]; 
     
 };

@@ -70,7 +70,7 @@ void D3DPipelineExecutor::GetSwapChainRenderTargets(void*& outBackBufferView, vo
 
 void D3DPipelineExecutor::Wait()
 {
-    D3DCore::Instance().WaitForGPU();
+    D3DCore::Instance().WaitForGpu();
 }
 
 void D3DPipelineExecutor::BeginPipeline(Pipeline* pipeline,
@@ -374,6 +374,10 @@ void D3DPipelineExecutor::EndNoesisContext()
 {
 }
 
+void D3DPipelineExecutor::TriggerResize()
+{
+}
+
 ID3D12GraphicsCommandList* D3DPipelineExecutor::GetCommandList()
 {
     return D3DCore::Instance().GetCommandList().Get();
@@ -423,7 +427,7 @@ void VulkanPipelineExecutor::GetSwapChainRenderTargets(void*& outBackBufferView,
 
 void VulkanPipelineExecutor::Wait()
 {
-    VulkanCore::Instance().WaitForGPU();
+    VulkanCore::Instance().WaitForGpu();
 }
 
 void VulkanPipelineExecutor::BeginPipeline(Pipeline* pipeline,
@@ -732,6 +736,11 @@ void VulkanPipelineExecutor::EndNoesisContext()
 {
     VkCommandBuffer cmdBuffer = GetCommandBuffer();
     vkCmdEndRenderPass(cmdBuffer);
+}
+
+void VulkanPipelineExecutor::TriggerResize()
+{
+    VulkanCore::Instance().ResetWindow();
 }
 
 VkCommandBuffer VulkanPipelineExecutor::GetCommandBuffer()

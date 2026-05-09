@@ -5,7 +5,9 @@
 #include <stdexcept>
 #include "BufferAllocator.h"
 #include "RHIConstants.h"
+#include "../Renderer.h"
 #include "../GraphicsSettings.h"
+#include "../Window.h"
 #include "../DirectX12/D3D12Structs.h"
 #include "../Vulkan/VulkanStructs.h"
 #include "../DirectX12/D3DCore.h"
@@ -98,9 +100,24 @@ D3DPipeline::D3DPipeline(const PipelineDesc& desc, std::vector<IOResource>* inpu
     DepthClearValue = desc.DepthClearValue;
     PushConstantCount = static_cast<uint32_t>(desc.Constants.size());
     IsVariant = desc.IsVariant;
-    ViewportSize = desc.ViewportSize;
     ViewMask = desc.ViewMask;
     ArrayLayerCount = desc.AttachmentArrayLayers;
+    
+    // For recreating attachments
+    RenderTargetFormats = desc.RenderTargetFormats;
+    AttachmentSamplers = desc.AttachmentSamplers;
+    DepthStencilFormat = desc.DepthStencilFormat;
+    OutputDescriptorSetIndex = desc.OutputDescriptorSetIndex;
+    CreateOwnAttachments = desc.CreateOwnAttachments;
+    CreateDepthImage = desc.CreateDepthImage;
+    CreateDepthAttachment = desc.CreateDepthAttachment;
+    MultisampleStateInfo = desc.MultisampleState;
+    AttachmentsAreViewportDims = desc.AttachmentsAreViewportDims;
+    
+    Window* window = Renderer::GetWindow();
+    uint32_t width = desc.AttachmentsAreViewportDims ? window->GetWidth() : desc.AttachmentWidth;
+    uint32_t height = desc.AttachmentsAreViewportDims ? window->GetHeight() : desc.AttachmentHeight;
+    ViewportSize = {width, height};
     
     ComPtr<ID3D12Device> device = D3DCore::Instance().GetDevice();
     Topology = DXPrimitiveTopology(desc.PrimitiveTopology);
@@ -348,8 +365,8 @@ D3DPipeline::D3DPipeline(const PipelineDesc& desc, std::vector<IOResource>* inpu
         D3D12_RESOURCE_DESC depthResourceDesc = {};
         depthResourceDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
         depthResourceDesc.Alignment = 0;
-        depthResourceDesc.Width = desc.AttachmentWidth;
-        depthResourceDesc.Height = desc.AttachmentHeight;
+        depthResourceDesc.Width = ViewportSize.x;
+        depthResourceDesc.Height = ViewportSize.y;
         depthResourceDesc.DepthOrArraySize = desc.AttachmentArrayLayers;
         depthResourceDesc.MipLevels = 1;
         depthResourceDesc.Format = DXFormat(desc.DepthStencilFormat);
@@ -377,8 +394,8 @@ D3DPipeline::D3DPipeline(const PipelineDesc& desc, std::vector<IOResource>* inpu
         ImageAllocation depthAllocation;
         depthAllocation.Image = depthImageData;
         depthAllocation.Desc.Format = desc.DepthStencilFormat;
-        depthAllocation.Desc.Width = desc.AttachmentWidth;
-        depthAllocation.Desc.Height = desc.AttachmentHeight;
+        depthAllocation.Desc.Width = ViewportSize.x;
+        depthAllocation.Desc.Height = ViewportSize.y;
     
         depthBindingData.Binding = static_cast<uint32_t>(desc.RenderTargetFormats.size());
         depthBindingData.ResourceID = alloc->CacheImage(depthAllocation);
@@ -412,8 +429,8 @@ D3DPipeline::D3DPipeline(const PipelineDesc& desc, std::vector<IOResource>* inpu
         D3D12_RESOURCE_DESC resourceDesc = {};
         resourceDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
         resourceDesc.Alignment = 0;
-        resourceDesc.Width = desc.AttachmentWidth;
-        resourceDesc.Height = desc.AttachmentHeight;
+        resourceDesc.Width = ViewportSize.x;
+        resourceDesc.Height = ViewportSize.y;
         resourceDesc.DepthOrArraySize = desc.AttachmentArrayLayers;
         resourceDesc.MipLevels = 1;
         resourceDesc.Format = DXFormat(desc.RenderTargetFormats[i]);
@@ -465,8 +482,8 @@ D3DPipeline::D3DPipeline(const PipelineDesc& desc, std::vector<IOResource>* inpu
         ImageAllocation imageAllocation;
         imageAllocation.Image = imageData;
         imageAllocation.Desc.Format = desc.RenderTargetFormats[i];
-        imageAllocation.Desc.Width = desc.AttachmentWidth;
-        imageAllocation.Desc.Height = desc.AttachmentHeight;
+        imageAllocation.Desc.Width = ViewportSize.x;
+        imageAllocation.Desc.Height = ViewportSize.y;
     
         DescriptorSetBinding bindingData{};
         bindingData.Binding = binding.Slot;
@@ -480,6 +497,10 @@ D3DPipeline::D3DPipeline(const PipelineDesc& desc, std::vector<IOResource>* inpu
     }
 }
 
+void D3DPipeline::RecreateAttachments(uint32_t width, uint32_t height)
+{
+}
+
 //================================================//
 // Vulkan                                         //
 //================================================//
@@ -490,9 +511,24 @@ VulkanPipeline::VulkanPipeline(const PipelineDesc& desc, std::vector<IOResource>
     DepthClearValue = desc.DepthClearValue;
     PushConstantCount = static_cast<uint32_t>(desc.Constants.size());
     IsVariant = desc.IsVariant;
-    ViewportSize = desc.ViewportSize;
     ViewMask = desc.ViewMask;
     ArrayLayerCount = desc.AttachmentArrayLayers;
+    
+    // For recreating attachments
+    RenderTargetFormats = desc.RenderTargetFormats;
+    AttachmentSamplers = desc.AttachmentSamplers;
+    DepthStencilFormat = desc.DepthStencilFormat;
+    OutputDescriptorSetIndex = desc.OutputDescriptorSetIndex;
+    CreateOwnAttachments = desc.CreateOwnAttachments;
+    CreateDepthImage = desc.CreateDepthImage;
+    CreateDepthAttachment = desc.CreateDepthAttachment;
+    MultisampleStateInfo = desc.MultisampleState;
+    AttachmentsAreViewportDims = desc.AttachmentsAreViewportDims;
+    
+    Window* window = Renderer::GetWindow();
+    uint32_t width = desc.AttachmentsAreViewportDims ? window->GetWidth() : desc.AttachmentWidth;
+    uint32_t height = desc.AttachmentsAreViewportDims ? window->GetHeight() : desc.AttachmentHeight;
+    ViewportSize = {width, height};
     
     // Cache shader modules for cleanup
     // All shaders will allways be loaded. This is meh, but for my engine probably fine.
@@ -824,8 +860,8 @@ VulkanPipeline::VulkanPipeline(const PipelineDesc& desc, std::vector<IOResource>
         depthImageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
         depthImageInfo.imageType = VK_IMAGE_TYPE_2D;
         depthImageInfo.format = VulkanFormat(desc.DepthStencilFormat);
-        depthImageInfo.extent.width = desc.AttachmentWidth;
-        depthImageInfo.extent.height = desc.AttachmentHeight;
+        depthImageInfo.extent.width = ViewportSize.x;
+        depthImageInfo.extent.height = ViewportSize.y;
         depthImageInfo.extent.depth = 1;
         depthImageInfo.mipLevels = 1;
         depthImageInfo.arrayLayers = desc.AttachmentArrayLayers;
@@ -910,8 +946,8 @@ VulkanPipeline::VulkanPipeline(const PipelineDesc& desc, std::vector<IOResource>
         imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
         imageInfo.imageType = VK_IMAGE_TYPE_2D;
         imageInfo.format = VulkanFormat(desc.RenderTargetFormats[i]);
-        imageInfo.extent.width = desc.AttachmentWidth;
-        imageInfo.extent.height = desc.AttachmentHeight;
+        imageInfo.extent.width = ViewportSize.x;
+        imageInfo.extent.height = ViewportSize.y;
         imageInfo.extent.depth = 1;
         imageInfo.mipLevels = 1;
         imageInfo.arrayLayers = desc.AttachmentArrayLayers;
@@ -1004,5 +1040,148 @@ VulkanPipeline::~VulkanPipeline()
 
     for (VkShaderModule shaderModule : ShaderModules)
         vkDestroyShaderModule(device, shaderModule, nullptr);
+}
+
+void VulkanPipeline::RecreateAttachments(uint32_t width, uint32_t height)
+{
+    if (!AttachmentsAreViewportDims || !CreateOwnAttachments)
+        return;
+        
+    ViewportSize = {width, height};
+    
+    if (GRAPHICS_SETTINGS.APIToUse == Vulkan)
+    {
+        VulkanPipeline* vkPipeline = static_cast<VulkanPipeline*>(this);
+        vkPipeline->DestroyColorAttachments();
+        vkPipeline->CreateColorAttachments(ArrayLayerCount);
+    }
+}
+
+void VulkanPipeline::DestroyColorAttachments()
+{
+    VkDevice device = VulkanCore::Instance().GetDevice();
+    
+    // Destroy old image views
+    for (VkImageView view : OwnedImageViews)
+    {
+        if (view != VK_NULL_HANDLE)
+            vkDestroyImageView(device, view, nullptr);
+    }
+    
+    // Destroy old images
+    for (VkImage image : OwnedImages)
+    {
+        if (image != VK_NULL_HANDLE)
+            vkDestroyImage(device, image, nullptr);
+    }
+    
+    // Free old memory
+    for (VkDeviceMemory memory : OwnedImageMemory)
+    {
+        if (memory != VK_NULL_HANDLE)
+            vkFreeMemory(device, memory, nullptr);
+    }
+    
+    // Clear the vectors
+    OwnedImageViews.clear();
+    OwnedImages.clear();
+    OwnedImageMemory.clear();
+    
+    // Clear bindings from output resource
+    if (PipelineOutputResource)
+    {
+        PipelineOutputResource->Bindings.clear();
+        PipelineOutputResource->Layout.Bindings.clear();
+    }
+}
+
+void VulkanPipeline::CreateColorAttachments(uint32_t arrayLayers)
+{
+    VkResult result;
+    
+    if (!PipelineOutputResource)
+        PipelineOutputResource = new IOResource();
+    
+    OwnedImages.resize(RenderTargetFormats.size());
+    OwnedImageViews.resize(RenderTargetFormats.size());
+    OwnedImageMemory.resize(RenderTargetFormats.size());
+    
+    PipelineOutputResource->Layout.VisibleStages.SetFragment(true);
+    
+    for (size_t i = 0; i < RenderTargetFormats.size(); ++i)
+    {
+        VkImageCreateInfo imageInfo{};
+        imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+        imageInfo.imageType = VK_IMAGE_TYPE_2D;
+        imageInfo.format = VulkanFormat(RenderTargetFormats[i]);
+        imageInfo.extent.width = ViewportSize.x;
+        imageInfo.extent.height = ViewportSize.y;
+        imageInfo.extent.depth = 1;
+        imageInfo.mipLevels = 1;
+        imageInfo.arrayLayers = arrayLayers;
+        imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+        imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+        imageInfo.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+        imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+        result = vkCreateImage(VulkanCore::Instance().GetDevice(), &imageInfo, nullptr, &OwnedImages[i]);
+        if (result != VK_SUCCESS)
+            throw std::runtime_error("Failed to create Vulkan image for pipeline render target!");
+        
+        VkMemoryRequirements memReqs;
+        vkGetImageMemoryRequirements(VulkanCore::Instance().GetDevice(), OwnedImages[i], &memReqs);
+
+        VkMemoryAllocateInfo allocInfo{};
+        allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        allocInfo.allocationSize = memReqs.size;
+        allocInfo.memoryTypeIndex = VulkanBufferAllocator::FindMemoryType(
+            memReqs.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
+        );
+
+        result = vkAllocateMemory(VulkanCore::Instance().GetDevice(), &allocInfo, nullptr, &OwnedImageMemory[i]);
+        if (result != VK_SUCCESS)
+            throw std::runtime_error("Failed to allocate Vulkan image memory for pipeline render target!");
+        
+        result = vkBindImageMemory(VulkanCore::Instance().GetDevice(), OwnedImages[i], OwnedImageMemory[i], 0);
+        if (result != VK_SUCCESS)
+            throw std::runtime_error("Failed to bind Vulkan image memory for pipeline render target!");
+        
+        VkImageViewCreateInfo imageViewInfo{};
+        imageViewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        imageViewInfo.image = OwnedImages[i];
+        imageViewInfo.format = VulkanFormat(RenderTargetFormats[i]);
+        imageViewInfo.viewType = (arrayLayers > 1) ? VK_IMAGE_VIEW_TYPE_2D_ARRAY : VK_IMAGE_VIEW_TYPE_2D;
+        imageViewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        imageViewInfo.subresourceRange.baseMipLevel = 0;
+        imageViewInfo.subresourceRange.levelCount = 1;
+        imageViewInfo.subresourceRange.baseArrayLayer = 0;
+        imageViewInfo.subresourceRange.layerCount = arrayLayers;
+
+        result = vkCreateImageView(VulkanCore::Instance().GetDevice(), &imageViewInfo, nullptr, &OwnedImageViews[i]);
+        if (result != VK_SUCCESS)
+            throw std::runtime_error("Failed to create Vulkan image view for pipeline render target!");
+        
+        VulkanImageData* vulkanImageData = new VulkanImageData();
+        vulkanImageData->ImageView = OwnedImageViews[i];
+        vulkanImageData->ImageHandle = OwnedImages[i];
+        vulkanImageData->Memory = OwnedImageMemory[i];
+        
+        DescriptorBinding binding{};
+        binding.Type = DescriptorType::SampledImage;
+        binding.Count = 1;
+        binding.Set = OutputDescriptorSetIndex;
+        binding.Slot = static_cast<uint32_t>(i);
+        binding.Sampler = AttachmentSamplers[i];
+        PipelineOutputResource->Layout.Bindings.push_back(binding);
+        
+        ImageAllocation allocation;
+        allocation.Image = vulkanImageData;
+        
+        DescriptorSetBinding bindingData{};
+        bindingData.Binding = binding.Slot;
+        bindingData.ResourceID = BufferAllocator::GetInstance()->CacheImage(allocation);
+        PipelineOutputResource->Bindings.push_back(bindingData);
+    }
 }
 

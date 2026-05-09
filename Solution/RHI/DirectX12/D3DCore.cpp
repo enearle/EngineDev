@@ -44,7 +44,7 @@ void D3DCore::InitDirect3D(Window* window, CoreInitData data)
     }
 }
 
-void D3DCore::WaitForGPU()
+void D3DCore::WaitForGpu()
 {
     for (int i = 0; i < SwapChainBufferCount; ++i)
     {
@@ -60,7 +60,7 @@ void D3DCore::Reset()
         CommandQueue->Signal(Fence.Get(), CurrentFence) >> ERROR_HANDLER;
     }
     
-    WaitForGPU();
+    WaitForGpu();
     
     for (UINT i = 0; i < SwapChainBufferCount; i++)
     {
@@ -105,6 +105,10 @@ void D3DCore::DeferUploadBufferRelease(ComPtr<ID3D12Resource> resource)
         return;
     
     DeferredUploadReleases[CurrentFrameIndex].emplace_back(resource);
+}
+
+void D3DCore::ResetWindow()
+{
 }
 
 void D3DCore::InitDebugLayer()

@@ -19,7 +19,7 @@ class RHI_API Window
 
     static std::map<HWND, Window*> WindowRegistry;
 
-    int Width = 0, Height = 0;
+    uint32_t Width = 0, Height = 0;
     bool Resizing = false;
 
 public:
@@ -35,12 +35,12 @@ public:
     
     HINSTANCE GetInstance() const { return InstanceHandle; }
     HWND GetWindowHandle() const { return WindowHandle; }
-    int GetWidth() const { return Width; }
-    int GetHeight() const { return Height; }
+    uint32_t GetWidth() const { return Width; }
+    uint32_t GetHeight() const { return Height; }
     bool IsResizing() const { return Resizing; }
     bool PeekMessages();
     
-    Event<int, int> OnResize;
+    Event<uint32_t, uint32_t> OnResize;
     Event<> OnMinimize;
     Event<> OnMaximize;
     Event<> OnClose;

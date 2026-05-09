@@ -90,7 +90,7 @@ int main(int argc, char* argv[])
     }
     
     // Tear down
-    Renderer::Wait();
+    Renderer::WaitForGpu();
     NoesisUILayer::Instance().NoesisShutdown();
     return Renderer::End();
 }

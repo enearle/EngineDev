@@ -841,18 +841,12 @@ VkExtent2D VulkanCore::SelectExtent(const VkSurfaceCapabilitiesKHR& capabilities
     }
     else
     {
-        // Manually get window width and height
-        int width, height;
-
         // TODO: Add glfw support back later.
         //glfwGetFramebufferSize(Window, &width, &height);
-        
-        width = RenderWindow->GetWidth();
-        height = RenderWindow->GetHeight();
 
         VkExtent2D extent = {};
-        extent.width = width;
-        extent.height = height;
+        extent.width = RenderWindow->GetWidth();
+        extent.height = RenderWindow->GetHeight();
 
         // Clamp values to surface capabilities
         extent.width = std::min(extent.width, capabilities.maxImageExtent.width);
@@ -1036,7 +1030,6 @@ QueueFamilyIndicesData VulkanCore::FindQueueFamilies(VkPhysicalDevice device)
         if (queueFamilies[i].queueCount > 0 && presentationSupport)
             indices.PresentFamily = i;
         
-        
         // If all queue family indices are valid, break out of search.
         if (indices.IsValid()) break;  
     }
@@ -1208,8 +1201,39 @@ void VulkanCore::WaitForFrame(uint32_t frameIndex)
     vkResetFences(Device, 1, &InFlightFences[frameIndex]);
 }
 
-void VulkanCore::WaitForGPU()
+void VulkanCore::WaitForGpu()
 {
-    for (uint32_t i = 0; i < SwapChainImageCount; i++)
-        WaitForFrame(i);
+    vkDeviceWaitIdle(Device);
+}
+
+void VulkanCore::ResetWindow()
+{
+    // Destroy Noesis Swapchain stuff (maybe)
+    for (VkFramebuffer noesisDrameBuffer : NoesisFramebuffers)
+        vkDestroyFramebuffer(Device, noesisDrameBuffer, nullptr);
+    
+    for (VkImageView noesisImageView : NoesisStencilImageViews)
+        vkDestroyImageView(Device, noesisImageView, nullptr);
+    
+    for (VkImage noesisImage : NoesisStencilImages)
+        vkDestroyImage(Device, noesisImage, nullptr);
+    
+    for (VkDeviceMemory noesisMemory : NoesisStencilMemory)
+        vkFreeMemory(Device, noesisMemory, nullptr);
+    
+    NoesisFramebuffers.clear();
+    NoesisStencilImageViews.clear();
+    NoesisStencilImages.clear();
+    NoesisStencilMemory.clear();
+    
+    // Destroy swapchain image views
+    for (VulkanImageData imageData : SwapchainImages)
+        vkDestroyImageView(Device, imageData.ImageView, nullptr);
+    
+    SwapchainImages.clear();
+    
+    CreateSwapchain();
+    CreateNoesisStencilImages();
+    CreateNoesisFramebuffers();
+    
 }

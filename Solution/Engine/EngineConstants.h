@@ -307,7 +307,8 @@ namespace EngineConstants
         skinnedVariant.PipelineID = 0;
         skinnedVariant.IsVariant = true;
         skinnedVariant.VertexShader = ImportShader("vs_vsm_skinned", "main");
-        skinnedVariant.ViewportSize = { 1024, 1024 };
+        skinnedVariant.AttachmentHeight = 1024;
+        skinnedVariant.AttachmentWidth = 1024;
         skinnedVariant.ViewMask = 0xF; 
         skinnedVariant.VertexBindings = {
             VertexBinding{
@@ -352,9 +353,7 @@ namespace EngineConstants
         PipelineDesc shadowDesc;
         
         shadowDesc.PipelineID = 0;
-        shadowDesc.ViewportSize = { 1024, 1024 };
         shadowDesc.PipelineVariants.push_back(SkinnedVSMVariant());
-        
         shadowDesc.CreateOwnAttachments = true;
         shadowDesc.OutputDescriptorSetIndex = 2;
         shadowDesc.AttachmentWidth = 1024;

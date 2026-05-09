@@ -359,7 +359,6 @@ namespace RHIStructures
         std::vector<PipelineDesc> PipelineVariants = {};
         ResourceLayout VariantResourceLayout = {};
         std::vector<uint32_t> InputPipelineIDs = {};
-        DirectX::XMINT2 ViewportSize = {0, 0};
         
         bool IsPresented = false;
         bool IsQuad = false;
@@ -369,6 +368,7 @@ namespace RHIStructures
         bool CreateDepthAttachment = false;
         bool UseDescriptorBuffer = false;
         
+        bool AttachmentsAreViewportDims = false;
         uint32_t AttachmentWidth = 0;
         uint32_t AttachmentHeight = 0;
         uint32_t AttachmentArrayLayers = 1;

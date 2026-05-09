@@ -11,7 +11,8 @@ class Pipeline
 {
 public:
     std::vector<Pipeline*> PipelineVariants = {};
-    DirectX::XMINT2 ViewportSize = {0, 0};
+    DirectX::XMUINT2 ViewportSize = {0, 0};
+    bool AttachmentsAreViewportDims = false;
     
 protected:
     std::vector<uint64_t> PipelineInputDescriptorSetIDs;
@@ -23,6 +24,16 @@ protected:
     bool IsVariant = false;
     uint32_t ViewMask = 0;
     uint32_t ArrayLayerCount = 1;
+    
+    // For recreating attachments
+    std::vector<Format> RenderTargetFormats;
+    std::vector<SamplerType> AttachmentSamplers;
+    Format DepthStencilFormat = Format::Unknown;
+    uint32_t OutputDescriptorSetIndex = 0;
+    bool CreateOwnAttachments = false;
+    bool CreateDepthImage = false;
+    bool CreateDepthAttachment = false;
+    MultisampleState MultisampleStateInfo;
 
 public:
     static RHI_API Pipeline* Create(const PipelineDesc& desc, std::vector<IOResource>* inputIOResources = nullptr);
@@ -42,6 +53,7 @@ public:
     uint32_t GetViewMask() const { return ViewMask; }
     uint32_t GetArrayLayerCount() const { return ArrayLayerCount; }
     bool GetIsVariant() { return IsVariant; }
+    virtual void RecreateAttachments(uint32_t width, uint32_t uint32) = 0;
 };
 
 class D3DPipeline : public Pipeline
@@ -81,6 +93,8 @@ private:
     D3D12_PRIMITIVE_TOPOLOGY Topology;
     ComPtr<ID3D12RootSignature> RootSignature;
     ComPtr<ID3D12PipelineState> PipelineState;
+    
+    void RecreateAttachments(uint32_t width, uint32_t height) override;
     
 
 };
@@ -126,5 +140,9 @@ private:
     std::vector<VkDescriptorSetLayout> SetLayouts;
     VkPipelineCache PipelineCache = VK_NULL_HANDLE;
     VkRenderPass RenderPass = VK_NULL_HANDLE;
+    
+    void RecreateAttachments(uint32_t width, uint32_t height) override;
+    void CreateColorAttachments(uint32_t arrayLayers);
+    void DestroyColorAttachments();
 };
 

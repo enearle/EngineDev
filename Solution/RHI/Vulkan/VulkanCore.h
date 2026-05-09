@@ -60,7 +60,6 @@ class VulkanCore
     std::vector<VkImageView> NoesisStencilImageViews;
     VkFormat NoesisStencilFormat                        = VK_FORMAT_S8_UINT;
     
-    // Debug
     const std::vector<const char*> DEVICE_EXTENSIONS = {
         VK_KHR_SWAPCHAIN_EXTENSION_NAME,
         VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME,
@@ -74,12 +73,11 @@ class VulkanCore
     bool SwapChainMSAA = false;
     UINT SwapChainMSAASamples = 1;
     
+    // Descriptorbuffer crap, not used
     VkPhysicalDeviceDescriptorBufferPropertiesEXT DescriptorBufferProperties{};
     PFN_vkCmdBindDescriptorBuffersEXT        vkCmdBindDescriptorBuffersEXT_FnPtr = nullptr;
     PFN_vkCmdSetDescriptorBufferOffsetsEXT   vkCmdSetDescriptorBufferOffsetsEXT_FnPtr = nullptr;
     PFN_vkGetDescriptorEXT vkGetDescriptorEXT_FnPtr = nullptr;
-    
-
     
 public:
     
@@ -89,7 +87,8 @@ public:
     void Cleanup();
     void BeginFrame();
     void EndFrame();
-    void WaitForGPU();
+    void WaitForGpu();
+    void ResetWindow();
 
     // Getters
     VkDevice GetDevice() const { return Device; }
@@ -141,6 +140,7 @@ private:
     void CreateNoesisCompatibilityRenderPass();
     void CreateNoesisStencilImages();
     void CreateNoesisFramebuffers();
+
     
     uint32_t FindMemoryType(uint32_t allowedTypes, VkMemoryPropertyFlags properties);
     

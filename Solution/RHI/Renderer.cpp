@@ -24,6 +24,7 @@ Renderer::FrameCallback Renderer::EndOfFrameCallback = nullptr;
 void Renderer::Start(Window* mainWindow)
 {
     MainWindow = mainWindow;
+    MainWindow->OnResize.Subscribe([](UINT width, UINT height) { OnResizeEnd(width, height); });
     
     CoreInitData data;
     data.SwapchainMSAA = false;
@@ -37,6 +38,9 @@ void Renderer::Start(Window* mainWindow)
 
 void Renderer::DrawFrame()
 {
+    // Skip draw if currently resizing
+    if (MainWindow->IsResizing()) return;
+    
     // Start of Frame
     Executor->BeginFrame();
     Executor->GetSwapChainRenderTargets(CurrentBackBufferView, CurrentBackBuffer);
@@ -245,7 +249,6 @@ void Renderer::ExecutePipelineContext(uint32_t contextIndex, bool finalContext)
             }
             
             // End Pipeline
-            
             Executor->EndPipeline(isLastInContext);
         }
     }
@@ -280,7 +283,7 @@ void Renderer::SetRenderCallback(FrameCallback callback)
     EndOfFrameCallback = callback;
 }
 
-void Renderer::Wait()
+void Renderer::WaitForGpu()
 {
     Executor->Wait();
 }
@@ -322,13 +325,26 @@ void Renderer::CreatePipelines(std::vector<RHIStructures::PipelineDesc> pipeline
             pipelineOutputRegistry[pipelineDescs[i].PipelineID] = pipeline->GetOutputResource();
         }
         
-        
-        Renderer::CreatePipelineFrameContext(pipeline, pipelineDescs[i].IsQuad, pipelineDescs[i].IsPresented);
+        CreatePipelineFrameContext(pipeline, pipelineDescs[i].IsQuad, pipelineDescs[i].IsPresented);
         for (const auto& descData : pipelineDescriptors[i])
         {
             uint64_t set = BufferAllocator::GetInstance()->AllocateDescriptorSet(
                 pipelineDescs[i].PipelineID, descData.setIndex, descData.bindings);
-            Renderer::AddDescriptorIDToContext(i, set);
+            AddDescriptorIDToContext(i, set);
         }
     }
+}
+
+void Renderer::OnResizeEnd(uint32_t width, uint32_t height)
+{
+    std::cout << "Renderer: Resizing to " << width << "x" << height << std::endl;
+    WaitForGpu();
+    
+    for (auto& context : PipelineFrameContexts)
+    {
+        if (context.ContextPipeline)
+            context.ContextPipeline->RecreateAttachments(width, height);
+    }
+    
+    Executor->TriggerResize();
 }
