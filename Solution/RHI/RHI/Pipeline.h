@@ -127,13 +127,14 @@ public:
     VkAttachmentDescription GetDepthAttachmentDescription() const { return DepthAttachmentDescription; }
 
 private:
-    // Owned images are tracked in buffer allocator and do not need cleanup in pipeline
     std::vector<VkImage> OwnedImages;
     std::vector<VkImageView> OwnedImageViews;
     std::vector<VkDeviceMemory> OwnedImageMemory;
+    std::vector<uint64_t> OwnedColorResourceIDs;
     VkImage OwnedDepthImage = VK_NULL_HANDLE;
     VkDeviceMemory OwnedDepthImageMemory = VK_NULL_HANDLE;
     VkImageView OwnedDepthImageView = VK_NULL_HANDLE;
+    uint64_t OwnedDepthImageResourceID = UINT64_MAX;
     
     std::vector<VkAttachmentDescription> AttachmentDescriptions;
     VkAttachmentDescription DepthAttachmentDescription;

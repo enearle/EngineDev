@@ -548,6 +548,16 @@ void VulkanBufferAllocator::UpdateDescriptorSet(uint64_t setID, const std::vecto
         vkUpdateDescriptorSets(device, static_cast<uint32_t>(writes.size()), writes.data(), 0, nullptr);
 }
 
+void VulkanBufferAllocator::EvictImage(uint64_t id)
+{
+    auto it = AllocatedImages.find(id);
+    if (it == AllocatedImages.end())
+        return;
+    VulkanImageData* imageData = static_cast<VulkanImageData*>(it->second.Image);
+    delete imageData;
+    AllocatedImages.erase(it);
+}
+
 void VulkanBufferAllocator::UpdateDescriptorSetDynamicOffsets(uint64_t setID, const std::vector<uint32_t>& offsets)
 {
     auto it = AllocatedDescriptorSets.find(setID);

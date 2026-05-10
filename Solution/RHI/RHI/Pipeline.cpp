@@ -993,8 +993,9 @@ VulkanPipeline::VulkanPipeline(const PipelineDesc& desc, std::vector<IOResource*
         allocation.Image = vulkanImageData;
         depthBindingData.Binding = binding.Slot;
         depthBindingData.ResourceID = BufferAllocator::GetInstance()->CacheImage(allocation);
+        OwnedDepthImageResourceID = depthBindingData.ResourceID;
     }
-    
+
     // Create pipeline local attachment images
     // For multipass rendering
     if (!desc.CreateOwnAttachments) return;
@@ -1080,9 +1081,10 @@ VulkanPipeline::VulkanPipeline(const PipelineDesc& desc, std::vector<IOResource*
         DescriptorSetBinding bindingData{};
         bindingData.Binding = binding.Slot;
         bindingData.ResourceID = BufferAllocator::GetInstance()->CacheImage(allocation);
+        OwnedColorResourceIDs.push_back(bindingData.ResourceID);
         PipelineOutputResource->Bindings.push_back(bindingData);
     }
-    
+
     if (desc.CreateDepthAttachment && desc.CreateDepthImage)
     {
         PipelineOutputResource->Bindings.push_back(depthBindingData);
@@ -1091,6 +1093,12 @@ VulkanPipeline::VulkanPipeline(const PipelineDesc& desc, std::vector<IOResource*
 
 void VulkanPipeline::DestroyDepthImage()
 {
+    if (OwnedDepthImageResourceID != UINT64_MAX)
+    {
+        BufferAllocator::GetInstance()->EvictImage(OwnedDepthImageResourceID);
+        OwnedDepthImageResourceID = UINT64_MAX;
+    }
+
     VkDevice device = VulkanCore::Instance().GetDevice();
 
     if (OwnedDepthImageView != VK_NULL_HANDLE)
@@ -1164,6 +1172,15 @@ void VulkanPipeline::ReallocDepthImage()
     result = vkCreateImageView(device, &viewInfo, nullptr, &OwnedDepthImageView);
     if (result != VK_SUCCESS)
         throw std::runtime_error("Failed to create depth image view on resize.");
+
+    VulkanImageData* vulkanImageData = new VulkanImageData();
+    vulkanImageData->ImageView = OwnedDepthImageView;
+    vulkanImageData->ImageHandle = OwnedDepthImage;
+    vulkanImageData->Memory = OwnedDepthImageMemory;
+
+    ImageAllocation allocation;
+    allocation.Image = vulkanImageData;
+    OwnedDepthImageResourceID = BufferAllocator::GetInstance()->CacheImage(allocation);
 }
 
 void VulkanPipeline::RefreshInputDescriptorSets()
@@ -1179,10 +1196,13 @@ void VulkanPipeline::RefreshInputDescriptorSets()
 VulkanPipeline::~VulkanPipeline()
 {
     VkDevice device = VulkanCore::Instance().GetDevice();
-    
+
+    DestroyColorAttachments();
+    DestroyDepthImage();
+
     for (int i = 0; i < PipelineVariants.size(); i++)
         delete PipelineVariants[i];
-    
+
     if (Pipeline != VK_NULL_HANDLE)
         vkDestroyPipeline(device, Pipeline, nullptr);
         
@@ -1218,8 +1238,13 @@ void VulkanPipeline::RecreateAttachments(uint32_t width, uint32_t height)
 
 void VulkanPipeline::DestroyColorAttachments()
 {
+    VulkanBufferAllocator* allocator = static_cast<VulkanBufferAllocator*>(BufferAllocator::GetInstance());
+    for (uint64_t id : OwnedColorResourceIDs)
+        allocator->EvictImage(id);
+    OwnedColorResourceIDs.clear();
+
     VkDevice device = VulkanCore::Instance().GetDevice();
-    
+
     // Destroy old image views
     for (VkImageView view : OwnedImageViews)
     {
@@ -1340,6 +1365,7 @@ void VulkanPipeline::CreateColorAttachments(uint32_t arrayLayers)
         DescriptorSetBinding bindingData{};
         bindingData.Binding = binding.Slot;
         bindingData.ResourceID = BufferAllocator::GetInstance()->CacheImage(allocation);
+        OwnedColorResourceIDs.push_back(bindingData.ResourceID);
         PipelineOutputResource->Bindings.push_back(bindingData);
     }
 }
