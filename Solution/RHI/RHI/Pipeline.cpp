@@ -20,7 +20,7 @@ using namespace Win32ErrorHandler;
 using namespace VulkanStructs;
 using namespace D3D12Structs;
 
-Pipeline* Pipeline::Create(const PipelineDesc& desc, std::vector<IOResource>*inputIOResources)
+Pipeline* Pipeline::Create(const PipelineDesc& desc, std::vector<IOResource*>* inputIOResources)
 {
     Pipeline* mainPipeline = nullptr;
 
@@ -43,6 +43,10 @@ Pipeline* Pipeline::Create(const PipelineDesc& desc, std::vector<IOResource>*inp
             
             variantDesc.CreateOwnAttachments = false;
             variantDesc.CreateDepthImage = false;
+            
+            variantDesc.AttachmentsAreViewportDims = desc.AttachmentsAreViewportDims;
+            variantDesc.AttachmentWidth = desc.AttachmentWidth;
+            variantDesc.AttachmentHeight = desc.AttachmentHeight;
             
             if (variantDesc.RenderTargetFormats.empty())
                 variantDesc.RenderTargetFormats = desc.RenderTargetFormats;
@@ -94,7 +98,7 @@ Pipeline* Pipeline::Create(const PipelineDesc& desc, std::vector<IOResource>*inp
     return mainPipeline;
 }
 
-D3DPipeline::D3DPipeline(const PipelineDesc& desc, std::vector<IOResource>* inputIOResources)
+D3DPipeline::D3DPipeline(const PipelineDesc& desc, std::vector<IOResource*>* inputIOResources)
 {
     ClearColors = desc.AttachmentClearValues;
     DepthClearValue = desc.DepthClearValue;
@@ -128,14 +132,14 @@ D3DPipeline::D3DPipeline(const PipelineDesc& desc, std::vector<IOResource>* inpu
         resourceLayouts.push_back(desc.ResourceLayout);
     
     if (inputIOResources && !desc.IsVariant)
-        for (const IOResource& ioResource : *inputIOResources)
-            resourceLayouts.push_back(ioResource.Layout);
-    
+        for (IOResource* ioResource : *inputIOResources)
+            resourceLayouts.push_back(ioResource->Layout);
+
     for (uint32_t i = desc.UseOwnResourceLayout ? 1 : 0; i < resourceLayouts.size(); i++)
         for (auto& binding : resourceLayouts[i].Bindings)
             if (binding.Set < RHIConstants::VARIANT_DESCRIPTOR_SET_BASE)
                 binding.Set = desc.UseOwnResourceLayout ? i + 1 : i;
-    
+
     std::vector<ResourceLayout> splitLayouts;
     for (const auto& layout : resourceLayouts)
     {
@@ -175,16 +179,16 @@ D3DPipeline::D3DPipeline(const PipelineDesc& desc, std::vector<IOResource>* inpu
     {
         for (uint32_t i = 0; i < inputIOResources->size(); i++)
         {
-            // Use the set index from the first binding (after reassignment has been applied)
-            const IOResource& ioResource = inputIOResources->at(i);
-            uint32_t setIndex = ioResource.Layout.Bindings.empty() ? 0 : ioResource.Layout.Bindings[0].Set;
-        
+            IOResource* ioResource = inputIOResources->at(i);
+            uint32_t setIndex = ioResource->Layout.Bindings.empty() ? 0 : ioResource->Layout.Bindings[0].Set;
+
             uint64_t descriptorSetID = BufferAllocator::GetInstance()->AllocateDescriptorSet(
-                desc.PipelineID, setIndex, ioResource.Bindings);
+                desc.PipelineID, setIndex, ioResource->Bindings);
             PipelineInputDescriptorSetIDs.push_back(descriptorSetID);
+            InputIOResources.push_back(ioResource);
         }
     }
-    
+
     // This is a DirectX-specific means to store 3D vertex data in the pipeline for later use.
     // A more modern (and API agnostic) approach is to handle additional 3D transformations (outside VS/GS)
     // in compute shaders and only use graphics pipelines for a purely rasterized process.
@@ -499,13 +503,76 @@ D3DPipeline::D3DPipeline(const PipelineDesc& desc, std::vector<IOResource>* inpu
 
 void D3DPipeline::RecreateAttachments(uint32_t width, uint32_t height)
 {
+    if (!AttachmentsAreViewportDims || !CreateOwnAttachments)
+        return;
+
+    ViewportSize = {width, height};
+
+    ComPtr<ID3D12Device> device = D3DCore::Instance().GetDevice();
+    BufferAllocator* alloc = BufferAllocator::GetInstance();
+    DirectX12BufferAllocator* dxAlloc = static_cast<DirectX12BufferAllocator*>(alloc);
+
+    // Recreate depth image
+    if (CreateDepthImage && OwnedDepthResource)
+    {
+        OwnedDepthResource.Reset();
+
+        D3D12_RESOURCE_DESC depthResourceDesc = {};
+        depthResourceDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+        depthResourceDesc.Width = width;
+        depthResourceDesc.Height = height;
+        depthResourceDesc.DepthOrArraySize = static_cast<UINT16>(ArrayLayerCount);
+        depthResourceDesc.MipLevels = 1;
+        depthResourceDesc.Format = DXFormat(DepthStencilFormat);
+        depthResourceDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
+        depthResourceDesc.SampleDesc.Count = 1;
+        depthResourceDesc.SampleDesc.Quality = 0;
+
+        D3D12_HEAP_PROPERTIES heapProps = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
+        device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &depthResourceDesc,
+            D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&OwnedDepthResource)) >> ERROR_HANDLER;
+
+        D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc = {};
+        dsvDesc.Format = DXFormat(DepthStencilFormat);
+        dsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
+        dsvDesc.Flags = D3D12_DSV_FLAG_NONE;
+        device->CreateDepthStencilView(OwnedDepthResource.Get(), &dsvDesc, OwnedDSV);
+    }
+
+    // Recreate color attachments
+    for (size_t i = 0; i < RenderTargetFormats.size(); i++)
+    {
+        OwnedColorResources[i].Reset();
+
+        D3D12_RESOURCE_DESC resourceDesc = {};
+        resourceDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+        resourceDesc.Width = width;
+        resourceDesc.Height = height;
+        resourceDesc.DepthOrArraySize = static_cast<UINT16>(ArrayLayerCount);
+        resourceDesc.MipLevels = 1;
+        resourceDesc.Format = DXFormat(RenderTargetFormats[i]);
+        resourceDesc.SampleDesc.Count = MultisampleStateInfo.SampleCount > 1 ? MultisampleStateInfo.SampleCount : 1;
+        resourceDesc.SampleDesc.Quality = MultisampleStateInfo.SampleCount > 1
+            ? D3DCore::Instance().GetMSAAQualityLevel(DXFormat(RenderTargetFormats[i]), MultisampleStateInfo.SampleCount)
+            : 0;
+        resourceDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
+
+        D3D12_HEAP_PROPERTIES heapProps = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
+        device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &resourceDesc,
+            D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&OwnedColorResources[i])) >> ERROR_HANDLER;
+
+        D3D12_RENDER_TARGET_VIEW_DESC rtvDesc = {};
+        rtvDesc.Format = DXFormat(RenderTargetFormats[i]);
+        rtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
+        device->CreateRenderTargetView(OwnedColorResources[i].Get(), &rtvDesc, OwnedRTVs[i]);
+    }
 }
 
 //================================================//
 // Vulkan                                         //
 //================================================//
 
-VulkanPipeline::VulkanPipeline(const PipelineDesc& desc, std::vector<IOResource>* inputIOResources)
+VulkanPipeline::VulkanPipeline(const PipelineDesc& desc, std::vector<IOResource*>* inputIOResources)
 {
     ClearColors = desc.AttachmentClearValues;
     DepthClearValue = desc.DepthClearValue;
@@ -714,14 +781,14 @@ VulkanPipeline::VulkanPipeline(const PipelineDesc& desc, std::vector<IOResource>
         resourceLayouts.push_back(desc.ResourceLayout);
     
     if (inputIOResources && !desc.IsVariant)
-        for (const IOResource& ioResource : *inputIOResources)
-            resourceLayouts.push_back(ioResource.Layout);
-    
+        for (IOResource* ioResource : *inputIOResources)
+            resourceLayouts.push_back(ioResource->Layout);
+
     for (uint32_t i = desc.UseOwnResourceLayout ? 1 : 0; i < resourceLayouts.size(); i++)
         for (auto& binding : resourceLayouts[i].Bindings)
             if (binding.Set < RHIConstants::VARIANT_DESCRIPTOR_SET_BASE)
-                binding.Set = desc.UseOwnResourceLayout ? i + 1 : i; 
-    
+                binding.Set = desc.UseOwnResourceLayout ? i + 1 : i;
+
     if (desc.IsVariant)
     {
         ResourceLayout variantLayout = desc.VariantResourceLayout;
@@ -736,13 +803,13 @@ VulkanPipeline::VulkanPipeline(const PipelineDesc& desc, std::vector<IOResource>
     {
         for (uint32_t i = 0; i < inputIOResources->size(); i++)
         {
-            // Use the set index from the first binding (preserved from OutputDescriptorSetIndex)
-            const IOResource& ioResource = inputIOResources->at(i);
-            uint32_t setIndex = ioResource.Layout.Bindings.empty() ? 0 : ioResource.Layout.Bindings[0].Set;
-        
+            IOResource* ioResource = inputIOResources->at(i);
+            uint32_t setIndex = ioResource->Layout.Bindings.empty() ? 0 : ioResource->Layout.Bindings[0].Set;
+
             uint64_t descriptorSetID = BufferAllocator::GetInstance()->AllocateDescriptorSet(
-                desc.PipelineID, setIndex, ioResource.Bindings);
+                desc.PipelineID, setIndex, ioResource->Bindings);
             PipelineInputDescriptorSetIDs.push_back(descriptorSetID);
+            InputIOResources.push_back(ioResource);
         }
     }
     
@@ -1022,6 +1089,93 @@ VulkanPipeline::VulkanPipeline(const PipelineDesc& desc, std::vector<IOResource>
     }
 }
 
+void VulkanPipeline::DestroyDepthImage()
+{
+    VkDevice device = VulkanCore::Instance().GetDevice();
+
+    if (OwnedDepthImageView != VK_NULL_HANDLE)
+    {
+        vkDestroyImageView(device, OwnedDepthImageView, nullptr);
+        OwnedDepthImageView = VK_NULL_HANDLE;
+    }
+    if (OwnedDepthImage != VK_NULL_HANDLE)
+    {
+        vkDestroyImage(device, OwnedDepthImage, nullptr);
+        OwnedDepthImage = VK_NULL_HANDLE;
+    }
+    if (OwnedDepthImageMemory != VK_NULL_HANDLE)
+    {
+        vkFreeMemory(device, OwnedDepthImageMemory, nullptr);
+        OwnedDepthImageMemory = VK_NULL_HANDLE;
+    }
+}
+
+void VulkanPipeline::ReallocDepthImage()
+{
+    VkDevice device = VulkanCore::Instance().GetDevice();
+
+    VkImageCreateInfo depthImageInfo{};
+    depthImageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+    depthImageInfo.imageType = VK_IMAGE_TYPE_2D;
+    depthImageInfo.format = VulkanFormat(DepthStencilFormat);
+    depthImageInfo.extent = {ViewportSize.x, ViewportSize.y, 1};
+    depthImageInfo.mipLevels = 1;
+    depthImageInfo.arrayLayers = ArrayLayerCount;
+    depthImageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+    depthImageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+    depthImageInfo.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+    depthImageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    depthImageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+    VkResult result = vkCreateImage(device, &depthImageInfo, nullptr, &OwnedDepthImage);
+    if (result != VK_SUCCESS)
+        throw std::runtime_error("Failed to create depth image on resize.");
+
+    VkMemoryRequirements memReqs;
+    vkGetImageMemoryRequirements(device, OwnedDepthImage, &memReqs);
+
+    VkMemoryAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    allocInfo.allocationSize = memReqs.size;
+    allocInfo.memoryTypeIndex = VulkanBufferAllocator::FindMemoryType(
+        memReqs.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+    result = vkAllocateMemory(device, &allocInfo, nullptr, &OwnedDepthImageMemory);
+    if (result != VK_SUCCESS)
+        throw std::runtime_error("Failed to allocate depth image memory on resize.");
+
+    result = vkBindImageMemory(device, OwnedDepthImage, OwnedDepthImageMemory, 0);
+    if (result != VK_SUCCESS)
+        throw std::runtime_error("Failed to bind depth image memory on resize.");
+
+    VkImageViewCreateInfo viewInfo{};
+    viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+    viewInfo.image = OwnedDepthImage;
+    viewInfo.format = VulkanFormat(DepthStencilFormat);
+    viewInfo.viewType = (ArrayLayerCount > 1) ? VK_IMAGE_VIEW_TYPE_2D_ARRAY : VK_IMAGE_VIEW_TYPE_2D;
+    viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+    if (DepthStencilFormat == Format::D24_UNORM_S8_UINT || DepthStencilFormat == Format::D32_FLOAT_S8X24_UINT)
+        viewInfo.subresourceRange.aspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
+    viewInfo.subresourceRange.baseMipLevel = 0;
+    viewInfo.subresourceRange.levelCount = 1;
+    viewInfo.subresourceRange.baseArrayLayer = 0;
+    viewInfo.subresourceRange.layerCount = ArrayLayerCount;
+
+    result = vkCreateImageView(device, &viewInfo, nullptr, &OwnedDepthImageView);
+    if (result != VK_SUCCESS)
+        throw std::runtime_error("Failed to create depth image view on resize.");
+}
+
+void VulkanPipeline::RefreshInputDescriptorSets()
+{
+    if (InputIOResources.size() != PipelineInputDescriptorSetIDs.size())
+        return;
+
+    VulkanBufferAllocator* allocator = static_cast<VulkanBufferAllocator*>(BufferAllocator::GetInstance());
+    for (uint32_t i = 0; i < PipelineInputDescriptorSetIDs.size(); i++)
+        allocator->UpdateDescriptorSet(PipelineInputDescriptorSetIDs[i], InputIOResources[i]->Bindings);
+}
+
 VulkanPipeline::~VulkanPipeline()
 {
     VkDevice device = VulkanCore::Instance().GetDevice();
@@ -1044,16 +1198,21 @@ VulkanPipeline::~VulkanPipeline()
 
 void VulkanPipeline::RecreateAttachments(uint32_t width, uint32_t height)
 {
-    if (!AttachmentsAreViewportDims || !CreateOwnAttachments)
+    if (!AttachmentsAreViewportDims)
         return;
-        
+
     ViewportSize = {width, height};
-    
-    if (GRAPHICS_SETTINGS.APIToUse == Vulkan)
+
+    if (!CreateOwnAttachments)
+        return;
+
+    DestroyColorAttachments();
+    CreateColorAttachments(ArrayLayerCount);
+
+    if (CreateDepthImage)
     {
-        VulkanPipeline* vkPipeline = static_cast<VulkanPipeline*>(this);
-        vkPipeline->DestroyColorAttachments();
-        vkPipeline->CreateColorAttachments(ArrayLayerCount);
+        DestroyDepthImage();
+        ReallocDepthImage();
     }
 }
 

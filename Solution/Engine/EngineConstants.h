@@ -58,7 +58,7 @@ namespace EngineConstants
                 
         PBRDescGeometry.PipelineID = 1;
         PBRDescGeometry.PipelineVariants.push_back(SkinnedPBRVariant());
-        
+        PBRDescGeometry.AttachmentsAreViewportDims = true;
         PBRDescGeometry.CreateOwnAttachments = true;
         PBRDescGeometry.OutputDescriptorSetIndex = 3;
         PBRDescGeometry.AttachmentWidth = 1280;

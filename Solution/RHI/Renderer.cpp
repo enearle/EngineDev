@@ -297,23 +297,21 @@ void Renderer::CreatePipelines(std::vector<RHIStructures::PipelineDesc> pipeline
     
     for (uint32_t i = 0; i < pipelineDescs.size(); ++i)
     {
-        std::vector<IOResource> inputResources;
-        
-        // Gather input resources from specified pipelines
+        std::vector<IOResource*> inputResources;
+
+        // Gather input resource pointers from specified pipelines
         if (!pipelineDescs[i].InputPipelineIDs.empty())
         {
             for (uint32_t inputPipelineID : pipelineDescs[i].InputPipelineIDs)
             {
                 auto it = pipelineOutputRegistry.find(inputPipelineID);
                 if (it != pipelineOutputRegistry.end() && it->second != nullptr)
-                {
-                    inputResources.push_back(*it->second);
-                }
+                    inputResources.push_back(it->second);
             }
         }
-        
+
         // Create pipeline with gathered input resources
-        Pipeline* pipeline = inputResources.empty() 
+        Pipeline* pipeline = inputResources.empty()
             ? Pipeline::Create(pipelineDescs[i])
             : Pipeline::Create(pipelineDescs[i], &inputResources);
         
@@ -339,12 +337,22 @@ void Renderer::OnResizeEnd(uint32_t width, uint32_t height)
 {
     std::cout << "Renderer: Resizing to " << width << "x" << height << std::endl;
     WaitForGpu();
-    
+
     for (auto& context : PipelineFrameContexts)
     {
-        if (context.ContextPipeline)
-            context.ContextPipeline->RecreateAttachments(width, height);
+        if (!context.ContextPipeline) continue;
+        context.ContextPipeline->RecreateAttachments(width, height);
+        for (Pipeline* variant : context.ContextPipeline->PipelineVariants)
+            variant->RecreateAttachments(width, height);
     }
-    
+
+    // Re-write any descriptor sets that reference the now-recreated attachments
+    for (auto& context : PipelineFrameContexts)
+        if (context.ContextPipeline)
+            context.ContextPipeline->RefreshInputDescriptorSets();
+
+    // New images start in UNDEFINED layout — re-run init barriers next frame
+    IsInitialized = false;
+
     Executor->TriggerResize();
 }

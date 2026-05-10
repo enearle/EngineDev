@@ -16,6 +16,7 @@ public:
     
 protected:
     std::vector<uint64_t> PipelineInputDescriptorSetIDs;
+    std::vector<IOResource*> InputIOResources;
     IOResource* PipelineOutputResource = nullptr;
     std::vector<DirectX::XMFLOAT4> ClearColors;
     float DepthClearValue = 1;
@@ -36,8 +37,9 @@ protected:
     MultisampleState MultisampleStateInfo;
 
 public:
-    static RHI_API Pipeline* Create(const PipelineDesc& desc, std::vector<IOResource>* inputIOResources = nullptr);
+    static RHI_API Pipeline* Create(const PipelineDesc& desc, std::vector<IOResource*>* inputIOResources = nullptr);
     virtual ~Pipeline() = default;
+    virtual void RefreshInputDescriptorSets() {}
     std::vector<DirectX::XMFLOAT4> GetClearColors() const { return ClearColors; }
     float GetDepthClearValue() const { return DepthClearValue; }
     std::vector<uint64_t> GetInputDescriptorSetIDs() const { return PipelineInputDescriptorSetIDs; }
@@ -60,7 +62,7 @@ class D3DPipeline : public Pipeline
 {
 public:
     
-    D3DPipeline(const PipelineDesc& desc, std::vector<IOResource>* inputIOResources = nullptr);
+    D3DPipeline(const PipelineDesc& desc, std::vector<IOResource*>* inputIOResources = nullptr);
     ~D3DPipeline() override = default;
     
     ID3D12PipelineState* GetPipelineState() const { return PipelineState.Get(); }
@@ -103,8 +105,9 @@ class VulkanPipeline : public Pipeline
 {
 public:
     
-    VulkanPipeline(const PipelineDesc& desc, std::vector<IOResource>* inputIOResources = nullptr);
+    VulkanPipeline(const PipelineDesc& desc, std::vector<IOResource*>* inputIOResources = nullptr);
     ~VulkanPipeline() override;
+    void RefreshInputDescriptorSets() override;
     
     VkPipeline GetVulkanPipeline() const { return Pipeline; }
     VkPipelineLayout GetPipelineLayout() const { return PipelineLayout; }
@@ -144,5 +147,7 @@ private:
     void RecreateAttachments(uint32_t width, uint32_t height) override;
     void CreateColorAttachments(uint32_t arrayLayers);
     void DestroyColorAttachments();
+    void ReallocDepthImage();
+    void DestroyDepthImage();
 };
 

@@ -40,7 +40,8 @@ public:
                                            const std::vector<DescriptorSetBinding>& bindings) = 0;
     virtual void FreeDescriptorSet(uint64_t setID) = 0;
     virtual void UpdateDescriptorSetDynamicOffsets(uint64_t setID, const std::vector<uint32_t>& offsets) = 0;
-    
+    virtual void UpdateDescriptorSet(uint64_t setID, const std::vector<DescriptorSetBinding>& newBindings) {}
+
     ImageAllocation GetImageAllocation(uint64_t id) const { return AllocatedImages.at(id); }
     BufferAllocation GetBufferAllocation(uint64_t id) const { return AllocatedBuffers.at(id); }
     DescriptorSetAllocation GetDescriptorSet(uint64_t id) const { return AllocatedDescriptorSets.at(id); }
@@ -60,6 +61,7 @@ public:
                                            const std::vector<DescriptorSetBinding>& bindings) override;
     void FreeDescriptorSet(uint64_t setID) override;
     void UpdateDescriptorSetDynamicOffsets(uint64_t setID, const std::vector<uint32_t>& offsets) override;
+    void UpdateDescriptorSet(uint64_t setID, const std::vector<DescriptorSetBinding>& newBindings) override;
     enum DescriptorType : uint8_t { SampledImage, StorageImage, UniformBuffer, StorageBuffer};
     VkDescriptorSetLayout GetRegisteredDescriptorSetLayout(uint32_t pipelineID, uint32_t setIndex);
     static uint32_t FindMemoryType(uint32_t allowdTypes, VkMemoryPropertyFlags flags);

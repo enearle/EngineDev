@@ -493,6 +493,61 @@ void VulkanBufferAllocator::FreeDescriptorSet(uint64_t setID)
     AllocatedDescriptorSets.erase(setID);
 }
 
+void VulkanBufferAllocator::UpdateDescriptorSet(uint64_t setID, const std::vector<DescriptorSetBinding>& newBindings)
+{
+    VkDevice device = VulkanCore::Instance().GetDevice();
+
+    auto it = AllocatedDescriptorSets.find(setID);
+    if (it == AllocatedDescriptorSets.end())
+        return;
+
+    DescriptorSetAllocation& allocation = it->second;
+    auto layoutIt = DescriptorSetLayouts.find(allocation.SetKey);
+    if (layoutIt == DescriptorSetLayouts.end())
+        return;
+
+    DescriptorSetLayoutInfo& layoutInfo = layoutIt->second;
+    VkDescriptorSet descriptorSet = reinterpret_cast<VkDescriptorSet>(allocation.DescriptorAddress);
+
+    std::vector<VkWriteDescriptorSet> writes;
+    std::vector<VkDescriptorImageInfo> imageInfos;
+    imageInfos.reserve(layoutInfo.Bindings.size());
+
+    for (const DescriptorBinding& layoutBinding : layoutInfo.Bindings)
+    {
+        if (layoutBinding.Type != RHIStructures::DescriptorType::SampledImage)
+            continue;
+
+        auto bindingIt = std::find_if(newBindings.begin(), newBindings.end(),
+            [&](const DescriptorSetBinding& b) { return b.Binding == layoutBinding.Slot; });
+
+        if (bindingIt == newBindings.end())
+            continue;
+
+        ImageAllocation imageAlloc = GetImageAllocation(bindingIt->ResourceID);
+        VulkanImageData* imageData = static_cast<VulkanImageData*>(imageAlloc.Image);
+
+        VkDescriptorImageInfo imageInfo{};
+        imageInfo.imageView = imageData->ImageView;
+        imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        imageInfo.sampler = *VulkanCore::Instance().GetLinearSampler();
+        imageInfos.push_back(imageInfo);
+
+        VkWriteDescriptorSet write{};
+        write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        write.dstSet = descriptorSet;
+        write.dstBinding = layoutBinding.Slot;
+        write.dstArrayElement = 0;
+        write.descriptorCount = 1;
+        write.descriptorType = VulkanDescriptorType(layoutBinding.Type);
+        write.pImageInfo = &imageInfos.back();
+        writes.push_back(write);
+    }
+
+    if (!writes.empty())
+        vkUpdateDescriptorSets(device, static_cast<uint32_t>(writes.size()), writes.data(), 0, nullptr);
+}
+
 void VulkanBufferAllocator::UpdateDescriptorSetDynamicOffsets(uint64_t setID, const std::vector<uint32_t>& offsets)
 {
     auto it = AllocatedDescriptorSets.find(setID);
