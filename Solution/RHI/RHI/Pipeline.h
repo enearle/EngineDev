@@ -80,22 +80,26 @@ public:
     { 
         return reinterpret_cast<void*>(OwnedRTVs[index].ptr);
     }
-    void* GetOwnedDepthImageView() override 
-    { 
+    void* GetOwnedDepthImageView() override
+    {
         return reinterpret_cast<void*>(OwnedDSV.ptr);
     }
-    
+
+    void RefreshInputDescriptorSets() override;
+
 private:
-    
+
     std::vector<ComPtr<ID3D12Resource>> OwnedColorResources;
     std::vector<D3D12_CPU_DESCRIPTOR_HANDLE> OwnedRTVs;
     ComPtr<ID3D12Resource> OwnedDepthResource;
     D3D12_CPU_DESCRIPTOR_HANDLE OwnedDSV = {};
-    
+    std::vector<uint64_t> OwnedColorResourceIDs;
+    uint64_t OwnedDepthImageResourceID = UINT64_MAX;
+
     D3D12_PRIMITIVE_TOPOLOGY Topology;
     ComPtr<ID3D12RootSignature> RootSignature;
     ComPtr<ID3D12PipelineState> PipelineState;
-    
+
     void RecreateAttachments(uint32_t width, uint32_t height) override;
     
 

@@ -104,6 +104,8 @@ public:
                                            const std::vector<DescriptorSetBinding>& bindings) override;
     void FreeDescriptorSet(uint64_t setID) override;
     void UpdateDescriptorSetDynamicOffsets(uint64_t setID, const std::vector<uint32_t>& offsets) override;
+    void UpdateDescriptorSet(uint64_t setID, const std::vector<DescriptorSetBinding>& newBindings) override;
+    void EvictImage(uint64_t id) override;
     enum DescriptorType : uint8_t {CBV, SRV, UAV, RTV, DSV};
     D3D12_CPU_DESCRIPTOR_HANDLE AllocateDescriptor(DescriptorType type);
     D3D12_CPU_DESCRIPTOR_HANDLE GetHandle(size_t index, DescriptorType type);

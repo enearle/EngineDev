@@ -1336,6 +1336,64 @@ D3D12_CPU_DESCRIPTOR_HANDLE DirectX12BufferAllocator::AllocateDescriptor(Descrip
     return GetHandle(index, type);
 }
 
+void DirectX12BufferAllocator::EvictImage(uint64_t id)
+{
+    auto it = AllocatedImages.find(id);
+    if (it == AllocatedImages.end())
+        return;
+    DX12ImageData* imageData = static_cast<DX12ImageData*>(it->second.Image);
+    delete imageData;
+    AllocatedImages.erase(it);
+}
+
+void DirectX12BufferAllocator::UpdateDescriptorSet(uint64_t setID, const std::vector<DescriptorSetBinding>& newBindings)
+{
+    ID3D12Device* device = D3DCore::Instance().GetDevice().Get();
+
+    auto it = AllocatedDescriptorSets.find(setID);
+    if (it == AllocatedDescriptorSets.end())
+        return;
+
+    DescriptorSetAllocation& allocation = it->second;
+    DescriptorTableData* tableData = static_cast<DescriptorTableData*>(allocation.PlatformData);
+    if (!tableData)
+        return;
+
+    auto layoutIt = DescriptorSetLayouts.find(allocation.SetKey);
+    if (layoutIt == DescriptorSetLayouts.end())
+        return;
+
+    DescriptorSetLayoutInfo& layoutInfo = layoutIt->second;
+
+    size_t descriptorIndex = 0;
+    for (const DescriptorBinding& layoutBinding : layoutInfo.Bindings)
+    {
+        if (layoutBinding.Type == RHIStructures::DescriptorType::SampledImage)
+        {
+            auto bindingIt = std::find_if(newBindings.begin(), newBindings.end(),
+                [&](const DescriptorSetBinding& b) { return b.Binding == layoutBinding.Slot; });
+
+            if (bindingIt != newBindings.end())
+            {
+                ImageAllocation imageAlloc = GetImageAllocation(bindingIt->ResourceID);
+                DX12ImageData* imageData = static_cast<DX12ImageData*>(imageAlloc.Image);
+
+                D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{};
+                srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+                srvDesc.Format = DXFormat(imageAlloc.Desc.Format);
+                srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+                srvDesc.Texture2D.MipLevels = 1;
+                srvDesc.Texture2D.MostDetailedMip = 0;
+                srvDesc.Texture2D.PlaneSlice = 0;
+
+                device->CreateShaderResourceView(imageData->Image.Get(), &srvDesc, tableData->CpuHandles[descriptorIndex]);
+                tableData->ResourceIDs[descriptorIndex] = bindingIt->ResourceID;
+            }
+        }
+        descriptorIndex++;
+    }
+}
+
 void DirectX12BufferAllocator::FreeDescriptorSet(uint64_t setID)
 {
     auto& allocation = AllocatedDescriptorSets[setID];

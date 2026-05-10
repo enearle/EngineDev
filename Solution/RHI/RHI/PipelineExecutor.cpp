@@ -376,6 +376,7 @@ void D3DPipelineExecutor::EndNoesisContext()
 
 void D3DPipelineExecutor::TriggerResize()
 {
+    D3DCore::Instance().ResetWindow();
 }
 
 ID3D12GraphicsCommandList* D3DPipelineExecutor::GetCommandList()

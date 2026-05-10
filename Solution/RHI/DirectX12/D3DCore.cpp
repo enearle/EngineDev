@@ -58,9 +58,8 @@ void D3DCore::Reset()
     {
         CurrentFence++;
         CommandQueue->Signal(Fence.Get(), CurrentFence) >> ERROR_HANDLER;
+        WaitForGpu();
     }
-    
-    WaitForGpu();
     
     for (UINT i = 0; i < SwapChainBufferCount; i++)
     {
@@ -109,6 +108,41 @@ void D3DCore::DeferUploadBufferRelease(ComPtr<ID3D12Resource> resource)
 
 void D3DCore::ResetWindow()
 {
+    // Drain DXGI's present-queued flip work before releasing swapchain buffers.
+    // Skip at startup (FrameFences all zero) since Present() hasn't been called yet.
+    bool hasRenderedFrames = false;
+    for (int i = 0; i < SwapChainBufferCount; ++i)
+        if (FrameFences[i] > 0) { hasRenderedFrames = true; break; }
+
+    if (hasRenderedFrames)
+    {
+        CurrentFence++;
+        CommandQueue->Signal(Fence.Get(), CurrentFence) >> ERROR_HANDLER;
+        HANDLE eventHandle = CreateEventEx(nullptr, nullptr, 0, EVENT_ALL_ACCESS);
+        Fence->SetEventOnCompletion(CurrentFence, eventHandle) >> ERROR_HANDLER;
+        WaitForSingleObject(eventHandle, INFINITE);
+        CloseHandle(eventHandle);
+    }
+
+    for (auto& buffer : SwapChainBuffer)
+        buffer.Reset();
+
+    uint32_t width = RendererWindow->GetWidth();
+    uint32_t height = RendererWindow->GetHeight();
+
+    SwapChain->ResizeBuffers(0, width, height, DXGI_FORMAT_UNKNOWN, DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH) >> ERROR_HANDLER;
+
+    for (UINT i = 0; i < SwapChainBufferCount; ++i)
+    {
+        SwapChain->GetBuffer(i, IID_PPV_ARGS(&SwapChainBuffer[i])) >> ERROR_HANDLER;
+
+        D3D12_CPU_DESCRIPTOR_HANDLE rtvHandle = RenderTargetDescriptorHeap->GetCPUDescriptorHandleForHeapStart();
+        rtvHandle.ptr += i * RenderTargetDescriptorOffset;
+        Device->CreateRenderTargetView(SwapChainBuffer[i].Get(), nullptr, rtvHandle);
+    }
+
+    CurrentBackBuffer = 0;
+    CurrentFrameIndex = 0;
 }
 
 void D3DCore::InitDebugLayer()

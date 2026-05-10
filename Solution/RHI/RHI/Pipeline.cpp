@@ -403,8 +403,9 @@ D3DPipeline::D3DPipeline(const PipelineDesc& desc, std::vector<IOResource*>* inp
     
         depthBindingData.Binding = static_cast<uint32_t>(desc.RenderTargetFormats.size());
         depthBindingData.ResourceID = alloc->CacheImage(depthAllocation);
+        OwnedDepthImageResourceID = depthBindingData.ResourceID;
     }
-    
+
     if (!desc.CreateOwnAttachments) return;
     PipelineOutputResource = new IOResource();
     
@@ -492,29 +493,55 @@ D3DPipeline::D3DPipeline(const PipelineDesc& desc, std::vector<IOResource*>* inp
         DescriptorSetBinding bindingData{};
         bindingData.Binding = binding.Slot;
         bindingData.ResourceID = alloc->CacheImage(imageAllocation);
+        OwnedColorResourceIDs.push_back(bindingData.ResourceID);
         PipelineOutputResource->Bindings.push_back(bindingData);
     }
-    
+
     if (desc.CreateDepthAttachment && desc.CreateDepthImage)
     {
         PipelineOutputResource->Bindings.push_back(depthBindingData);
     }
 }
 
+void D3DPipeline::RefreshInputDescriptorSets()
+{
+    if (InputIOResources.size() != PipelineInputDescriptorSetIDs.size())
+        return;
+
+    DirectX12BufferAllocator* allocator = static_cast<DirectX12BufferAllocator*>(BufferAllocator::GetInstance());
+    for (uint32_t i = 0; i < PipelineInputDescriptorSetIDs.size(); i++)
+        allocator->UpdateDescriptorSet(PipelineInputDescriptorSetIDs[i], InputIOResources[i]->Bindings);
+}
+
 void D3DPipeline::RecreateAttachments(uint32_t width, uint32_t height)
 {
-    if (!AttachmentsAreViewportDims || !CreateOwnAttachments)
+    if (!AttachmentsAreViewportDims)
         return;
 
     ViewportSize = {width, height};
 
+    if (!CreateOwnAttachments)
+        return;
+
     ComPtr<ID3D12Device> device = D3DCore::Instance().GetDevice();
     BufferAllocator* alloc = BufferAllocator::GetInstance();
-    DirectX12BufferAllocator* dxAlloc = static_cast<DirectX12BufferAllocator*>(alloc);
+
+    // Evict stale resource IDs before releasing resources
+    for (uint64_t id : OwnedColorResourceIDs)
+        alloc->EvictImage(id);
+    OwnedColorResourceIDs.clear();
+    if (PipelineOutputResource)
+        PipelineOutputResource->Bindings.clear();
 
     // Recreate depth image
     if (CreateDepthImage && OwnedDepthResource)
     {
+        if (OwnedDepthImageResourceID != UINT64_MAX)
+        {
+            alloc->EvictImage(OwnedDepthImageResourceID);
+            OwnedDepthImageResourceID = UINT64_MAX;
+        }
+
         OwnedDepthResource.Reset();
 
         D3D12_RESOURCE_DESC depthResourceDesc = {};
@@ -537,6 +564,23 @@ void D3DPipeline::RecreateAttachments(uint32_t width, uint32_t height)
         dsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
         dsvDesc.Flags = D3D12_DSV_FLAG_NONE;
         device->CreateDepthStencilView(OwnedDepthResource.Get(), &dsvDesc, OwnedDSV);
+
+        DX12ImageData* depthImageData = new DX12ImageData();
+        depthImageData->Image = OwnedDepthResource;
+        ImageAllocation depthAllocation;
+        depthAllocation.Image = depthImageData;
+        depthAllocation.Desc.Format = DepthStencilFormat;
+        depthAllocation.Desc.Width = width;
+        depthAllocation.Desc.Height = height;
+        OwnedDepthImageResourceID = alloc->CacheImage(depthAllocation);
+
+        if (CreateDepthAttachment && PipelineOutputResource)
+        {
+            DescriptorSetBinding depthBinding{};
+            depthBinding.Binding = static_cast<uint32_t>(RenderTargetFormats.size());
+            depthBinding.ResourceID = OwnedDepthImageResourceID;
+            PipelineOutputResource->Bindings.push_back(depthBinding);
+        }
     }
 
     // Recreate color attachments
@@ -565,6 +609,21 @@ void D3DPipeline::RecreateAttachments(uint32_t width, uint32_t height)
         rtvDesc.Format = DXFormat(RenderTargetFormats[i]);
         rtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
         device->CreateRenderTargetView(OwnedColorResources[i].Get(), &rtvDesc, OwnedRTVs[i]);
+
+        DX12ImageData* imageData = new DX12ImageData();
+        imageData->Image = OwnedColorResources[i];
+        ImageAllocation imageAllocation;
+        imageAllocation.Image = imageData;
+        imageAllocation.Desc.Format = RenderTargetFormats[i];
+        imageAllocation.Desc.Width = width;
+        imageAllocation.Desc.Height = height;
+
+        DescriptorSetBinding bindingData{};
+        bindingData.Binding = static_cast<uint32_t>(i);
+        bindingData.ResourceID = alloc->CacheImage(imageAllocation);
+        OwnedColorResourceIDs.push_back(bindingData.ResourceID);
+        if (PipelineOutputResource)
+            PipelineOutputResource->Bindings.push_back(bindingData);
     }
 }
 
