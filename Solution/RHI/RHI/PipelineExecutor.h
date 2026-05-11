@@ -37,7 +37,7 @@ public:
     virtual void StartNoesisContext(uint32_t width, uint32_t height) = 0;
     virtual void EndNoesisContext() = 0;
     
-    virtual void TriggerResize() = 0;
+    virtual void ResetWindow() = 0;
 };
 
 class D3DPipelineExecutor : public PipelineExecutor
@@ -72,7 +72,7 @@ public:
     void StartNoesisContext(uint32_t width, uint32_t height) override;
     void EndNoesisContext() override;
     
-    void TriggerResize() override;
+    void ResetWindow() override;
     
 private:
     ID3D12GraphicsCommandList* GetCommandList();
@@ -111,7 +111,7 @@ public:
     void StartNoesisContext(uint32_t width, uint32_t height) override;
     void EndNoesisContext() override;
     
-    void TriggerResize() override;
+    void ResetWindow() override;
     
 private:
     

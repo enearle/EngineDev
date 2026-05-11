@@ -374,7 +374,7 @@ void D3DPipelineExecutor::EndNoesisContext()
 {
 }
 
-void D3DPipelineExecutor::TriggerResize()
+void D3DPipelineExecutor::ResetWindow()
 {
     D3DCore::Instance().ResetWindow();
 }
@@ -739,7 +739,7 @@ void VulkanPipelineExecutor::EndNoesisContext()
     vkCmdEndRenderPass(cmdBuffer);
 }
 
-void VulkanPipelineExecutor::TriggerResize()
+void VulkanPipelineExecutor::ResetWindow()
 {
     VulkanCore::Instance().ResetWindow();
 }

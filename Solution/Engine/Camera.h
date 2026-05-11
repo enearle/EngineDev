@@ -1,6 +1,7 @@
 ﻿#pragma once
 #include <DirectXMath.h>
 
+#include "Renderer.h"
 #include "Uploader.h"
 #include "RHI/RHIConstants.h"
 
@@ -15,6 +16,8 @@ class Camera
 {
     float FOV;
     float AspectRatio;
+    float NearPlane;
+    float FarPlane;
     DirectX::XMMATRIX Transform;
     DirectX::XMMATRIX View;
     DirectX::XMMATRIX Projection;
@@ -72,20 +75,22 @@ public:
         *MappedDataAddr = ActiveCamera->GetVpData();
     }
     
-    Camera(float fovDeg, float aspectRatio, const DirectX::XMFLOAT3& position, const DirectX::XMFLOAT3& rotation = {}, float nearPlane = 0.1f, float farPlane = 100.0f) : AspectRatio(aspectRatio)
+    Camera(float fovDeg, float aspectRatio, const DirectX::XMFLOAT3& position, const DirectX::XMFLOAT3& rotation = {}, float nearPlane = 0.1f, float farPlane = 100.0f) : AspectRatio(aspectRatio), NearPlane(nearPlane), FarPlane(farPlane)
     {
         InitializeBuffer(this);
         SetTransform(DirectX::XMMatrixTranslation(position.x, position.y, position.z) * DirectX::XMMatrixRotationRollPitchYaw(rotation.x, rotation.y, rotation.z));
         FOV = fovDeg / 180 * DirectX::XM_PI;
         Projection = DirectX::XMMatrixPerspectiveFovLH(FOV, AspectRatio, nearPlane, farPlane);
+        Renderer::EventOnResize().Subscribe([this] (uint32_t width, uint32_t height) {OnResize(width, height); });
     }
     
-    Camera(float fovDeg, float aspectRatio, const DirectX::XMMATRIX& transformOrView, bool isView = false, float nearPlane = 0.1f, float farPlane = 1000.0f) : AspectRatio(aspectRatio)
+    Camera(float fovDeg, float aspectRatio, const DirectX::XMMATRIX& transformOrView, bool isView = false, float nearPlane = 0.1f, float farPlane = 1000.0f) : AspectRatio(aspectRatio), NearPlane(), FarPlane()
     {
         InitializeBuffer(this);
         isView ? SetView(transformOrView) : SetTransform(transformOrView);
         FOV = fovDeg / 180 * DirectX::XM_PI;
         Projection = DirectX::XMMatrixPerspectiveFovLH(FOV, AspectRatio, nearPlane, farPlane);
+        Renderer::EventOnResize().Subscribe([this] (uint32_t width, uint32_t height) {OnResize(width, height); });
     }
     
     void LookAtFloat3(DirectX::XMFLOAT3 position)
@@ -116,6 +121,12 @@ public:
     DirectX::XMVECTOR GetPositionVector() const
     {
         return Transform.r[3];
+    }
+    
+    void OnResize(uint32_t width, uint32_t height)
+    {
+        AspectRatio = static_cast<float>(width) / static_cast<float>(height);
+        Projection = DirectX::XMMatrixPerspectiveFovLH(FOV, AspectRatio, NearPlane, FarPlane);
     }
 
 };

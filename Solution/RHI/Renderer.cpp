@@ -18,8 +18,9 @@ bool Renderer::IsInitialized = false;
 std::vector<PipelineFrameContext> Renderer::PipelineFrameContexts;
 void* Renderer::CurrentBackBuffer = nullptr;
 void* Renderer::CurrentBackBufferView = nullptr;
-Renderer::FrameCallback Renderer::StartOfFrameCallback = nullptr;
-Renderer::FrameCallback Renderer::EndOfFrameCallback = nullptr;
+Event<> Renderer::OnStartOfFrame;
+Event<> Renderer::OnEndOfFrame;
+Event<uint32_t, uint32_t> Renderer::OnResize;
 
 void Renderer::Start(Window* mainWindow)
 {
@@ -49,7 +50,7 @@ void Renderer::DrawFrame()
     Executor->IssueImageMemoryBarrier(preBarrier);
     
     // Call Noesis Pre-Frame Callback
-    if (StartOfFrameCallback) StartOfFrameCallback();
+    OnStartOfFrame.Invoke();
     
     // Transition RTVs to read only
     if (!IsInitialized)
@@ -81,7 +82,7 @@ void Renderer::DrawFrame()
     
     // Noesis End-Frame callback
     Executor->StartNoesisContext(MainWindow->GetWidth(), MainWindow->GetHeight());
-    if (EndOfFrameCallback) EndOfFrameCallback();
+    OnEndOfFrame.Invoke();
     Executor->EndNoesisContext();
     
     // End of Frame
@@ -273,16 +274,6 @@ void Renderer::ExecutePipelineContext(uint32_t contextIndex, bool finalContext)
     }
 }
 
-void Renderer::SetStartOfFrameCallback(FrameCallback callback)
-{
-    StartOfFrameCallback = callback;
-}
-
-void Renderer::SetRenderCallback(FrameCallback callback)
-{
-    EndOfFrameCallback = callback;
-}
-
 void Renderer::WaitForGpu()
 {
     Executor->Wait();
@@ -353,6 +344,9 @@ void Renderer::OnResizeEnd(uint32_t width, uint32_t height)
 
     // New images start in UNDEFINED layout — re-run init barriers next frame
     IsInitialized = false;
-
-    Executor->TriggerResize();
+    
+    Executor->ResetWindow();
+    
+    // Resize for noesis
+    OnResize.Invoke(width, height);
 }

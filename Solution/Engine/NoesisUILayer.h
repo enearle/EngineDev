@@ -14,6 +14,7 @@ public:
     void NoesisRenderOffscreen();
     void NoesisRenderOnscreen();
     void NoesisShutdown();
+    void OnResize(uint32_t width, uint32_t height);
 private:
     void OnButtonClick(Noesis::BaseComponent* sender, const Noesis::RoutedEventArgs& e);
 

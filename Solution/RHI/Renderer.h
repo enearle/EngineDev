@@ -3,11 +3,12 @@
 #include <vector>
 #include "RHI/RHIStructures.h"
 #include "RHI_API_Macro.h"
+#include "Data/Event.h"
 
 class RHI_API Renderer
 {
 public:
-    using FrameCallback = std::function<void()>;
+    using RCallback = std::function<void()>;
     
 private:
     static class PipelineExecutor* Executor;
@@ -18,10 +19,12 @@ private:
     static void* CurrentBackBuffer;
     static std::vector<RHIStructures::PipelineFrameContext> PipelineFrameContexts;
     
-    static FrameCallback StartOfFrameCallback;
-    static FrameCallback EndOfFrameCallback; 
+    static Event<> OnStartOfFrame;
+    static Event<> OnEndOfFrame;
+    static Event<uint32_t, uint32_t> OnResize;
     
 public:
+    
     static void Start(class Window* mainWindow);
     static void DrawFrame();
     static int End();
@@ -30,8 +33,10 @@ public:
     static void AddDescriptorIDToContext(uint32_t contextIndex, uint64_t descriptorID);
     static Window* GetWindow() { return MainWindow; }
     
-    static void SetStartOfFrameCallback(FrameCallback callback);
-    static void SetRenderCallback(FrameCallback callback);
+    static Event<>& EventOnStartOfFrame() { return OnStartOfFrame; }
+    static Event<>& EventOnEndOfFrame() { return OnEndOfFrame; }
+    static Event<uint32_t, uint32_t>& EventOnResize() { return OnResize; }
+    
     static void WaitForGpu();
     static void CreatePipelines(std::vector<RHIStructures::PipelineDesc> pipelineDescs, 
         std::vector<std::vector<RHIStructures::PipelineDescriptorData>> pipelineDescriptors);

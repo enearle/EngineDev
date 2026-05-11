@@ -102,8 +102,9 @@ void NoesisUILayer::NoesisInit()
     InputEventSystem::RegisterMouseDownCallback([this](float x, float y) { View->MouseButtonDown(x,y, Noesis::MouseButton_Left); });
     InputEventSystem::RegisterMouseUpCallback([this](float x, float y) { View->MouseButtonUp(x,y, Noesis::MouseButton_Left); });
     
-    Renderer::SetStartOfFrameCallback([this]() { this->NoesisRenderOffscreen(); });
-    Renderer::SetRenderCallback([this]() { this->NoesisRenderOnscreen(); });
+    Renderer::EventOnStartOfFrame().Subscribe([this]() { this->NoesisRenderOffscreen(); });
+    Renderer::EventOnEndOfFrame().Subscribe([this]() { this->NoesisRenderOnscreen(); });
+    Renderer::EventOnResize().Subscribe([this](uint32_t width, uint32_t height) { this->OnResize(width, height); });
 }
 
 void NoesisUILayer::NoesisUpdate(float deltaTime)
@@ -164,6 +165,14 @@ void NoesisUILayer::NoesisShutdown()
     View->GetRenderer()->Shutdown();
     View.Reset();
     RenderDevice.Reset();
+}
+
+void NoesisUILayer::OnResize(uint32_t width, uint32_t height)
+{
+    if (View)
+    {
+        View->SetSize(width, height);
+    }
 }
 
 void NoesisUILayer::RegisterComponents() const

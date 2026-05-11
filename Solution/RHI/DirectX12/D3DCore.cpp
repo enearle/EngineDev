@@ -143,6 +143,11 @@ void D3DCore::ResetWindow()
 
     CurrentBackBuffer = 0;
     CurrentFrameIndex = 0;
+
+    // Recreate Noesis depth stencil buffers to match the new swapchain dimensions
+    for (auto& buf : NoesisDepthStencilBuffers)
+        buf.Reset();
+    CreateNoesisDepthStencilBuffers();
 }
 
 void D3DCore::InitDebugLayer()
