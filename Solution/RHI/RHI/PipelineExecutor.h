@@ -25,7 +25,7 @@ public:
     virtual void EndPipeline(bool isLastInContext = false) = 0;
     
     virtual void IssueMemoryBarrier(const RHIStructures::MemoryBarrier& barrier) = 0;
-    virtual void IssueImageMemoryBarrier(const ImageMemoryBarrier& barrier) = 0;
+    virtual void IssueImageMemoryBarrier(const std::vector<ImageMemoryBarrier>& barriers) = 0;
 
     virtual void DrawIndexed(uint64_t vertBufferID, uint32_t vertCount, uint64_t indexBufferID, uint32_t indexCount, 
         void* pushConstants = nullptr, size_t pushConstantsSize = 0, uint32_t vertexStride = sizeof(Vertex)) = 0;
@@ -60,20 +60,20 @@ public:
     void EndPipeline(bool isLastInContext = false) override;
     
     void IssueMemoryBarrier(const RHIStructures::MemoryBarrier& barrier) override;
-    void IssueImageMemoryBarrier(const ImageMemoryBarrier& barrier) override;
+    void IssueImageMemoryBarrier(const std::vector<ImageMemoryBarrier>& barriers) override;
 
-    void DrawIndexed(uint64_t vertBufferID, uint32_t vertCount, uint64_t indexBufferID, uint32_t indexCount, 
+    void DrawIndexed(uint64_t vertBufferID, uint32_t vertCount, uint64_t indexBufferID, uint32_t indexCount,
         void* pushConstant, size_t pushConstantSize, uint32_t vertexStride) override;
     void DrawFSQuad() override;
-    
+
     void BindDrawDescriptorSets(std::vector<uint64_t>* descriptorSets, uint32_t numPipelineSets) override;
     void BindPipelineDescriptorSets(std::vector<uint64_t>* descriptorSets) override;
-    
+
     void StartNoesisContext(uint32_t width, uint32_t height) override;
     void EndNoesisContext() override;
-    
+
     void ResetWindow() override;
-    
+
 private:
     ID3D12GraphicsCommandList* GetCommandList();
     D3DPipeline* CurrentPipeline;
@@ -99,22 +99,21 @@ public:
     void EndPipeline(bool isLastInContext = false) override;
     
     void IssueMemoryBarrier(const RHIStructures::MemoryBarrier& barrier) override;
-    void IssueImageMemoryBarrier(const ImageMemoryBarrier& barrier) override;
+    void IssueImageMemoryBarrier(const std::vector<ImageMemoryBarrier>& barriers) override;
 
-    void DrawIndexed(uint64_t vertBufferID, uint32_t vertCount, uint64_t indexBufferID, uint32_t indexCount, 
+    void DrawIndexed(uint64_t vertBufferID, uint32_t vertCount, uint64_t indexBufferID, uint32_t indexCount,
         void* pushConstant, size_t pushConstantSize, uint32_t vertexStride) override;
     void DrawFSQuad() override;
-    
+
     void BindDrawDescriptorSets(std::vector<uint64_t>* descriptorSets, uint32_t numPipelineSets) override;
     void BindPipelineDescriptorSets(std::vector<uint64_t>* descriptorSets) override;
-    
+
     void StartNoesisContext(uint32_t width, uint32_t height) override;
     void EndNoesisContext() override;
-    
+
     void ResetWindow() override;
-    
+
 private:
-    
     VulkanPipeline* CurrentPipeline;
     VkCommandBuffer GetCommandBuffer();
 };

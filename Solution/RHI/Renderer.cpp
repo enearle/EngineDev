@@ -47,7 +47,7 @@ void Renderer::DrawFrame()
     Executor->GetSwapChainRenderTargets(CurrentBackBufferView, CurrentBackBuffer);
     ImageMemoryBarrier preBarrier = PRE_BARRIER;
     preBarrier.ImageResource = CurrentBackBuffer;
-    Executor->IssueImageMemoryBarrier(preBarrier);
+    Executor->IssueImageMemoryBarrier({ preBarrier });
     
     // Call Noesis Pre-Frame Callback
     OnStartOfFrame.Invoke();
@@ -55,23 +55,26 @@ void Renderer::DrawFrame()
     // Transition RTVs to read only
     if (!IsInitialized)
     {
+        std::vector<ImageMemoryBarrier> initBarriers;
         ImageMemoryBarrier initBarrier = INIT_BARRIER;
         for (int i = 0; i < PipelineFrameContexts.size(); i++)
             for (int j = 0; j < PipelineFrameContexts[i].ContextPipeline->GetOwnedImageCount(); j++)
             {
                 initBarrier.ImageResource = PipelineFrameContexts[i].ContextPipeline->GetOwnedImage(j);
                 initBarrier.ArrayLayerCount = PipelineFrameContexts[i].ContextPipeline->GetArrayLayerCount();
-                Executor->IssueImageMemoryBarrier(initBarrier);
+                initBarriers.push_back(initBarrier);
             }
-        
+
         ImageMemoryBarrier initDepthBarrier = INIT_DEPTH_BARRIER;
         for (int i = 0; i < PipelineFrameContexts.size(); i++)
             if (PipelineFrameContexts[i].ContextPipeline->GetOwnedDepthImage())
             {
                 initDepthBarrier.ImageResource = PipelineFrameContexts[i].ContextPipeline->GetOwnedDepthImage();
                 initDepthBarrier.ArrayLayerCount = PipelineFrameContexts[i].ContextPipeline->GetArrayLayerCount();
-                Executor->IssueImageMemoryBarrier(initDepthBarrier);
+                initBarriers.push_back(initDepthBarrier);
             }
+
+        Executor->IssueImageMemoryBarrier(initBarriers);
         
         IsInitialized = true;
     }
@@ -88,7 +91,7 @@ void Renderer::DrawFrame()
     // End of Frame
     ImageMemoryBarrier postBarrier = POST_BARRIER;
     postBarrier.ImageResource = CurrentBackBuffer;
-    Executor->IssueImageMemoryBarrier(postBarrier);
+    Executor->IssueImageMemoryBarrier({ postBarrier });
     Executor->EndFrame();
 }
 
@@ -141,22 +144,24 @@ void Renderer::ExecutePipelineContext(uint32_t contextIndex, bool finalContext)
     Pipeline* mainPipeline = context.ContextPipeline;
 
     // Pre-draw attachment barriers
+    std::vector<ImageMemoryBarrier> prePassBarriers;
     ImageMemoryBarrier readToAttachmentBarrier = READ_TO_ATTACHMENT_BARRIER;
     for (int j = 0; j < mainPipeline->GetOwnedImageCount(); j++)
     {
         readToAttachmentBarrier.ImageResource = mainPipeline->GetOwnedImage(j);
         readToAttachmentBarrier.ArrayLayerCount = mainPipeline->GetArrayLayerCount();
-        Executor->IssueImageMemoryBarrier(readToAttachmentBarrier);
+        prePassBarriers.push_back(readToAttachmentBarrier);
     }
-    
-    // Depth barrier if exists
+
     if (mainPipeline->GetOwnedDepthImage())
     {
         ImageMemoryBarrier depthBarrier = READ_TO_DEPTH_ATTACHMENT_BARRIER;
         depthBarrier.ImageResource = mainPipeline->GetOwnedDepthImage();
         depthBarrier.ArrayLayerCount = mainPipeline->GetArrayLayerCount();
-        Executor->IssueImageMemoryBarrier(depthBarrier);
+        prePassBarriers.push_back(depthBarrier);
     }
+
+    Executor->IssueImageMemoryBarrier(prePassBarriers);
     
     // Some of this is in BeginPipeline()
     // But pipeline variants need a reference to main pipelines attachments 
@@ -256,22 +261,24 @@ void Renderer::ExecutePipelineContext(uint32_t contextIndex, bool finalContext)
     
     
     // Post-draw attachment barriers
+    std::vector<ImageMemoryBarrier> postPassBarriers;
     ImageMemoryBarrier gBufferBarrier = ATTACHMENT_TO_READ_BARRIER;
     for (int j = 0; j < mainPipeline->GetOwnedImageCount(); j++)
     {
         gBufferBarrier.ImageResource = mainPipeline->GetOwnedImage(j);
         gBufferBarrier.ArrayLayerCount = mainPipeline->GetArrayLayerCount();
-        Executor->IssueImageMemoryBarrier(gBufferBarrier);
+        postPassBarriers.push_back(gBufferBarrier);
     }
-    
-    // Depth barrier if exists
+
     if (mainPipeline->GetOwnedDepthImage())
     {
         ImageMemoryBarrier depthBarrier = DEPTH_ATTACHMENT_TO_READ_BARRIER;
         depthBarrier.ImageResource = mainPipeline->GetOwnedDepthImage();
         depthBarrier.ArrayLayerCount = mainPipeline->GetArrayLayerCount();
-        Executor->IssueImageMemoryBarrier(depthBarrier);
+        postPassBarriers.push_back(depthBarrier);
     }
+
+    Executor->IssueImageMemoryBarrier(postPassBarriers);
 }
 
 void Renderer::WaitForGpu()

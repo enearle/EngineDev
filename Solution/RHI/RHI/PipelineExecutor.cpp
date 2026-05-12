@@ -206,24 +206,28 @@ void D3DPipelineExecutor::IssueMemoryBarrier(const RHIStructures::MemoryBarrier&
     cmdList->ResourceBarrier(1, &d3dBarrier);
 }
 
-void D3DPipelineExecutor::IssueImageMemoryBarrier(const ImageMemoryBarrier& barrier)
+void D3DPipelineExecutor::IssueImageMemoryBarrier(const std::vector<ImageMemoryBarrier>& barriers)
 {
+    if (barriers.empty()) return;
+
     ID3D12GraphicsCommandList* cmdList = GetCommandList();
-    ID3D12Resource* resource = reinterpret_cast<ID3D12Resource*>(barrier.ImageResource);
-    
-    // Convert layout enums to D3D12 resource states
-    D3D12_RESOURCE_STATES stateBefore = ConvertLayoutToResourceState(barrier.OldLayout);
-    D3D12_RESOURCE_STATES stateAfter = ConvertLayoutToResourceState(barrier.NewLayout);
-    
-    D3D12_RESOURCE_BARRIER d3dBarrier{};
-    d3dBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-    d3dBarrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-    d3dBarrier.Transition.pResource = resource;
-    d3dBarrier.Transition.StateBefore = stateBefore;
-    d3dBarrier.Transition.StateAfter = stateAfter;
-    d3dBarrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-    
-    cmdList->ResourceBarrier(1, &d3dBarrier);
+
+    std::vector<D3D12_RESOURCE_BARRIER> d3dBarriers;
+    d3dBarriers.reserve(barriers.size());
+
+    for (const auto& barrier : barriers)
+    {
+        D3D12_RESOURCE_BARRIER d3dBarrier{};
+        d3dBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        d3dBarrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+        d3dBarrier.Transition.pResource = reinterpret_cast<ID3D12Resource*>(barrier.ImageResource);
+        d3dBarrier.Transition.StateBefore = ConvertLayoutToResourceState(barrier.OldLayout);
+        d3dBarrier.Transition.StateAfter = ConvertLayoutToResourceState(barrier.NewLayout);
+        d3dBarrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+        d3dBarriers.push_back(d3dBarrier);
+    }
+
+    cmdList->ResourceBarrier(static_cast<UINT>(d3dBarriers.size()), d3dBarriers.data());
 }
 
 void D3DPipelineExecutor::DrawIndexed(uint64_t vertBufferID, uint32_t vertCount, uint64_t indexBufferID, 
@@ -564,43 +568,53 @@ void VulkanPipelineExecutor::IssueMemoryBarrier(const RHIStructures::MemoryBarri
     );
 }
 
-void VulkanPipelineExecutor::IssueImageMemoryBarrier(const ImageMemoryBarrier& barrier)
+void VulkanPipelineExecutor::IssueImageMemoryBarrier(const std::vector<ImageMemoryBarrier>& barriers)
 {
+    if (barriers.empty()) return;
+
     VkCommandBuffer cmdBuffer = GetCommandBuffer();
-    
-    VkImageMemoryBarrier vkBarrier{};
-    vkBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    vkBarrier.pNext = nullptr;
-    vkBarrier.oldLayout = VulkanImageLayout(barrier.OldLayout);  // Use conversion function
-    vkBarrier.newLayout = VulkanImageLayout(barrier.NewLayout);  // Use conversion function
-    vkBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    vkBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    vkBarrier.image = reinterpret_cast<VkImage>(barrier.ImageResource);
-    vkBarrier.subresourceRange.aspectMask = barrier.IsDepthImage ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
-    vkBarrier.subresourceRange.baseMipLevel = barrier.BaseMipLevel;
-    vkBarrier.subresourceRange.levelCount = barrier.MipLevelCount;
-    vkBarrier.subresourceRange.baseArrayLayer = barrier.BaseArrayLayer;
-    vkBarrier.subresourceRange.layerCount = barrier.ArrayLayerCount;
-    vkBarrier.srcAccessMask = barrier.SrcAccessMask;
-    vkBarrier.dstAccessMask = barrier.DstAccessMask;
-    
-    VkPipelineStageFlags srcStage = ConvertPipelineStage(barrier.SrcStage);
-    VkPipelineStageFlags dstStage = ConvertPipelineStage(barrier.DstStage);
-    
-    // Ensure we never pass 0 for srcStageMask
-    if (srcStage == 0)
-        srcStage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
-    if (dstStage == 0)
-        dstStage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
-    
+
+    std::vector<VkImageMemoryBarrier> vkBarriers;
+    vkBarriers.reserve(barriers.size());
+
+    VkPipelineStageFlags srcStage = 0;
+    VkPipelineStageFlags dstStage = 0;
+
+    for (const auto& barrier : barriers)
+    {
+        VkImageMemoryBarrier vkBarrier{};
+        vkBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        vkBarrier.pNext = nullptr;
+        vkBarrier.oldLayout = VulkanImageLayout(barrier.OldLayout);
+        vkBarrier.newLayout = VulkanImageLayout(barrier.NewLayout);
+        vkBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        vkBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        vkBarrier.image = reinterpret_cast<VkImage>(barrier.ImageResource);
+        vkBarrier.subresourceRange.aspectMask = barrier.IsDepthImage ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
+        vkBarrier.subresourceRange.baseMipLevel = barrier.BaseMipLevel;
+        vkBarrier.subresourceRange.levelCount = barrier.MipLevelCount;
+        vkBarrier.subresourceRange.baseArrayLayer = barrier.BaseArrayLayer;
+        vkBarrier.subresourceRange.layerCount = barrier.ArrayLayerCount;
+        vkBarrier.srcAccessMask = barrier.SrcAccessMask;
+        vkBarrier.dstAccessMask = barrier.DstAccessMask;
+        vkBarriers.push_back(vkBarrier);
+
+        srcStage |= ConvertPipelineStage(barrier.SrcStage);
+        dstStage |= ConvertPipelineStage(barrier.DstStage);
+    }
+
+    if (srcStage == 0) srcStage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+    if (dstStage == 0) dstStage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+
     vkCmdPipelineBarrier(
         cmdBuffer,
         srcStage,
         dstStage,
-        0,  // No dependency flags
-        0, nullptr,  // No memory barriers
-        0, nullptr,  // No buffer memory barriers
-        1, &vkBarrier
+        0,
+        0, nullptr,
+        0, nullptr,
+        static_cast<uint32_t>(vkBarriers.size()), 
+        vkBarriers.data()
     );
 }
 
