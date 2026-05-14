@@ -38,3 +38,29 @@ HWND Win32Window::NewWindow(WNDPROC windowProcedure, HINSTANCE applicationInstan
         CW_USEDEFAULT, xSize, ySize, nullptr, nullptr, applicationInstance,
         nullptr);
 }
+
+HWND Win32Window::NewChildWindow(WNDPROC windowProcedure, HINSTANCE applicationInstance,
+    HWND parentHwnd, LONG x, LONG y, LONG width, LONG height, LPCWSTR name)
+{
+    std::wstring instanceName = std::wstring(name) + L'_' + std::to_wstring(windowClassNum++);
+
+    WNDCLASSEX wc   = {};
+    wc.cbSize        = sizeof(WNDCLASSEX);
+    wc.style         = CS_HREDRAW | CS_VREDRAW;
+    wc.lpfnWndProc   = windowProcedure;
+    wc.hInstance     = applicationInstance;
+    wc.hCursor       = LoadCursor(0, IDC_ARROW);
+    wc.hbrBackground = (HBRUSH)GetStockObject(NULL_BRUSH);
+    wc.lpszClassName = instanceName.c_str();
+
+    if (!RegisterClassEx(&wc))
+    {
+        Win32ErrorHandler::ErrorMessageW(L"RegisterClassEx failed for " + instanceName + L".");
+        return nullptr;
+    }
+
+    return CreateWindowEx(0, instanceName.c_str(), name,
+        WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS,
+        x, y, width, height,
+        parentHwnd, nullptr, applicationInstance, nullptr);
+}

@@ -1,7 +1,9 @@
 ﻿#include "InputEventSystem.h"
 #include <vector>
-
-
+#include <algorithm>
+#include <unordered_set>
+#include <Solution/RHI/Windows/WindowsHeaders.h>
+#include <string>
 std::unordered_map<std::string, KeyState> InputEventSystem::sRegisteredGameplayInput;
 std::unordered_map<std::string, KeyState> InputEventSystem::sRegisteredMenuInput;
 std::vector<MouseDeltaCallback> InputEventSystem::sMouseCallbacks;
@@ -15,8 +17,19 @@ bool InputEventSystem::sPausedShowCursor = true;
 bool InputEventSystem::sClampCursorToWindowWhenHidden = true;
 bool InputEventSystem::sClampCursorToWindowWhenShown = false;
 
+std::string InputEventSystem::ToUniqueKey(const std::string& keys)
+{
+    std::unordered_set<char> uniqueKeys;
+    for (char c : keys)
+        uniqueKeys.insert(c);
+        
+    std::string stringSet = std::string(uniqueKeys.begin(), uniqueKeys.end());
+    std::sort(stringSet.begin(), stringSet.end());
+    return stringSet;
+}
+
 void InputEventSystem::RegisterCommand(InputMode inputMode, const std::string& keyCombination, KeyAction action,
-    CommandCallback callback)
+                                       CommandCallback callback)
 {
     if (keyCombination.empty() || callback == nullptr)
         return;
@@ -50,7 +63,7 @@ void InputEventSystem::RegisterCommand(InputMode inputMode, const std::string& k
     }
 }
 
-void InputEventSystem::PollInput(HWND hwnd, double deltaTime)
+void InputEventSystem::PollInput(HWND& hwnd, double deltaTime)
 {
     static bool wasPressed = false;
     bool isPressed = GetAsyncKeyState(VK_LBUTTON) & 0x8000;

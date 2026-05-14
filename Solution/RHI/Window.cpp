@@ -1,4 +1,5 @@
 ﻿#include "Window.h"
+#include <stdexcept>
 #include "Input/InputState.h"
 #include "Windows/Win32ErrorHandler.h"
 #include "Windows/Win32Window.h"
@@ -6,6 +7,24 @@
 using namespace  Win32ErrorHandler;
 
 std::map<HWND, Window*> Window::WindowRegistry;
+
+Window::Window(HWND parentHwnd, LONG x, LONG y, LONG width, LONG height)
+    : WindowHandle(nullptr), InstanceHandle(nullptr), Width((uint32_t)width), Height((uint32_t)height)
+{
+    InstanceHandle = GetModuleHandle(nullptr);
+    WindowHandle   = Win32Window::NewChildWindow(StaticWindowProcedure, InstanceHandle,
+                                                 parentHwnd, x, y, width, height);
+    RegisterWindow(WindowHandle, this);
+}
+
+Window::Window(HWND existingHwnd)
+    : WindowHandle(existingHwnd), InstanceHandle(GetModuleHandle(nullptr)), OwnsWindow(false)
+{
+    RECT rect = {};
+    GetClientRect(existingHwnd, &rect);
+    Width  = (uint32_t)(rect.right  - rect.left);
+    Height = (uint32_t)(rect.bottom - rect.top);
+}
 
 Window::Window(LPCWSTR windowName, WindowType windowType, LONG xSize, LONG ySize)
     : WindowHandle(nullptr), InstanceHandle(nullptr)
@@ -96,10 +115,24 @@ LRESULT Window::WindowProcedure(UINT msg, WPARAM wParam, LPARAM lParam)
 
 Window::~Window()
 {
-    if (WindowHandle)
+    if (WindowHandle && OwnsWindow)
     {
         UnregisterWindow(WindowHandle);
         DestroyWindow(WindowHandle);
+    }
+}
+
+void Window::PollResize()
+{
+    RECT rect = {};
+    GetClientRect(WindowHandle, &rect);
+    uint32_t newW = (uint32_t)(rect.right  - rect.left);
+    uint32_t newH = (uint32_t)(rect.bottom - rect.top);
+    if (newW > 0 && newH > 0 && (newW != Width || newH != Height))
+    {
+        Width  = newW;
+        Height = newH;
+        OnResize(Width, Height);
     }
 }
 

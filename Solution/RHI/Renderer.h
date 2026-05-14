@@ -38,7 +38,8 @@ public:
     static Event<uint32_t, uint32_t>& EventOnResize() { return OnResize; }
     
     static void WaitForGpu();
-    static void CreatePipelines(std::vector<RHIStructures::PipelineDesc> pipelineDescs, 
+    static void ResetPipelines();
+    static void CreatePipelines(std::vector<RHIStructures::PipelineDesc> pipelineDescs,
         std::vector<std::vector<RHIStructures::PipelineDescriptorData>> pipelineDescriptors);
     
     static void OnResizeEnd(uint32_t width, uint32_t height);

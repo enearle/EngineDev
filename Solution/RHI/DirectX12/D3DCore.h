@@ -6,6 +6,7 @@
 #include <vector>
 #include "../RHI/RHIStructures.h"
 #include "d3dx12.h"
+#include "../RHI_API_Macro.h"
 
 #pragma comment(lib,"d3dcompiler.lib")
 #pragma comment(lib, "D3D12.lib")
@@ -15,7 +16,7 @@ using Microsoft::WRL::ComPtr;
 
 class Window;
 
-class D3DCore
+class RHI_API D3DCore
 {
     D3DCore() = default;
     

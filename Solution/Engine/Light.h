@@ -1,5 +1,4 @@
 ﻿#pragma once
-#include <cstdint>
 #include <DirectXMath.h>
 #include "RHI/RHIStructures.h"
 

@@ -1,5 +1,4 @@
 ﻿#pragma once
-#include <iostream>
 #include "RHIStructures.h"
 
 using namespace RHIStructures;

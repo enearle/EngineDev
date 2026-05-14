@@ -1,12 +1,10 @@
 ﻿#pragma once
-#include <windows.h>
-#include <algorithm>
-#include <functional>
-#include <queue>
+#include "CommandQueue.h"
 #include <unordered_map>
-#include <unordered_set>
 #include <string>
 
+struct HWND__; 
+typedef struct HWND__ *HWND;
 
 namespace DirectX
 {
@@ -22,33 +20,8 @@ enum KeyAction
 
 enum class InputMode { Gameplay, UI };
 
-using CommandCallback = std::function<void (double)>;
 using MouseDeltaCallback = std::function<void (float, float)>;
 using MouseClickCallback = std::function<void (float, float)>;
-
-class CommandQueue {
-    std::queue<CommandCallback> mQueue;
-    
-public:
-    void push(const CommandCallback& cmd) {
-        mQueue.push(cmd);
-    }
-    
-    CommandCallback pop() {
-        CommandCallback cmd = mQueue.front();
-        mQueue.pop();
-        return cmd;
-    }
-    
-    bool isEmpty() const {
-        return mQueue.empty();
-    }
-    
-    void clear() {
-        while (!mQueue.empty())
-            mQueue.pop();
-    }
-};
 
 class KeyState {
     bool isDown = false;
@@ -111,21 +84,12 @@ class InputEventSystem
     static bool sClampCursorToWindowWhenHidden;
     static bool sClampCursorToWindowWhenShown;
     
-    static std::string ToUniqueKey(const std::string& keys) 
-    {
-        std::unordered_set<char> uniqueKeys;
-        for (char c : keys)
-            uniqueKeys.insert(c);
-        
-        std::string stringSet = std::string(uniqueKeys.begin(), uniqueKeys.end());
-        std::sort(stringSet.begin(), stringSet.end());
-        return stringSet;
-    }
-    
+    static std::string ToUniqueKey(const std::string& keys);
+
 public:
 
     static void RegisterCommand(InputMode inputMode, const std::string& keyCombination, KeyAction action, CommandCallback callback);
-    static void PollInput(HWND hwnd, double deltaTime);
+    static void PollInput(HWND& hwnd, double deltaTime);
     static void ChangeInputMode(InputMode inputMode) { sInputMode = inputMode; }
     static void ProcessCommands(double deltaTime) { while (!sCommandQueue.isEmpty()) sCommandQueue.pop()(deltaTime); }
     static void ClearCommands() { sCommandQueue.clear(); }

@@ -1,7 +1,6 @@
 ﻿#pragma once
 #include <functional>
 #include <map>
-#include <mutex>
 #include "Data/Event.h"
 #include "Windows/WindowsHeaders.h"
 #include "RHI_API_Macro.h"
@@ -16,6 +15,7 @@ class RHI_API Window
 {
     HINSTANCE InstanceHandle;
     HWND WindowHandle;
+    bool OwnsWindow = true;  // false when wrapping an external HWND
 
     static std::map<HWND, Window*> WindowRegistry;
 
@@ -25,6 +25,8 @@ class RHI_API Window
 public:
     
     Window(LPCWSTR windowName, WindowType windowType, LONG xSize, LONG ySize);
+    Window(HWND parentHwnd, LONG x, LONG y, LONG width, LONG height);
+    explicit Window(HWND existingHwnd);  // Wraps an HWND owned by another process — no window creation
     ~Window();
 
 private:
@@ -39,6 +41,7 @@ public:
     uint32_t GetHeight() const { return Height; }
     bool IsResizing() const { return Resizing; }
     bool PeekMessages();
+    void PollResize();  // For embedded mode: checks HWND client size and fires OnResize if changed
     
     Event<uint32_t, uint32_t> OnResize;
     Event<> OnMinimize;

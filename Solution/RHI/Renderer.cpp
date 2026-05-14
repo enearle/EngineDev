@@ -1,7 +1,6 @@
 #include "Renderer.h"
-
+#include <iostream>
 #include <algorithm>
-
 #include "Window.h"
 #include "RHI/Pipeline.h"
 #include "RHI/RHIConstants.h"
@@ -284,6 +283,18 @@ void Renderer::ExecutePipelineContext(uint32_t contextIndex, bool finalContext)
 void Renderer::WaitForGpu()
 {
     Executor->Wait();
+}
+
+void Renderer::ResetPipelines()
+{
+    WaitForGpu();
+    for (auto& context : PipelineFrameContexts)
+    {
+        delete context.ContextPipeline;
+        context.ContextPipeline = nullptr;
+    }
+    PipelineFrameContexts.clear();
+    IsInitialized = false;
 }
 
 void Renderer::CreatePipelines(std::vector<RHIStructures::PipelineDesc> pipelineDescs, std::vector<std::vector<PipelineDescriptorData>> pipelineDescriptors)
