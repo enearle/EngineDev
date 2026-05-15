@@ -66,9 +66,14 @@ void NoesisUILayer::NoesisInit()
     }
     else if (ForwardInterface::GetCurrentAPI() == DirectX12)
     {
+        ForwardInterface::GetD3D12Device()->CreateFence(0, D3D12_FENCE_FLAG_NONE,
+            IID_PPV_ARGS(&NoesFence));
+        frameCounter   = 0;
+        accumulatedTime = 0.0;
+
         RenderDevice = NoesisApp::D3D12Factory::CreateDevice(
-            ForwardInterface::GetD3D12Device(), 
-            ForwardInterface::GetD3D12Fence(),
+            ForwardInterface::GetD3D12Device(),
+            NoesFence.Get(),
             ForwardInterface::GetD3D12RenderTargetFormat(),
             DXGI_FORMAT_D24_UNORM_S8_UINT,
             ForwardInterface::GetD3D12SampleDesc(),
@@ -78,10 +83,10 @@ void NoesisUILayer::NoesisInit()
     
 
     Noesis::Ptr<Noesis::ResourceDictionary> theme = Noesis::GUI::LoadXaml<Noesis::ResourceDictionary>(
-    Noesis::Uri("MyXAML/NoesisTheme.DarkBlue.xaml"));
+    Noesis::Uri("../Engine/MyXAML/NoesisTheme.DarkBlue.xaml"));
 
     Noesis::Ptr<Noesis::FrameworkElement> xaml = Noesis::GUI::LoadXaml<Noesis::FrameworkElement>(
-        Noesis::Uri("MyXAML/MainPage.xaml"));
+        Noesis::Uri("../Engine/MyXAML/MainPage.xaml"));
 
     xaml->GetResources()->GetMergedDictionaries()->Add(theme.GetPtr());
     
@@ -102,9 +107,9 @@ void NoesisUILayer::NoesisInit()
     InputEventSystem::RegisterMouseDownCallback([this](float x, float y) { View->MouseButtonDown(x,y, Noesis::MouseButton_Left); });
     InputEventSystem::RegisterMouseUpCallback([this](float x, float y) { View->MouseButtonUp(x,y, Noesis::MouseButton_Left); });
     
-    Renderer::EventOnStartOfFrame().Subscribe([this]() { this->NoesisRenderOffscreen(); });
-    Renderer::EventOnEndOfFrame().Subscribe([this]() { this->NoesisRenderOnscreen(); });
-    Renderer::EventOnResize().Subscribe([this](uint32_t width, uint32_t height) { this->OnResize(width, height); });
+    StartOfFrameHandle = Renderer::EventOnStartOfFrame().Subscribe([this]() { this->NoesisRenderOffscreen(); });
+    EndOfFrameHandle   = Renderer::EventOnEndOfFrame().Subscribe([this]() { this->NoesisRenderOnscreen(); });
+    ResizeHandle       = Renderer::EventOnResize().Subscribe([this](uint32_t width, uint32_t height) { this->OnResize(width, height); });
 }
 
 void NoesisUILayer::NoesisUpdate(float deltaTime)
@@ -162,9 +167,15 @@ void NoesisUILayer::NoesisRenderOnscreen()
 
 void NoesisUILayer::NoesisShutdown()
 {
+    Renderer::EventOnStartOfFrame().Unsubscribe(StartOfFrameHandle);
+    Renderer::EventOnEndOfFrame().Unsubscribe(EndOfFrameHandle);
+    Renderer::EventOnResize().Unsubscribe(ResizeHandle);
+    StartOfFrameHandle = EndOfFrameHandle = ResizeHandle = (size_t)-1;
+
     View->GetRenderer()->Shutdown();
     View.Reset();
     RenderDevice.Reset();
+    NoesFence.Reset();
 }
 
 void NoesisUILayer::OnResize(uint32_t width, uint32_t height)

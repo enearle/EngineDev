@@ -89,7 +89,7 @@ class InputEventSystem
 public:
 
     static void RegisterCommand(InputMode inputMode, const std::string& keyCombination, KeyAction action, CommandCallback callback);
-    static void PollInput(HWND& hwnd, double deltaTime);
+    static void PollInput(HWND hwnd, double deltaTime);
     static void ChangeInputMode(InputMode inputMode) { sInputMode = inputMode; }
     static void ProcessCommands(double deltaTime) { while (!sCommandQueue.isEmpty()) sCommandQueue.pop()(deltaTime); }
     static void ClearCommands() { sCommandQueue.clear(); }

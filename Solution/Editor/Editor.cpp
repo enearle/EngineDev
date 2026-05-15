@@ -24,7 +24,9 @@ static UINT  gImGuiSrvNextSlot  = 0;
 static constexpr UINT IMGUI_SRV_HEAP_SIZE = 64;
 
 // ---- Editor state ----
-static bool gIsPlaying = false;
+static bool gIsPlaying      = false;
+static bool gShouldStart    = false;
+static bool gShouldStop     = false;
 
 // ---- ImGui Win32 subclass: intercepts messages for ImGui input ----
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND, UINT, WPARAM, LPARAM);
@@ -124,8 +126,8 @@ int main()
             ImGui::BeginDisabled(gIsPlaying);
             if (ImGui::Button(" Play "))
             {
-                GameInit();
-                gIsPlaying = true;
+                gIsPlaying   = true;
+                gShouldStart = true;
             }
             ImGui::EndDisabled();
 
@@ -134,8 +136,8 @@ int main()
             ImGui::BeginDisabled(!gIsPlaying);
             if (ImGui::Button(" Stop "))
             {
-                gIsPlaying = false;
-                GameShutdown();  // calls Renderer::ResetPipelines() internally
+                gIsPlaying  = false;
+                gShouldStop = true;
             }
             ImGui::EndDisabled();
 
@@ -172,6 +174,8 @@ int main()
     // Main loop
     while (!window->PeekMessages())
     {
+        if (gShouldStart) { GameInit();     gShouldStart = false; }
+        if (gShouldStop)  { GameShutdown(); gShouldStop  = false; }
         if (gIsPlaying)
             GameRunFrame(0.0f);
         Renderer::DrawFrame();

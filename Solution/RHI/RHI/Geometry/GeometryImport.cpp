@@ -187,10 +187,11 @@ Mesh GeometryImport::LoadSkinnedMesh(aiMesh* mesh, const XMMATRIX& transform)
     
     return Mesh(&vertices, &indices, mesh->mMaterialIndex, boneOffsets, boneTransforms);
 }
+
 RootNode GeometryImport::CreateMeshGroup(std::string filePath, const std::string& name, const XMMATRIX& transform, bool allowSkinned)
 {
     Assimp::Importer importer;
-    const aiScene* scene = importer.ReadFile("Meshes/" + filePath, 
+    const aiScene* scene = importer.ReadFile("../Engine/Meshes/" + filePath, 
         aiProcess_Triangulate | aiProcess_JoinIdenticalVertices | 
         aiProcess_CalcTangentSpace | aiProcess_GenSmoothNormals | aiProcess_ConvertToLeftHanded);
     if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode)

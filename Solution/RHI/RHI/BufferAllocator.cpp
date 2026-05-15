@@ -886,7 +886,7 @@ uint64_t DirectX12BufferAllocator::CreateBuffer(BufferDesc bufferDesc)
     {
      // Create UPLOAD heap for CPU-writable buffers (dynamic uniforms)
      CD3DX12_HEAP_PROPERTIES uploadHeapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
-     CD3DX12_RESOURCE_DESC bufferDescDX = CD3DX12_RESOURCE_DESC::Buffer(bufferDesc.Size);
+     CD3DX12_RESOURCE_DESC bufferDescDX = CD3DX12_RESOURCE_DESC::Buffer((bufferDesc.Size + 255) & ~255);
      
      device->CreateCommittedResource(
          &uploadHeapProperties,

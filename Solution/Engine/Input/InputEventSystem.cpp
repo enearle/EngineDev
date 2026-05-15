@@ -63,7 +63,7 @@ void InputEventSystem::RegisterCommand(InputMode inputMode, const std::string& k
     }
 }
 
-void InputEventSystem::PollInput(HWND& hwnd, double deltaTime)
+void InputEventSystem::PollInput(HWND hwnd, double deltaTime)
 {
     static bool wasPressed = false;
     bool isPressed = GetAsyncKeyState(VK_LBUTTON) & 0x8000;

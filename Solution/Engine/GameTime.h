@@ -1,7 +1,7 @@
 #pragma once
 
 
-class Time
+class GameTime
 {
     static double DeltaTime;
     static double RunningTime;

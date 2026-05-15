@@ -2,10 +2,17 @@
 #include <chrono>
 
 static std::chrono::time_point<std::chrono::steady_clock> StartTime, LastFrameTime, CurrentTime;
-double Time::DeltaTime;
-double Time::RunningTime;
+double GameTime::DeltaTime;
+double GameTime::RunningTime;
 
-void Time::UpdateTime()
+void GameTime::Init()
+{
+    StartTime = std::chrono::high_resolution_clock::now();
+    LastFrameTime = StartTime;
+    CurrentTime = StartTime;
+}
+
+void GameTime::UpdateTime()
 {
     LastFrameTime = CurrentTime;
     CurrentTime = std::chrono::high_resolution_clock::now();

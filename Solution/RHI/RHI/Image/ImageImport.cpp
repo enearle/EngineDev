@@ -34,7 +34,7 @@ ImageData* ImageImport::LoadImage_8Bit(const std::string& imagePath, bool forceN
     int width, height, channels;
     uint8_t bytesPerChannel = 1;
 
-    std::string path = imagePath + ".png";
+    std::string path = "../Engine/" + imagePath + ".png";
     
     result->Pixels = stbi_load(path.c_str(), &width, &height, &channels, 0);
     
@@ -71,7 +71,7 @@ ImageData* ImageImport::LoadImage_16Bit(const std::string& imagePath, bool force
     int width, height, channels;
     uint8_t bytesPerChannel = 2;
 
-    std::string path = imagePath + ".png";
+    std::string path = "../Engine/" + imagePath + ".png";
     
     result->Pixels = stbi_load_16(path.c_str(), &width, &height, &channels, 0);
     
@@ -123,7 +123,7 @@ ImageData* ImageImport::LoadImageSideBySide(const std::vector<std::string>& file
     for (size_t i = 0; i < fileNames.size(); ++i)
     {
         int width = 0, height = 0, channels = 0;
-        std::string path = fileNames[i] + ".png";
+        std::string path = "../Engine/" + fileNames[i] + ".png";
 
         loadedFiles[i] = stbi_load(path.c_str(), &width, &height, &channels, 0);
 

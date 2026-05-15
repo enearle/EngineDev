@@ -299,6 +299,7 @@ void Renderer::ResetPipelines()
 
 void Renderer::CreatePipelines(std::vector<RHIStructures::PipelineDesc> pipelineDescs, std::vector<std::vector<PipelineDescriptorData>> pipelineDescriptors)
 {
+    IsInitialized = false;
     std::vector<class Pipeline*> pipelines;
     
     // Build registry of pipeline outputs by pipeline ID
