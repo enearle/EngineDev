@@ -36,7 +36,9 @@ public:
     
     virtual void StartNoesisContext(uint32_t width, uint32_t height) = 0;
     virtual void EndNoesisContext() = 0;
-    
+
+    virtual void OverrideViewport(uint32_t x, uint32_t y, uint32_t w, uint32_t h) = 0;
+
     virtual void ResetWindow() = 0;
 };
 
@@ -71,6 +73,8 @@ public:
 
     void StartNoesisContext(uint32_t width, uint32_t height) override;
     void EndNoesisContext() override;
+
+    void OverrideViewport(uint32_t x, uint32_t y, uint32_t w, uint32_t h) override;
 
     void ResetWindow() override;
 
@@ -110,6 +114,8 @@ public:
 
     void StartNoesisContext(uint32_t width, uint32_t height) override;
     void EndNoesisContext() override;
+
+    void OverrideViewport(uint32_t x, uint32_t y, uint32_t w, uint32_t h) override;
 
     void ResetWindow() override;
 

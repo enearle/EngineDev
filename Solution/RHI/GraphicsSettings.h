@@ -1,4 +1,5 @@
 ﻿#pragma once
+#include "RHI_API_Macro.h"
 
 enum API
 {
@@ -8,7 +9,14 @@ enum API
 
 inline struct GraphicsSettings
 {
-    API APIToUse = DirectX12;
+    API APIToUse = Vulkan;
     bool MSAA = false;
     bool HDR = false;
-} GRAPHICS_SETTINGS;
+    
+    void SetEditorMode(bool isEditor)
+    {
+        APIToUse = isEditor ? DirectX12 : Vulkan;
+    }
+};
+
+extern RHI_API GraphicsSettings GRAPHICS_SETTINGS;

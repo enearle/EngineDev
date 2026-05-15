@@ -1,9 +1,11 @@
 #define WIN32_LEAN_AND_MEAN
+#define IN_EDITOR
 #include <windows.h>
 #include <commctrl.h>
 #include <wrl/client.h>
 #include <d3d12.h>
 
+#include "GraphicsSettings.h"
 #include "imgui.h"
 #include "backends/imgui_impl_win32.h"
 #include "backends/imgui_impl_dx12.h"
@@ -41,6 +43,8 @@ static LRESULT CALLBACK EditorSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPARA
 // ---- Entry point ----
 int main()
 {
+    GRAPHICS_SETTINGS.SetEditorMode(true);
+    
     // The Engine's Window creates the Win32 window and handles resize/input routing
     Window* window = new Window(L"Engine Editor", Win32, 1600, 900);
     Renderer::Start(window);
@@ -158,6 +162,19 @@ int main()
         ImGui::Spacing();
         ImGui::TextUnformatted("Properties");
         ImGui::Separator();
+        ImGui::EndChild();
+
+        ImGui::SameLine();
+
+        // Game viewport panel — record its screen rect so the renderer can restrict the final pass
+        ImGui::BeginChild("##GameViewport", ImVec2(totalW - sideW, totalH), false, ImGuiWindowFlags_NoScrollbar);
+        {
+            ImVec2 vpPos  = ImGui::GetWindowPos();
+            ImVec2 vpSize = ImGui::GetWindowSize();
+            Renderer::SetGameViewport(
+                static_cast<uint32_t>(vpPos.x),  static_cast<uint32_t>(vpPos.y),
+                static_cast<uint32_t>(vpSize.x), static_cast<uint32_t>(vpSize.y));
+        }
         ImGui::EndChild();
 
         ImGui::End();

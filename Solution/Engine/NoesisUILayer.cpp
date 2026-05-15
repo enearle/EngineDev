@@ -66,14 +66,17 @@ void NoesisUILayer::NoesisInit()
     }
     else if (ForwardInterface::GetCurrentAPI() == DirectX12)
     {
-        ForwardInterface::GetD3D12Device()->CreateFence(0, D3D12_FENCE_FLAG_NONE,
-            IID_PPV_ARGS(&NoesFence));
+        {
+            ID3D12Fence* fence = nullptr;
+            ForwardInterface::GetD3D12Device()->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence));
+            NoesFence = fence;
+        }
         frameCounter   = 0;
         accumulatedTime = 0.0;
 
         RenderDevice = NoesisApp::D3D12Factory::CreateDevice(
             ForwardInterface::GetD3D12Device(),
-            NoesFence.Get(),
+            static_cast<ID3D12Fence*>(NoesFence),
             ForwardInterface::GetD3D12RenderTargetFormat(),
             DXGI_FORMAT_D24_UNORM_S8_UINT,
             ForwardInterface::GetD3D12SampleDesc(),
@@ -115,6 +118,10 @@ void NoesisUILayer::NoesisInit()
 void NoesisUILayer::NoesisUpdate(float deltaTime)
 {
     accumulatedTime += deltaTime;
+    uint32_t gvX, gvY, gvW, gvH;
+    Renderer::GetGameViewport(gvX, gvY, gvW, gvH);
+    if (gvW > 0 && gvH > 0)
+        View->SetSize(gvW, gvH);
     View->Update(accumulatedTime);
 }
 
@@ -157,7 +164,28 @@ void NoesisUILayer::NoesisRenderOnscreen()
     }
     else if (ForwardInterface::GetCurrentAPI() == DirectX12)
     {
-        NoesisApp::D3D12Factory::SetCommandList(RenderDevice.GetPtr(), 
+        ID3D12GraphicsCommandList* cmdList = ForwardInterface::GetCommandList();
+        uint32_t w = Renderer::GetWindow()->GetWidth();
+        uint32_t h = Renderer::GetWindow()->GetHeight();
+
+        uint32_t gvX, gvY, gvW, gvH;
+        Renderer::GetGameViewport(gvX, gvY, gvW, gvH);
+        D3D12_VIEWPORT vp;
+        D3D12_RECT sc;
+        if (gvW > 0 && gvH > 0)
+        {
+            vp = { (FLOAT)gvX, (FLOAT)gvY, (FLOAT)gvW, (FLOAT)gvH, 0.0f, 1.0f };
+            sc = { (LONG)gvX, (LONG)gvY, (LONG)(gvX + gvW), (LONG)(gvY + gvH) };
+        }
+        else
+        {
+            vp = { 0.0f, 0.0f, (FLOAT)w, (FLOAT)h, 0.0f, 1.0f };
+            sc = { 0, 0, (LONG)w, (LONG)h };
+        }
+        cmdList->RSSetViewports(1, &vp);
+        cmdList->RSSetScissorRects(1, &sc);
+
+        NoesisApp::D3D12Factory::SetCommandList(RenderDevice.GetPtr(),
             ForwardInterface::GetCommandList(),
             frameCounter);
         View->GetRenderer()->Render();
@@ -175,14 +203,16 @@ void NoesisUILayer::NoesisShutdown()
     View->GetRenderer()->Shutdown();
     View.Reset();
     RenderDevice.Reset();
-    NoesFence.Reset();
+    if (NoesFence) { static_cast<ID3D12Fence*>(NoesFence)->Release(); NoesFence = nullptr; }
 }
 
 void NoesisUILayer::OnResize(uint32_t width, uint32_t height)
 {
     if (View)
     {
-        View->SetSize(width, height);
+        uint32_t gvX, gvY, gvW, gvH;
+        Renderer::GetGameViewport(gvX, gvY, gvW, gvH);
+        View->SetSize(gvW > 0 ? gvW : width, gvH > 0 ? gvH : height);
     }
 }
 

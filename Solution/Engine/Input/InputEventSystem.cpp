@@ -4,6 +4,7 @@
 #include <unordered_set>
 #include <Solution/RHI/Windows/WindowsHeaders.h>
 #include <string>
+#include "Solution/RHI/Renderer.h"
 std::unordered_map<std::string, KeyState> InputEventSystem::sRegisteredGameplayInput;
 std::unordered_map<std::string, KeyState> InputEventSystem::sRegisteredMenuInput;
 std::vector<MouseDeltaCallback> InputEventSystem::sMouseCallbacks;
@@ -72,11 +73,23 @@ void InputEventSystem::PollInput(HWND hwnd, double deltaTime)
     ScreenToClient(hwnd, &mousePos);
     int x = mousePos.x;
     int y = mousePos.y;
-    
+
+    // Translate to game-pane-relative coords and gate callbacks when a viewport is active
+    uint32_t gvX = 0, gvY = 0, gvW = 0, gvH = 0;
+    Renderer::GetGameViewport(gvX, gvY, gvW, gvH);
+    bool mouseInViewport = true;
+    if (gvW > 0 && gvH > 0)
+    {
+        mouseInViewport = (x >= (int)gvX && x < (int)(gvX + gvW) &&
+                           y >= (int)gvY && y < (int)(gvY + gvH));
+        x -= (int)gvX;
+        y -= (int)gvY;
+    }
+
     switch (sInputMode)
     {
     case InputMode::Gameplay:
-        for (auto& [keyString, keyState] : sRegisteredGameplayInput) 
+        for (auto& [keyString, keyState] : sRegisteredGameplayInput)
         {
             bool combinationActive = true;
             for (char key : keyString)
@@ -84,26 +97,25 @@ void InputEventSystem::PollInput(HWND hwnd, double deltaTime)
                     combinationActive = false;
                     break;
                 }
-            
+
             keyState.Update(combinationActive,sCommandQueue);
         }
-        
-        for (auto callback : sMouseCallbacks)
-            callback(x, y);
-        
-        if (wasPressed && !isPressed)
+
+        if (mouseInViewport)
         {
-            for (auto callback : sMouseUpCallbacks)
+            for (auto callback : sMouseCallbacks)
                 callback(x, y);
-        }
-        else if (isPressed && !wasPressed)
-        {
-            for (auto callback : sMouseDownCallbacks)
-                callback(x, y);
+
+            if (wasPressed && !isPressed)
+                for (auto callback : sMouseUpCallbacks)
+                    callback(x, y);
+            else if (isPressed && !wasPressed)
+                for (auto callback : sMouseDownCallbacks)
+                    callback(x, y);
         }
 
         wasPressed = isPressed;
-        
+
         break;
     case InputMode::UI:
         for (auto& [keyString, keyState] : sRegisteredMenuInput) 

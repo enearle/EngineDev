@@ -1,6 +1,4 @@
 ﻿#pragma once
-#include <wrl/client.h>
-#include <d3d12.h>
 #include <NsApp/Launcher.h>
 #include <NsGui/FrameworkElement.h>
 #include <NsGui/IRenderer.h>
@@ -27,7 +25,7 @@ private:
     double accumulatedTime = 0.0;
     uint64_t frameCounter = 0;
 
-    Microsoft::WRL::ComPtr<ID3D12Fence> NoesFence;
+    void* NoesFence = nullptr;
     size_t StartOfFrameHandle = (size_t)-1;
     size_t EndOfFrameHandle   = (size_t)-1;
     size_t ResizeHandle       = (size_t)-1;

@@ -21,6 +21,18 @@ Event<> Renderer::OnStartOfFrame;
 Event<> Renderer::OnEndOfFrame;
 Event<uint32_t, uint32_t> Renderer::OnResize;
 
+static uint32_t sGameViewX = 0, sGameViewY = 0, sGameViewW = 0, sGameViewH = 0;
+
+void Renderer::SetGameViewport(uint32_t x, uint32_t y, uint32_t w, uint32_t h)
+{
+    sGameViewX = x; sGameViewY = y; sGameViewW = w; sGameViewH = h;
+}
+
+void Renderer::GetGameViewport(uint32_t& x, uint32_t& y, uint32_t& w, uint32_t& h)
+{
+    x = sGameViewX; y = sGameViewY; w = sGameViewW; h = sGameViewH;
+}
+
 void Renderer::Start(Window* mainWindow)
 {
     MainWindow = mainWindow;
@@ -189,6 +201,8 @@ void Renderer::ExecutePipelineContext(uint32_t contextIndex, bool finalContext)
     if (context.IsFSQuad)
     {
         Executor->BeginPipeline(mainPipeline, attachmentViews, depthViewToUse, MainWindow->GetWidth(), MainWindow->GetHeight(), false, true);
+        if (context.IsPresented && sGameViewW > 0)
+            Executor->OverrideViewport(sGameViewX, sGameViewY, sGameViewW, sGameViewH);
         Executor->BindPipelineDescriptorSets(perFrameDescriptors);
         Executor->DrawFSQuad();
         Executor->EndPipeline(true);

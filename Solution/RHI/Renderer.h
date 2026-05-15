@@ -37,6 +37,9 @@ public:
     static Event<>& EventOnEndOfFrame() { return OnEndOfFrame; }
     static Event<uint32_t, uint32_t>& EventOnResize() { return OnResize; }
     
+    static void SetGameViewport(uint32_t x, uint32_t y, uint32_t w, uint32_t h);
+    static void GetGameViewport(uint32_t& x, uint32_t& y, uint32_t& w, uint32_t& h);
+
     static void WaitForGpu();
     static void ResetPipelines();
     static void CreatePipelines(std::vector<RHIStructures::PipelineDesc> pipelineDescs,

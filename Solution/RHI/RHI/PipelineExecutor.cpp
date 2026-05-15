@@ -378,6 +378,25 @@ void D3DPipelineExecutor::EndNoesisContext()
 {
 }
 
+void D3DPipelineExecutor::OverrideViewport(uint32_t x, uint32_t y, uint32_t w, uint32_t h)
+{
+    ID3D12GraphicsCommandList* cmdList = GetCommandList();
+    D3D12_VIEWPORT vp{};
+    vp.TopLeftX = static_cast<FLOAT>(x);
+    vp.TopLeftY = static_cast<FLOAT>(y);
+    vp.Width    = static_cast<FLOAT>(w);
+    vp.Height   = static_cast<FLOAT>(h);
+    vp.MinDepth = 0.0f;
+    vp.MaxDepth = 1.0f;
+    D3D12_RECT sc{};
+    sc.left   = static_cast<LONG>(x);
+    sc.top    = static_cast<LONG>(y);
+    sc.right  = static_cast<LONG>(x + w);
+    sc.bottom = static_cast<LONG>(y + h);
+    cmdList->RSSetViewports(1, &vp);
+    cmdList->RSSetScissorRects(1, &sc);
+}
+
 void D3DPipelineExecutor::ResetWindow()
 {
     D3DCore::Instance().ResetWindow();
@@ -751,6 +770,10 @@ void VulkanPipelineExecutor::EndNoesisContext()
 {
     VkCommandBuffer cmdBuffer = GetCommandBuffer();
     vkCmdEndRenderPass(cmdBuffer);
+}
+
+void VulkanPipelineExecutor::OverrideViewport(uint32_t, uint32_t, uint32_t, uint32_t)
+{
 }
 
 void VulkanPipelineExecutor::ResetWindow()

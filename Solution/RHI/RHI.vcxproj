@@ -166,6 +166,7 @@
     <Content Include="DirectX12\Shaders\vs_vsm_skinned.hlsl" />
     <Content Include="DirectX12\Shaders\vs_vsm.hlsl" />
     <ClCompile Include="ForwardInterface.cpp" />
+    <ClCompile Include="GraphicsSettings.cpp" />
     <ClCompile Include="Input\InputState.cpp" />
     <ClCompile Include="main.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
