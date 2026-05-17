@@ -1,6 +1,6 @@
 ﻿#pragma once
 #include <DirectXMath.h>
-
+#include "ENGINE_API_Macro.h"
 #include "Renderer.h"
 #include "Uploader.h"
 #include "RHI/RHIConstants.h"
@@ -12,7 +12,7 @@ struct VPData
     uint8_t _padding[176];
 };
 
-class Camera
+class ENGINE_API Camera
 {
     float FOV;
     float AspectRatio;

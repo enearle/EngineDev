@@ -1,7 +1,6 @@
 ﻿#pragma once
 #include "Pipeline.h"
 #include "../RHI/RHIStructures.h"
-#include "Geometry/Mesh.h"
 
 namespace DirectX { struct XMFLOAT4; }
 class Window;

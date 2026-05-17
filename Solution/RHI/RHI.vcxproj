@@ -89,7 +89,7 @@
       <PreprocessorDefinitions>RHI_EXPORTS;_DEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp23</LanguageStandard>
-      <AdditionalIncludeDirectories>$(SolutionDir)..\External\assimp\include;$(VULKAN_SDK)\Include;</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(VULKAN_SDK)\Include;</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -107,7 +107,7 @@
       <PreprocessorDefinitions>RHI_EXPORTS;_DEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp23</LanguageStandard>
-      <AdditionalIncludeDirectories>$(SolutionDir)..\External\assimp\include;$(VULKAN_SDK)\Include;</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(VULKAN_SDK)\Include;</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -125,13 +125,13 @@
       <PreprocessorDefinitions>RHI_EXPORTS;_DEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp23</LanguageStandard>
-      <AdditionalIncludeDirectories>$(SolutionDir)..\External\assimp\include;$(VULKAN_SDK)\Include;</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(VULKAN_SDK)\Include;</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalLibraryDirectories>$(VULKAN_SDK)\Lib;%(AdditionalLibraryDirectories);$(SolutionDir)..\External\assimp\lib;</AdditionalLibraryDirectories>
-      <AdditionalDependencies>vulkan-1.lib;%(AdditionalDependencies);$(SolutionDir)..\External\assimp\lib\Release\assimp-vc143-mt.lib</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(VULKAN_SDK)\Lib;%(AdditionalLibraryDirectories);</AdditionalLibraryDirectories>
+      <AdditionalDependencies>vulkan-1.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -143,7 +143,7 @@
       <PreprocessorDefinitions>RHI_EXPORTS;_DEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp23</LanguageStandard>
-      <AdditionalIncludeDirectories>$(SolutionDir)..\External\assimp\include;$(VULKAN_SDK)\Include;</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(VULKAN_SDK)\Include;</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -179,8 +179,6 @@
     </ClCompile>
     <ClCompile Include="Renderer.cpp" />
     <ClCompile Include="RHI\BufferAllocator.cpp" />
-    <ClCompile Include="RHI\Geometry\GeometryImport.cpp" />
-    <ClCompile Include="RHI\Geometry\Mesh.cpp" />
     <ClCompile Include="RHI\Image\ImageImport.cpp" />
     <ClCompile Include="RHI\Material.cpp" />
     <ClCompile Include="RHI\Pipeline.cpp" />
@@ -209,8 +207,6 @@
     <ClInclude Include="MetaData.h" />
     <ClInclude Include="Renderer.h" />
     <ClInclude Include="RHI\BufferAllocator.h" />
-    <ClInclude Include="RHI\Geometry\GeometryImport.h" />
-    <ClInclude Include="RHI\Geometry\Mesh.h" />
     <ClInclude Include="RHI\Image\ImageImport.h" />
     <ClInclude Include="RHI\Image\stb_image.h" />
     <ClInclude Include="RHI\Material.h" />
@@ -239,7 +235,5 @@
       <FxCompile Include="@(ClCompile)" Condition="'%(ClCompile.Extension)' == '.hlsl'" />
     </ItemGroup>
   </Target>
-  <Target Name="CopyAssimpDLL" AfterTargets="Build">
-    <Copy SourceFiles="$(SolutionDir)..\External\assimp\bin\assimp-vc143-mt.dll" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
-  </Target>
+
 </Project>

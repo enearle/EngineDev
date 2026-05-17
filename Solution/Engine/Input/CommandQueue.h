@@ -1,9 +1,9 @@
 ﻿#pragma once
 #include <functional>
-
+#include "../ENGINE_API_Macro.h"
 using CommandCallback = std::function<void(double)>;
 
-class CommandQueue {
+class ENGINE_API CommandQueue {
     struct Impl;
     Impl* mImpl;
 

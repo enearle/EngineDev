@@ -1,9 +1,9 @@
 ﻿#pragma once
 #include <DirectXMath.h>
 #include "RHI/RHIStructures.h"
+#include "ENGINE_API_Macro.h"
 
-
-class Light
+class ENGINE_API Light
 {
     bool CastsShadows = false;
     RHIStructures::LightData Data = {};

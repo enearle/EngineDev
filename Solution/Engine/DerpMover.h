@@ -1,7 +1,8 @@
 ﻿#pragma once
+#include "ENGINE_API_Macro.h"
 
 class TempGameObject;
-class DerpMover
+class ENGINE_API DerpMover
 {
     TempGameObject* Derp;
     bool DanceForward = true;

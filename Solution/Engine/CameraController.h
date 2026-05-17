@@ -1,9 +1,9 @@
 ﻿#pragma once
 #include <DirectXMath.h>
-
+#include "ENGINE_API_Macro.h"
 class Camera;
 
-class CameraController
+class ENGINE_API CameraController
 {
     DirectX::XMFLOAT3 DirectionVector;
     Camera* TheCamera;

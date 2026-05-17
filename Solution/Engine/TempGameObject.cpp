@@ -1,16 +1,16 @@
 ﻿#include "TempGameObject.h"
 #include <iostream>
 #include "RHI/Material.h"
-#include "RHI/Geometry/GeometryImport.h"
+#include "Geometry/GeometryImport.h"
 #include "Renderer.h"
 #include "Uploader.h"
 
-void CollectBoneMatrices(const SceneNode& node, std::vector<DirectX::XMMATRIX>& outOffsetMatrices,
+void CollectBoneMatrices(const MeshNode* node, std::vector<DirectX::XMMATRIX>& outOffsetMatrices,
                          std::vector<DirectX::XMMATRIX>& outTransformMatrices)
 {
-    for (size_t i = 0; i < node.GetMeshCount(); i++)
+    for (size_t i = 0; i < node->GetUVCount(); i++)
     {
-        const Mesh* mesh = node.GetMesh(i);
+        const Mesh* mesh = node->GetMesh(i);
         if (mesh && mesh->IsSkinned())
         {
             const std::vector<DirectX::XMMATRIX>& boneOffsets = mesh->GetBoneOffsets();
@@ -29,10 +29,11 @@ void CollectBoneMatrices(const SceneNode& node, std::vector<DirectX::XMMATRIX>& 
         }
     }
     
-    const auto& children = node.GetChildren();
-    for (const auto& child : children)
+    for (SceneNode* child : node->GetChildren())
     {
-        CollectBoneMatrices(child, outOffsetMatrices, outTransformMatrices);
+        MeshNode* meshNode = static_cast<MeshNode*>(child);
+        if (meshNode)
+            CollectBoneMatrices(meshNode, outOffsetMatrices, outTransformMatrices);
     }
 }
 
@@ -48,7 +49,7 @@ TempGameObject::TempGameObject(std::vector<std::string> materials, std::string f
     
     if (useSkinning)
     {
-        CollectBoneMatrices(MeshRoot.GetSceneNode(), BoneOffsets, BoneTransforms);
+        CollectBoneMatrices(MeshRoot, BoneOffsets, BoneTransforms);
         
         std::vector<DirectX::XMFLOAT4X4> boneMatrices(MAX_BONES);
         for (uint32_t i = 0; i < MAX_BONES; i++)
@@ -61,14 +62,14 @@ TempGameObject::TempGameObject(std::vector<std::string> materials, std::string f
         BoneDescriptorSet = Uploader::AllocateDescriptor(BoneBufferID);
     }
     
-    AddSceneNode(MeshRoot.GetSceneNode());
+    AddMeshNode(MeshRoot);
 }
 
-void TempGameObject::AddSceneNode(const SceneNode& node)
+void TempGameObject::AddMeshNode(MeshNode* node)
 {
-    for (size_t i = 0; i < node.GetMeshCount(); i++)
+    for (size_t i = 0; i < node->GetUVCount(); i++)
     {
-        const Mesh* mesh = node.GetMesh(i);
+        const Mesh* mesh = node->GetMesh(i);
         
         uint32_t materialIndex = mesh->GetLocalMaterialIndex();
         
@@ -77,7 +78,7 @@ void TempGameObject::AddSceneNode(const SceneNode& node)
         if (mesh->IsSkinned())
             descriptorSets.push_back(BoneDescriptorSet);
 
-        DirectX::XMMATRIX modelMatrix = node.GetModelMatrix();
+        DirectX::XMMATRIX modelMatrix = node->GetLocalMatrix();
         DirectX::XMFLOAT4X4 model;
         DirectX::XMStoreFloat4x4(&model, modelMatrix);
 
@@ -111,9 +112,10 @@ void TempGameObject::AddSceneNode(const SceneNode& node)
         Renderer::AddIndexedDrawToContext(1, indexedDraw);
     }
 
-    std::vector<SceneNode> children = node.GetChildren();
-    for (int i = 0; i < children.size(); ++i)
+    for (SceneNode* child : node->GetChildren())
     {
-        AddSceneNode(children[i]);
+        MeshNode* meshNode = static_cast<MeshNode*>(child);
+        if (meshNode)
+            AddMeshNode(meshNode);
     }
 }

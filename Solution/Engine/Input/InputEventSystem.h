@@ -2,7 +2,7 @@
 #include "CommandQueue.h"
 #include <unordered_map>
 #include <string>
-
+#include "../ENGINE_API_Macro.h"
 struct HWND__; 
 typedef struct HWND__ *HWND;
 
@@ -18,7 +18,7 @@ enum KeyAction
     Held
 };
 
-enum class InputMode { Gameplay, UI };
+enum class ENGINE_API InputMode { Gameplay, UI };
 
 using MouseDeltaCallback = std::function<void (float, float)>;
 using MouseClickCallback = std::function<void (float, float)>;
@@ -68,7 +68,7 @@ public:
     }
 };
 
-class InputEventSystem 
+class ENGINE_API InputEventSystem 
 {
     static std::unordered_map<std::string, KeyState> sRegisteredGameplayInput;
     static std::unordered_map<std::string, KeyState> sRegisteredMenuInput;

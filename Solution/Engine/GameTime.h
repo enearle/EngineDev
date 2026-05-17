@@ -1,7 +1,7 @@
 #pragma once
+#include "ENGINE_API_Macro.h"
 
-
-class GameTime
+class ENGINE_API GameTime
 {
     static double DeltaTime;
     static double RunningTime;

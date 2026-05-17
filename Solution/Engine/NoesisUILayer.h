@@ -4,8 +4,9 @@
 #include <NsGui/IRenderer.h>
 #include <NsGui/IView.h>
 #include <NsRender/RenderDevice.h>
+#include "ENGINE_API_Macro.h"
 
-class NoesisUILayer : public NoesisApp::Launcher
+class ENGINE_API NoesisUILayer : public NoesisApp::Launcher
 {
 public:
     static NoesisUILayer& Instance();

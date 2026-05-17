@@ -2,7 +2,6 @@
 #include "RHI/RHIStructures.h"
 #include "RHI/RHIConstants.h"
 
-
 namespace EngineConstants
 {    
     using namespace RHIStructures;

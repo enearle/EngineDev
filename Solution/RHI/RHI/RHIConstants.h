@@ -149,4 +149,33 @@ namespace RHIConstants
         .InitialData = nullptr
     };
     
+    inline constexpr BufferUsage DefaultVertexBufferUsage
+    {
+        .TransferSource = false,
+        .TransferDestination = true,
+        .Access = MemoryAccess(8),
+        .Type = BufferType::Vertex
+    };
+    
+    inline constexpr BufferDesc DefaultVertexBufferDesc
+    {
+        .Size = 0,
+        .Usage = DefaultVertexBufferUsage,
+        .InitialData = nullptr
+    };
+    
+    inline constexpr BufferUsage DefaultIndexBufferUsage
+    {
+        .TransferSource = false,
+        .TransferDestination = true,
+        .Access = MemoryAccess(8),
+        .Type = BufferType::Index
+    };
+    
+    inline constexpr BufferDesc DefaultIndexBufferDesc
+    {
+        .Size = 0,
+        .Usage = DefaultIndexBufferUsage,
+        .InitialData = nullptr
+    };
 };

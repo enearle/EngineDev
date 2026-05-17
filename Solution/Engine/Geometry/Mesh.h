@@ -5,16 +5,16 @@
 #include <DirectXMath.h>
 #include <string>
 #include <vector>
-#include "../RHIStructures.h"
-#include "../../../Solution/RHI/RHI_API_Macro.h"
+#include "../RHI/RHI/RHIStructures.h"
+#include "../ENGINE_API_Macro.h"
+#include "../Scene/SceneNode.h"
 
 struct aiScene;
 struct DirectX::XMMATRIX;
 
-class RHI_API Mesh
+class ENGINE_API Mesh
 {
 public:
-    
     Mesh();
     Mesh(std::vector<RHIStructures::Vertex>* vertices, std::vector<uint32_t>* indices, uint32_t LocalMaterialIndex);
     Mesh(std::vector<RHIStructures::SkinnedVertex>* vertices, std::vector<uint32_t>* indices, uint32_t LocalMaterialIndex, 
@@ -48,42 +48,17 @@ private:
     
 };
 
-struct RHI_API SceneNode
+class ENGINE_API MeshNode : public SceneNode
 {
-    SceneNode() = default;
-    SceneNode(std::vector<Mesh>&& meshes, const DirectX::XMMATRIX modelMatrix, const std::string& name, uint32_t numMaterials) : Name(name), Meshes(std::move(meshes)), Model(modelMatrix), NumMaterials(numMaterials) {}
-    ~SceneNode() = default;
-
-    std::string Name;
-    void AddChild(SceneNode child)                      { Children.push_back(std::move(child)); }
+public:
+    MeshNode() = default;
+    MeshNode(std::vector<Mesh>& meshes, const DirectX::XMMATRIX localMatrix, const std::string& name, SceneNode* parent = nullptr);
+    ~MeshNode() = default;
+    
     void AddMesh(Mesh mesh)                             { Meshes.push_back(std::move(mesh)); }
-    std::vector<SceneNode> GetChildren() const          { return Children; }
+    
     std::vector<Mesh> GetMeshes() const                 { return Meshes; }
-    DirectX::XMMATRIX GetModelMatrix() const            { return Model; }
-    void SetModelMatrix(DirectX::XMMATRIX modelMatrix)  { Model = modelMatrix; }
-    size_t GetMeshCount() const                         { return Meshes.size(); }
-    uint32_t GetNumMaterials() const                    { return NumMaterials; }
+    size_t GetUVCount() const                           { return Meshes.size(); }
     const Mesh* GetMesh(uint32_t index) const;
-    
-private:
-    
-    uint32_t NumMaterials;
     std::vector<Mesh> Meshes;
-    std::vector<SceneNode> Children;
-    DirectX::XMMATRIX Model;
-};
-
-struct RHI_API RootNode
-{
-    RootNode() = default;
-    RootNode(SceneNode&& sceneNode, uint32_t numMaterials) : SceneNode(std::move(sceneNode)), NumMaterials(numMaterials) {}
-    ~RootNode() = default;
-    
-    SceneNode& GetSceneNode()                           { return SceneNode; }
-    uint32_t GetNumMaterials() const                    { return NumMaterials; }   
-
-private:
-    
-    SceneNode SceneNode;
-    uint32_t NumMaterials = 0;
 };

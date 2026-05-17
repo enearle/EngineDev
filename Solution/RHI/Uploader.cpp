@@ -19,6 +19,22 @@ Uploader::BufferID Uploader::UploadStatic(size_t dataSize, void* data)
     return BufferAllocator::GetInstance()->CreateBuffer(bufferDesc);
 }
 
+Uploader::BufferID Uploader::UploadVertices(size_t dataSize, void* data)
+{
+    BufferDesc bufferDesc = RHIConstants::DefaultVertexBufferDesc;
+    bufferDesc.Size = dataSize;
+    bufferDesc.InitialData = data;
+    return BufferAllocator::GetInstance()->CreateBuffer(bufferDesc);
+}
+
+Uploader::BufferID Uploader::UploadIndices(size_t dataSize, void* data)
+{
+    BufferDesc bufferDesc = RHIConstants::DefaultIndexBufferDesc;
+    bufferDesc.Size = dataSize;
+    bufferDesc.InitialData = data;
+    return BufferAllocator::GetInstance()->CreateBuffer(bufferDesc);
+}
+
 void Uploader::UpdateDynamic(BufferID bufferID, size_t dataSize, void* data)
 {
     BufferAllocation alloc = BufferAllocator::GetInstance()->GetBufferAllocation(bufferID);

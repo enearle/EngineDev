@@ -1,13 +1,14 @@
 ﻿#pragma once
 #include "EngineConstants.h"
-#include "RHI/Geometry/Mesh.h"
+#include "Geometry/Mesh.h"
+#include "ENGINE_API_Macro.h"
 
-class TempGameObject
+class ENGINE_API TempGameObject
 {
     std::vector<uint64_t> Materials;
     EngineConstants::ModelData ModelData;
     std::vector<EngineConstants::ModelData> ModelDataArray;
-    RootNode MeshRoot;
+    MeshNode* MeshRoot;
     uint64_t GeometryVPDescriptorSet;
     uint64_t LightingVPDescriptorSet;
     uint64_t BoneDescriptorSet = 0;
@@ -22,5 +23,5 @@ public:
     uint64_t GetBoneBufferID() const { return BoneBufferID; }
     std::vector<DirectX::XMMATRIX> GetBoneOffsets() const { return BoneOffsets; }
     std::vector<DirectX::XMMATRIX> GetBoneTransforms() const { return BoneTransforms; }
-    void AddSceneNode(const SceneNode& node);
+    void AddMeshNode(MeshNode* node);
 };

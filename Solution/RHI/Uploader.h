@@ -16,7 +16,9 @@ public:
     
     static BufferID UploadDynamic(size_t dataSize, void* data);
     static BufferID UploadStatic(size_t dataSize, void* data);
-    
+    static BufferID UploadVertices(size_t dataSize, void* data);
+    static BufferID UploadIndices(size_t dataSize, void* data);
+
     static void UpdateDynamic(BufferID bufferID, size_t dataSize, void* data);
     
     static const RHIStructures::BufferAllocation& GetBufferAllocation(BufferID bufferID);
