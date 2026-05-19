@@ -1,5 +1,4 @@
 ﻿#include "VulkanCore.h"
-
 #include <iostream>
 #include <set>
 #include "VulkanResource.h"

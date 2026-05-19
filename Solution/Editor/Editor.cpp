@@ -4,31 +4,30 @@
 #include <commctrl.h>
 #include <wrl/client.h>
 #include <d3d12.h>
-
 #include "GraphicsSettings.h"
 #include "imgui.h"
 #include "backends/imgui_impl_win32.h"
 #include "backends/imgui_impl_dx12.h"
-
 #include "../RHI/Renderer.h"
 #include "Window.h"
 #include "../RHI/DirectX12/D3DCore.h"
 #include "../Game/Game.h"
-
+#include "FileExplorer.h"
+#include "Modals/NewDirectory.h"
 #pragma comment(lib, "comctl32.lib")
 
 using Microsoft::WRL::ComPtr;
 
 // ---- ImGui SRV heap (dedicated to the Editor, separate from engine heaps) ----
-static ComPtr<ID3D12DescriptorHeap> gImGuiSrvHeap;
-static UINT  gImGuiSrvDescSize  = 0;
-static UINT  gImGuiSrvNextSlot  = 0;
+static ComPtr<ID3D12DescriptorHeap> IM_GUI_SRV_HEAP;
+static UINT  IM_GUI_SRV_DESC_SIZE  = 0;
+static UINT  IM_GUI_SRV_NEXT_SLOT  = 0;
 static constexpr UINT IMGUI_SRV_HEAP_SIZE = 64;
 
 // ---- Editor state ----
-static bool gIsPlaying      = false;
-static bool gShouldStart    = false;
-static bool gShouldStop     = false;
+static bool IS_PLAYING      = false;
+static bool SHOULD_START    = false;
+static bool SHOULD_STOP     = false;
 
 // ---- ImGui Win32 subclass: intercepts messages for ImGui input ----
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND, UINT, WPARAM, LPARAM);
@@ -66,17 +65,17 @@ int main()
         desc.Type           = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
         desc.NumDescriptors = IMGUI_SRV_HEAP_SIZE;
         desc.Flags          = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-        D3DCore::Instance().GetDevice()->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&gImGuiSrvHeap));
-        gImGuiSrvDescSize = D3DCore::Instance().GetDevice()->GetDescriptorHandleIncrementSize(
+        D3DCore::Instance().GetDevice()->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&IM_GUI_SRV_HEAP));
+        IM_GUI_SRV_DESC_SIZE = D3DCore::Instance().GetDevice()->GetDescriptorHandleIncrementSize(
             D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
     }
 
     auto srvAllocFn = [](ImGui_ImplDX12_InitInfo*, D3D12_CPU_DESCRIPTOR_HANDLE* cpu,
                          D3D12_GPU_DESCRIPTOR_HANDLE* gpu)
     {
-        UINT slot = gImGuiSrvNextSlot++;
-        cpu->ptr  = gImGuiSrvHeap->GetCPUDescriptorHandleForHeapStart().ptr + (SIZE_T)(slot * gImGuiSrvDescSize);
-        gpu->ptr  = gImGuiSrvHeap->GetGPUDescriptorHandleForHeapStart().ptr + (UINT64)(slot * gImGuiSrvDescSize);
+        UINT slot = IM_GUI_SRV_NEXT_SLOT++;
+        cpu->ptr  = IM_GUI_SRV_HEAP->GetCPUDescriptorHandleForHeapStart().ptr + (SIZE_T)(slot * IM_GUI_SRV_DESC_SIZE);
+        gpu->ptr  = IM_GUI_SRV_HEAP->GetGPUDescriptorHandleForHeapStart().ptr + (UINT64)(slot * IM_GUI_SRV_DESC_SIZE);
     };
     auto srvFreeFn = [](ImGui_ImplDX12_InitInfo*, D3D12_CPU_DESCRIPTOR_HANDLE, D3D12_GPU_DESCRIPTOR_HANDLE) {};
 
@@ -86,7 +85,7 @@ int main()
     dx12Info.NumFramesInFlight   = (int)D3DCore::Instance().GetFramesInFlight();
     dx12Info.RTVFormat           = D3DCore::Instance().GetRenderTargetFormat();
     dx12Info.DSVFormat           = DXGI_FORMAT_UNKNOWN;
-    dx12Info.SrvDescriptorHeap   = gImGuiSrvHeap.Get();
+    dx12Info.SrvDescriptorHeap   = IM_GUI_SRV_HEAP.Get();
     dx12Info.SrvDescriptorAllocFn = srvAllocFn;
     dx12Info.SrvDescriptorFreeFn  = srvFreeFn;
     ImGui_ImplDX12_Init(&dx12Info);
@@ -96,6 +95,14 @@ int main()
     // with the back buffer bound as the render target.
     Renderer::EventOnEndOfFrame().Subscribe([&]()
     {
+        if (!IS_PLAYING)
+        {
+            ID3D12GraphicsCommandList* cmdList = D3DCore::Instance().GetCommandList().Get();
+            D3D12_CPU_DESCRIPTOR_HANDLE rtv = D3DCore::Instance().GetRenderTargetDescriptor();
+            float clearColor[] = { 0.1f, 0.1f, 0.1f, 1.0f };
+            cmdList->ClearRenderTargetView(rtv, clearColor, 0, nullptr);
+        }
+
         ImGui_ImplDX12_NewFrame();
         ImGui_ImplWin32_NewFrame();
         ImGui::NewFrame();
@@ -127,26 +134,26 @@ int main()
             float btnOffset = ImGui::GetContentRegionAvail().x * 0.5f - 60.f;
             ImGui::SetCursorPosX(ImGui::GetCursorPosX() + btnOffset);
 
-            ImGui::BeginDisabled(gIsPlaying);
+            ImGui::BeginDisabled(IS_PLAYING);
             if (ImGui::Button(" Play "))
             {
-                gIsPlaying   = true;
-                gShouldStart = true;
+                IS_PLAYING   = true;
+                SHOULD_START = true;
             }
             ImGui::EndDisabled();
 
             ImGui::SameLine();
 
-            ImGui::BeginDisabled(!gIsPlaying);
+            ImGui::BeginDisabled(!IS_PLAYING);
             if (ImGui::Button(" Stop "))
             {
-                gIsPlaying  = false;
-                gShouldStop = true;
+                IS_PLAYING  = false;
+                SHOULD_STOP = true;
             }
             ImGui::EndDisabled();
 
             ImGui::SameLine();
-            ImGui::TextUnformatted(gIsPlaying ? "Playing" : "Stopped");
+            ImGui::TextUnformatted(IS_PLAYING ? "Playing" : "Stopped");
 
             ImGui::EndMenuBar();
         }
@@ -160,10 +167,10 @@ int main()
         ImGui::TextUnformatted("Scene Hierarchy");
         ImGui::Separator();
         ImGui::Spacing();
-        ImGui::TextUnformatted("Properties");
+        ImGui::TextUnformatted("Files");
         ImGui::Separator();
+        FileExplorer::ShowFileTree("../Game/Assets");
         ImGui::EndChild();
-
         ImGui::SameLine();
 
         // Game viewport panel — record its screen rect so the renderer can restrict the final pass
@@ -176,6 +183,8 @@ int main()
                 static_cast<uint32_t>(vpSize.x), static_cast<uint32_t>(vpSize.y));
         }
         ImGui::EndChild();
+        
+        NewDirectory::GetInstance().Render();
 
         ImGui::End();
 
@@ -183,7 +192,7 @@ int main()
 
         // Bind ImGui's SRV heap and submit draw data to the engine's open command list
         ID3D12GraphicsCommandList* cmdList = D3DCore::Instance().GetCommandList().Get();
-        ID3D12DescriptorHeap* heaps[] = { gImGuiSrvHeap.Get() };
+        ID3D12DescriptorHeap* heaps[] = { IM_GUI_SRV_HEAP.Get() };
         cmdList->SetDescriptorHeaps(1, heaps);
         ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), cmdList);
     });
@@ -191,17 +200,17 @@ int main()
     // Main loop
     while (!window->PeekMessages())
     {
-        if (gShouldStart) { GameInit();     gShouldStart = false; }
-        if (gShouldStop)  { GameShutdown(); gShouldStop  = false; }
-        if (gIsPlaying)
+        if (SHOULD_START) { GameInit();     SHOULD_START = false; }
+        if (SHOULD_STOP)  { GameShutdown(); SHOULD_STOP  = false; }
+        if (IS_PLAYING)
             GameRunFrame(0.0f);
         Renderer::DrawFrame();
     }
 
     // Cleanup
-    if (gIsPlaying)
+    if (IS_PLAYING)
     {
-        gIsPlaying = false;
+        IS_PLAYING = false;
         GameShutdown();
     }
 

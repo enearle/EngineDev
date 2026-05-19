@@ -175,6 +175,8 @@
     <ClCompile Include="$(SolutionDir)../External/imgui/imgui_widgets.cpp" />
     <ClCompile Include="$(SolutionDir)../External/imgui/backends/imgui_impl_win32.cpp" />
     <ClCompile Include="$(SolutionDir)../External/imgui/backends/imgui_impl_dx12.cpp" />
+    <ClCompile Include="FileExplorer.cpp" />
+    <ClCompile Include="Modals\NewDirectory.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Engine\Engine.vcxproj">
@@ -186,6 +188,11 @@
     <ProjectReference Include="..\Game\Game.vcxproj">
       <Project>{5F805604-D030-43AC-B6B4-FAC34043FF75}</Project>
     </ProjectReference>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="FileExplorer.h" />
+    <ClInclude Include="imfilebrowser.h" />
+    <ClInclude Include="Modals\NewDirectory.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
