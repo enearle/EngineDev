@@ -141,7 +141,7 @@ void NoesisUILayer::NoesisRenderOffscreen()
     else if (ForwardInterface::GetCurrentAPI() == DirectX12)
     {
         NoesisApp::D3D12Factory::SetCommandList(RenderDevice.GetPtr(), 
-            ForwardInterface::GetCommandList(),
+            ForwardInterface::GetD3D12CommandList(),
             frameCounter);
     }
     View->GetRenderer()->UpdateRenderTree();
@@ -164,7 +164,7 @@ void NoesisUILayer::NoesisRenderOnscreen()
     }
     else if (ForwardInterface::GetCurrentAPI() == DirectX12)
     {
-        ID3D12GraphicsCommandList* cmdList = ForwardInterface::GetCommandList();
+        ID3D12GraphicsCommandList* cmdList = ForwardInterface::GetD3D12CommandList();
         uint32_t w = Renderer::GetWindow()->GetWidth();
         uint32_t h = Renderer::GetWindow()->GetHeight();
 
@@ -186,7 +186,7 @@ void NoesisUILayer::NoesisRenderOnscreen()
         cmdList->RSSetScissorRects(1, &sc);
 
         NoesisApp::D3D12Factory::SetCommandList(RenderDevice.GetPtr(),
-            ForwardInterface::GetCommandList(),
+            ForwardInterface::GetD3D12CommandList(),
             frameCounter);
         View->GetRenderer()->Render();
         NoesisApp::D3D12Factory::EndPendingSplitBarriers(RenderDevice);

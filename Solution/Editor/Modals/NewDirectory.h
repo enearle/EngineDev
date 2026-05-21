@@ -11,7 +11,5 @@ public:
 private:
     char Buffer[128] = {};
     std::string StartingPath;
-    bool IsOpen = false;
     bool PendingOpen = false;
-    void Close();
 };

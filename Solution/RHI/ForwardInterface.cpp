@@ -54,6 +54,11 @@ ID3D12Device* ForwardInterface::GetD3D12Device()
     return D3DCore::Instance().GetDevice().Get();
 }
 
+ID3D12CommandQueue* ForwardInterface::GetD3D12CommandQueue()
+{
+    return D3DCore::Instance().GetCommandQueue().Get();
+}
+
 ID3D12Fence* ForwardInterface::GetD3D12Fence()
 {
     return D3DCore::Instance().GetFrameFence().Get();
@@ -64,12 +69,17 @@ DXGI_FORMAT ForwardInterface::GetD3D12RenderTargetFormat()
     return D3DCore::Instance().GetRenderTargetFormat();
 }
 
+D3D12_CPU_DESCRIPTOR_HANDLE ForwardInterface::GetD3D12RenderTargetDescriptor()
+{
+    return D3DCore::Instance().GetRenderTargetDescriptor();
+}
+
 DXGI_SAMPLE_DESC ForwardInterface::GetD3D12SampleDesc()
 {
     return D3DCore::Instance().GetSampleDesc();
 }
 
-ID3D12GraphicsCommandList* ForwardInterface::GetCommandList()
+ID3D12GraphicsCommandList* ForwardInterface::GetD3D12CommandList()
 {
     return D3DCore::Instance().GetCommandList().Get();
 }

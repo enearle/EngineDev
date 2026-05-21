@@ -9,10 +9,11 @@
 #include "backends/imgui_impl_win32.h"
 #include "backends/imgui_impl_dx12.h"
 #include "../RHI/Renderer.h"
+#include "ForwardInterface.h"
 #include "Window.h"
-#include "../RHI/DirectX12/D3DCore.h"
 #include "../Game/Game.h"
 #include "FileExplorer.h"
+#include "Modals/FileMove.h"
 #include "Modals/NewDirectory.h"
 #pragma comment(lib, "comctl32.lib")
 
@@ -65,8 +66,8 @@ int main()
         desc.Type           = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
         desc.NumDescriptors = IMGUI_SRV_HEAP_SIZE;
         desc.Flags          = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-        D3DCore::Instance().GetDevice()->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&IM_GUI_SRV_HEAP));
-        IM_GUI_SRV_DESC_SIZE = D3DCore::Instance().GetDevice()->GetDescriptorHandleIncrementSize(
+        ForwardInterface::GetD3D12Device()->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&IM_GUI_SRV_HEAP));
+        IM_GUI_SRV_DESC_SIZE = ForwardInterface::GetD3D12Device()->GetDescriptorHandleIncrementSize(
             D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
     }
 
@@ -80,10 +81,10 @@ int main()
     auto srvFreeFn = [](ImGui_ImplDX12_InitInfo*, D3D12_CPU_DESCRIPTOR_HANDLE, D3D12_GPU_DESCRIPTOR_HANDLE) {};
 
     ImGui_ImplDX12_InitInfo dx12Info = {};
-    dx12Info.Device              = D3DCore::Instance().GetDevice().Get();
-    dx12Info.CommandQueue        = D3DCore::Instance().GetCommandQueue().Get();
-    dx12Info.NumFramesInFlight   = (int)D3DCore::Instance().GetFramesInFlight();
-    dx12Info.RTVFormat           = D3DCore::Instance().GetRenderTargetFormat();
+    dx12Info.Device              = ForwardInterface::GetD3D12Device();
+    dx12Info.CommandQueue        = ForwardInterface::GetD3D12CommandQueue();
+    dx12Info.NumFramesInFlight   = static_cast<int>(ForwardInterface::GetD3D12FramesInFlight());
+    dx12Info.RTVFormat           = ForwardInterface::GetD3D12RenderTargetFormat();
     dx12Info.DSVFormat           = DXGI_FORMAT_UNKNOWN;
     dx12Info.SrvDescriptorHeap   = IM_GUI_SRV_HEAP.Get();
     dx12Info.SrvDescriptorAllocFn = srvAllocFn;
@@ -97,8 +98,8 @@ int main()
     {
         if (!IS_PLAYING)
         {
-            ID3D12GraphicsCommandList* cmdList = D3DCore::Instance().GetCommandList().Get();
-            D3D12_CPU_DESCRIPTOR_HANDLE rtv = D3DCore::Instance().GetRenderTargetDescriptor();
+            ID3D12GraphicsCommandList* cmdList = ForwardInterface::GetD3D12CommandList();
+            D3D12_CPU_DESCRIPTOR_HANDLE rtv = ForwardInterface::GetD3D12RenderTargetDescriptor();
             float clearColor[] = { 0.1f, 0.1f, 0.1f, 1.0f };
             cmdList->ClearRenderTargetView(rtv, clearColor, 0, nullptr);
         }
@@ -185,13 +186,14 @@ int main()
         ImGui::EndChild();
         
         NewDirectory::GetInstance().Render();
+        FileMove::GetInstance().Render();
 
         ImGui::End();
 
         ImGui::Render();
 
         // Bind ImGui's SRV heap and submit draw data to the engine's open command list
-        ID3D12GraphicsCommandList* cmdList = D3DCore::Instance().GetCommandList().Get();
+        ID3D12GraphicsCommandList* cmdList = ForwardInterface::GetD3D12CommandList();
         ID3D12DescriptorHeap* heaps[] = { IM_GUI_SRV_HEAP.Get() };
         cmdList->SetDescriptorHeaps(1, heaps);
         ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), cmdList);

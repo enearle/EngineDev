@@ -1,8 +1,7 @@
 ﻿#include "NewDirectory.h"
 #include <filesystem>
-#include <iostream>
-
 #include "imgui.h"
+
 namespace fs = std::filesystem;
 
 NewDirectory& NewDirectory::GetInstance()
@@ -22,7 +21,7 @@ static int FilterLettersOnly(ImGuiInputTextCallbackData* data) {
 void NewDirectory::Open(std::string startingPath)
 {
     StartingPath = std::move(startingPath);
-    PendingOpen = true; // Defer — don't call OpenPopup here
+    PendingOpen = true;
 }
 
 void NewDirectory::Render()
@@ -30,8 +29,7 @@ void NewDirectory::Render()
     if (PendingOpen)
     {
         PendingOpen = false;
-        IsOpen = true;
-        ImGui::OpenPopup("NewDirectoryModal"); // Safe — called at top level
+        ImGui::OpenPopup("NewDirectoryModal");
     }
 
     if (ImGui::BeginPopupModal("NewDirectoryModal", NULL, ImGuiWindowFlags_AlwaysAutoResize))
@@ -42,25 +40,15 @@ void NewDirectory::Render()
 
         if (ImGui::Button("OK", ImVec2(120, 0)))
         {
-            std::cout << "Creating directory: " << StartingPath + "/" + Buffer << '\n';
-            if (!fs::create_directory(StartingPath + "/" + Buffer))
-                std::cout << "Failed to create directory: " << StartingPath + "/" + Buffer << '\n';
-            Close();
+            fs::create_directory(StartingPath + "/" + Buffer);
+            ImGui::CloseCurrentPopup();
         }
 
         ImGui::SameLine();
 
         if (ImGui::Button("Cancel", ImVec2(120, 0)))
-        {
-            Close();
-        }
+            ImGui::CloseCurrentPopup();
         
         ImGui::EndPopup();
     }
-}
-
-void NewDirectory::Close()
-{
-    IsOpen = false;
-    ImGui::CloseCurrentPopup();
 }
