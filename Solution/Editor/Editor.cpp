@@ -14,7 +14,9 @@
 #include "../Game/Game.h"
 #include "FileExplorer.h"
 #include "Modals/FileMove.h"
+#include "Modals/Importer.h"
 #include "Modals/NewDirectory.h"
+#include "Resources/ResourceManager.h"
 #pragma comment(lib, "comctl32.lib")
 
 using Microsoft::WRL::ComPtr;
@@ -44,6 +46,7 @@ static LRESULT CALLBACK EditorSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPARA
 int main()
 {
     GRAPHICS_SETTINGS.SetEditorMode(true);
+    ResourceManager::LoadRegistry();
     
     // The Engine's Window creates the Win32 window and handles resize/input routing
     Window* window = new Window(L"Engine Editor", Win32, 1600, 900);
@@ -169,6 +172,8 @@ int main()
         ImGui::Separator();
         ImGui::Spacing();
         ImGui::TextUnformatted("Files");
+        ImGui::SameLine();
+        if (ImGui::Button("Import")) Importer::GetInstance().Open();
         ImGui::Separator();
         FileExplorer::ShowFileTree("../Game/Assets");
         ImGui::EndChild();
@@ -187,9 +192,9 @@ int main()
         
         NewDirectory::GetInstance().Render();
         FileMove::GetInstance().Render();
+        Importer::GetInstance().Render();
 
         ImGui::End();
-
         ImGui::Render();
 
         // Bind ImGui's SRV heap and submit draw data to the engine's open command list

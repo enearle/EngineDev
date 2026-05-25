@@ -7,15 +7,14 @@
 
 #include "Modals/FileMove.h"
 #include "Modals/NewDirectory.h"
+#include "Resources/ResourceManager.h"
 
 
 namespace fs = std::filesystem;
 
-
-
 // Files with these extensions will be shown. Everything else is hidden.
 static const std::vector<std::string> AllowedExtensions = {
-    ".png"
+    ".meta"
 };
 
 static bool IsWhitelisted(const fs::path& p) {
@@ -108,7 +107,19 @@ static fs::path DrawDirectoryNode(const fs::path& path,
         if (file.path() == selectedPath)
             flags |= ImGuiTreeNodeFlags_Selected;
         
-        ImGui::TreeNodeEx(file.path().filename().string().c_str(), flags);
+        // Read in meta file and get id
+        std::string filePath = file.path().generic_string();
+        AssetID id = ResourceManager::ReadMetaFile(filePath);
+        
+        // Convert path to meta file to path to asset and validate
+        filePath = filePath.erase(filePath.length() - 5);
+        if (!ResourceManager::ValidateAssetID(id, filePath))
+            continue;
+        
+        std::string fileName = file.path().filename().string();
+        fileName = fileName.erase(fileName.length() - 5);
+        
+        ImGui::TreeNodeEx(fileName.c_str(), flags);
         if (ImGui::IsItemClicked())
         {
             selectedPath = file.path();
@@ -119,6 +130,7 @@ static fs::path DrawDirectoryNode(const fs::path& path,
         {
             std::string startPath = file.path().generic_string();
             ImGui::SetDragDropPayload("PATH", startPath.c_str(), startPath.size());
+            ImGui::SetDragDropPayload("ID", &id, sizeof(AssetID));
             ImGui::EndDragDropSource();
         }
     }

@@ -76,6 +76,12 @@ namespace ImGui
         // set current browsing directory
         bool SetDirectory(const std::filesystem::path &dir = std::filesystem::current_path());
 
+        // lock navigation so the user cannot go above this directory
+        void SetRootDirectory(const std::filesystem::path &root)
+        {
+            rootDirectory_ = std::filesystem::absolute(root);
+        }
+
         // legacy interface. use SetDirectory instead.
         bool SetPwd(const std::filesystem::path &dir = std::filesystem::current_path())
         {
@@ -194,6 +200,7 @@ namespace ImGui
         bool                     hasAllFilter_;
 
         std::filesystem::path   currentDirectory_;
+        std::filesystem::path   rootDirectory_;
         std::vector<FileRecord> fileRecords_;
 
         unsigned int                    rangeSelectionStart_; // enable range selection when shift is pressed
@@ -477,6 +484,14 @@ inline void ImGui::FileBrowser::Display()
         SameLine();
 #endif
 
+        // Count how many path components are in the root so we can hide them
+        int rootSecCount = 0;
+        if(!rootDirectory_.empty())
+        {
+            for(const auto &sec : rootDirectory_)
+                ++rootSecCount;
+        }
+
         int secIdx = 0, newDirLastSecIdx = -1;
         for(const auto &sec : currentDirectory_)
         {
@@ -487,6 +502,12 @@ inline void ImGui::FileBrowser::Display()
                 continue;
             }
 #endif
+            // Skip components that are above (or equal to the last component of) the root
+            if(!rootDirectory_.empty() && secIdx < rootSecCount - 1)
+            {
+                ++secIdx;
+                continue;
+            }
 
             PushID(secIdx);
             if(secIdx > 0)
@@ -1137,7 +1158,15 @@ inline void ImGui::FileBrowser::UpdateFileRecords()
 
 inline void ImGui::FileBrowser::SetCurrentDirectoryUncatched(const std::filesystem::path &pwd)
 {
-    currentDirectory_ = absolute(pwd);
+    auto absPwd = absolute(pwd);
+    if(!rootDirectory_.empty())
+    {
+        // Clamp: if the target is above the root, stay at root
+        auto rel = std::filesystem::relative(absPwd, rootDirectory_);
+        if(rel.empty() || rel.native().substr(0, 2) == std::filesystem::path("..").native())
+            absPwd = rootDirectory_;
+    }
+    currentDirectory_ = absPwd;
     UpdateFileRecords();
 
     bool shouldClearInputNameBuffer = true;

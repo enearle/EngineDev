@@ -99,7 +99,7 @@
       <ConformanceMode>true</ConformanceMode>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>$(SolutionDir)../External/imgui;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)../External/imgui;$(SolutionDir)Engine;$(SolutionDir)RHI;$(SolutionDir)Game;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -121,7 +121,7 @@
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>dxgi.lib;$(SolutionDir)../External/NoesisGUI-NativeSDK-win-3.2.12-Indie/Lib/windows_x86_64/Noesis.lib;$(SolutionDir)../External/NoesisGUI-NativeSDK-win-3.2.12-Indie/Lib/windows_x86_64/NoesisApp.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>dxgi.lib;$(SolutionDir)../External/assimp/lib/Release/assimp-vc143-mt.lib;$(SolutionDir)../External/NoesisGUI-NativeSDK-win-3.2.12-Indie/Lib/windows_x86_64/Noesis.lib;$(SolutionDir)../External/NoesisGUI-NativeSDK-win-3.2.12-Indie/Lib/windows_x86_64/NoesisApp.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -136,7 +136,7 @@
       <ConformanceMode>true</ConformanceMode>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>$(SolutionDir)../External/imgui;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)../External/imgui;$(SolutionDir)Engine;$(SolutionDir)RHI;$(SolutionDir)Game;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -164,7 +164,7 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>dxgi.lib;$(SolutionDir)../External/NoesisGUI-NativeSDK-win-3.2.12-Indie/Lib/windows_x86_64/Noesis.lib;$(SolutionDir)../External/NoesisGUI-NativeSDK-win-3.2.12-Indie/Lib/windows_x86_64/NoesisApp.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>dxgi.lib;$(SolutionDir)../External/assimp/lib/Release/assimp-vc143-mt.lib;$(SolutionDir)../External/NoesisGUI-NativeSDK-win-3.2.12-Indie/Lib/windows_x86_64/Noesis.lib;$(SolutionDir)../External/NoesisGUI-NativeSDK-win-3.2.12-Indie/Lib/windows_x86_64/NoesisApp.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
@@ -176,10 +176,85 @@
     <ClCompile Include="$(SolutionDir)../External/imgui/backends/imgui_impl_win32.cpp" />
     <ClCompile Include="$(SolutionDir)../External/imgui/backends/imgui_impl_dx12.cpp" />
     <ClCompile Include="FileExplorer.cpp" />
-    <ClCompile Include="Meta\MetaBase.cpp" />
+    <ClCompile Include="Modals\Importer.cpp">
+      <RuntimeLibrary>MultiThreadedDebugDll</RuntimeLibrary>
+      <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
+      <Optimization>Disabled</Optimization>
+      <SupportJustMyCode>true</SupportJustMyCode>
+      <AssemblerOutput>NoListing</AssemblerOutput>
+      <AssemblerListingLocation>x64\Debug\Engine\</AssemblerListingLocation>
+      <UndefineAllPreprocessorDefinitions>false</UndefineAllPreprocessorDefinitions>
+      <BrowseInformation>false</BrowseInformation>
+      <BrowseInformationFile>x64\Debug\Engine\</BrowseInformationFile>
+      <CompileAs>Default</CompileAs>
+      <UseDynamicDebugging>false</UseDynamicDebugging>
+      <ConformanceMode>true</ConformanceMode>
+      <DiagnosticsFormat>Column</DiagnosticsFormat>
+      <DisableLanguageExtensions>false</DisableLanguageExtensions>
+      <ErrorReporting>Prompt</ErrorReporting>
+      <ExpandAttributedSource>false</ExpandAttributedSource>
+      <ExceptionHandling>Sync</ExceptionHandling>
+      <EnableASAN>false</EnableASAN>
+      <EnableFuzzer>false</EnableFuzzer>
+      <EnableFiberSafeOptimizations>false</EnableFiberSafeOptimizations>
+      <EnableEnhancedInstructionSet>NotSet</EnableEnhancedInstructionSet>
+      <EnableVectorLength>NotSet</EnableVectorLength>
+      <FloatingPointModel>Precise</FloatingPointModel>
+      <ForceConformanceInForLoopScope>true</ForceConformanceInForLoopScope>
+      <GenerateModuleDependencies>false</GenerateModuleDependencies>
+      <GenerateSourceDependencies>false</GenerateSourceDependencies>
+      <GenerateXMLDocumentationFiles>false</GenerateXMLDocumentationFiles>
+      <InlineFunctionExpansion>Default</InlineFunctionExpansion>
+      <IntrinsicFunctions>false</IntrinsicFunctions>
+      <IgnoreStandardIncludePath>false</IgnoreStandardIncludePath>
+      <LanguageStandard>stdcpp23</LanguageStandard>
+      <LanguageStandard_C>Default</LanguageStandard_C>
+      <MinimalRebuild>false</MinimalRebuild>
+      <ModuleDependenciesFile>x64\Debug\Engine\</ModuleDependenciesFile>
+      <ModuleOutputFile>x64\Debug\Engine\</ModuleOutputFile>
+      <OmitDefaultLibName>false</OmitDefaultLibName>
+      <FavorSizeOrSpeed>Neither</FavorSizeOrSpeed>
+      <WholeProgramOptimization>false</WholeProgramOptimization>
+      <ObjectFileName>x64\Debug\Engine\</ObjectFileName>
+      <CallingConvention>Cdecl</CallingConvention>
+      <ProgramDataBaseFileName>x64\Debug\Engine\vc143.pdb</ProgramDataBaseFileName>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+      <PrecompiledHeaderOutputFile>x64\Debug\Engine\Engine.pch</PrecompiledHeaderOutputFile>
+      <PreprocessToFile>false</PreprocessToFile>
+      <PreprocessKeepComments>false</PreprocessKeepComments>
+      <PreprocessSuppressLineNumbers>false</PreprocessSuppressLineNumbers>
+      <RemoveUnreferencedCodeData>true</RemoveUnreferencedCodeData>
+      <ScanSourceForModuleDependencies>false</ScanSourceForModuleDependencies>
+      <ShowIncludes>false</ShowIncludes>
+      <SourceDependenciesFile>x64\Debug\Engine\</SourceDependenciesFile>
+      <SuppressStartupBanner>true</SuppressStartupBanner>
+      <BufferSecurityCheck>true</BufferSecurityCheck>
+      <SmallerTypeCheck>false</SmallerTypeCheck>
+      <SpectreMitigation>false</SpectreMitigation>
+      <StructMemberAlignment>Default</StructMemberAlignment>
+      <TrackerLogDirectory>x64\Debug\Engine\Engine.tlog\</TrackerLogDirectory>
+      <TranslateIncludes>false</TranslateIncludes>
+      <MinimalRebuildFromTracking>true</MinimalRebuildFromTracking>
+      <TreatWarningAsError>false</TreatWarningAsError>
+      <TreatWChar_tAsBuiltInType>true</TreatWChar_tAsBuiltInType>
+      <UseFullPaths>true</UseFullPaths>
+      <WarningLevel>Level3</WarningLevel>
+      <XMLDocumentationFileName>x64\Debug\Engine\</XMLDocumentationFileName>
+      <DebugInformationFormat>EditAndContinue</DebugInformationFormat>
+      <IntelJCCErratum>false</IntelJCCErratum>
+      <BuildStlModules>false</BuildStlModules>
+      <TreatAngleIncludeAsExternal>false</TreatAngleIncludeAsExternal>
+      <ExternalWarningLevel>InheritWarningLevel</ExternalWarningLevel>
+      <TreatExternalTemplatesAsInternal>true</TreatExternalTemplatesAsInternal>
+      <DisableAnalyzeExternal>false</DisableAnalyzeExternal>
+      <PreprocessorDefinitions>ENGINE_EXPORTS;_DEBUG;_CONSOLE;_WINDLL;_UNICODE;UNICODE;</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>C:\Users\SwaggyJ\Desktop\GameEnginesDev2\EngineDev\Solution\Engine;C:\Users\SwaggyJ\Desktop\GameEnginesDev2\EngineDev\Solution\/RHI;C:\Users\SwaggyJ\Desktop\GameEnginesDev2\EngineDev\Solution\..\External\assimp\include;C:\Users\SwaggyJ\Desktop\GameEnginesDev2\EngineDev\Solution\..\External\imgui;C:\Users\SwaggyJ\Desktop\GameEnginesDev2\EngineDev\Solution\../External/NoesisGUI-NativeSDK-win-3.2.12-Indie/Include;C:\Users\SwaggyJ\Desktop\GameEnginesDev2\EngineDev\Solution\../External/NoesisGUI-NativeSDK-win-3.2.12-Indie/Src/Packages/Render/VKRenderDevice/Include;C:\Users\SwaggyJ\Desktop\GameEnginesDev2\EngineDev\Solution\../External/NoesisGUI-NativeSDK-win-3.2.12-Indie/Src/Packages/Render/D3D12RenderDevice/Include;C:\Users\SwaggyJ\Desktop\GameEnginesDev2\EngineDev\Solution\../External/NoesisGUI-NativeSDK-win-3.2.12-Indie/Src/Packages/App/Interactivity/Include;C:\Users\SwaggyJ\Desktop\GameEnginesDev2\EngineDev\Solution\../External/NoesisGUI-NativeSDK-win-3.2.12-Indie/Src/Packages/App/Shaders/Include;C:\Users\SwaggyJ\Desktop\GameEnginesDev2\EngineDev\Solution\../External/NoesisGUI-NativeSDK-win-3.2.12-Indie/Src/Packages/App/Providers/Include;C:\Users\SwaggyJ\Desktop\GameEnginesDev2\EngineDev\Solution\../External/NoesisGUI-NativeSDK-win-3.2.12-Indie/Src/Packages/App/Launcher/Include;C:\Users\SwaggyJ\Documents\Vinyl\VulkanAPI\Include;</AdditionalIncludeDirectories>
+      <SDLCheck>true</SDLCheck>
+      <LinkCompiled>true</LinkCompiled>
+    </ClCompile>
     <ClCompile Include="Modals\NewDirectory.cpp" />
     <ClCompile Include="Modals\FileMove.cpp" />
-    <ClCompile Include="ResourceManager.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Engine\Engine.vcxproj">
@@ -195,10 +270,9 @@
   <ItemGroup>
     <ClInclude Include="FileExplorer.h" />
     <ClInclude Include="imfilebrowser.h" />
-    <ClInclude Include="Meta\MetaBase.h" />
+    <ClInclude Include="Modals\Importer.h" />
     <ClInclude Include="Modals\NewDirectory.h" />
     <ClInclude Include="Modals\FileMove.h" />
-    <ClInclude Include="ResourceManager.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
