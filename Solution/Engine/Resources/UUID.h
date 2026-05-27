@@ -18,4 +18,7 @@ struct alignas(16) ENGINE_API AssetID {
 
     // Convert to standard 36-character AssetUUID string
     std::string to_string() const;
+
+    // Parse from standard 36-character UUID string
+    static AssetID from_string(const std::string& str);
 };

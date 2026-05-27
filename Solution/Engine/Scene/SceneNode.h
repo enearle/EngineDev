@@ -2,7 +2,9 @@
 #include <string>
 #include <vector>
 #include "../ENGINE_API_Macro.h"
+#include "../Engine/Resources/AssetBase.h"
 #include "DirectXMath.h"
+#include "SceneComponent.h"
 
 enum class RotationAxis
 {
@@ -11,7 +13,7 @@ enum class RotationAxis
     Z
 };
 
-class ENGINE_API SceneNode
+class ENGINE_API SceneNode : public AssetBase
 {
 protected:
     static std::vector<SceneNode*> RootNodes;
@@ -22,6 +24,7 @@ protected:
     std::string Name;
     SceneNode* Parent = nullptr;
     std::vector<SceneNode*> Children = {};
+    std::vector<SceneComponent*> Components = {};
     
     SceneNode() = default;
     
@@ -63,4 +66,10 @@ public:
     void SetLocalMatrix(DirectX::XMMATRIX localMatrix);
     void SetWorldMatrix(DirectX::XMMATRIX worldMatrix);
     
+    void Serialize() override;
+    void Deserialize() override;
+
+private:
+    void SerializeNode();
+    void DeserializeNode(SceneNode* parent);
 };

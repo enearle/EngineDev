@@ -176,6 +176,7 @@
     <ClCompile Include="$(SolutionDir)../External/imgui/backends/imgui_impl_win32.cpp" />
     <ClCompile Include="$(SolutionDir)../External/imgui/backends/imgui_impl_dx12.cpp" />
     <ClCompile Include="FileExplorer.cpp" />
+    <ClCompile Include="Interface\FieldUI.cpp" />
     <ClCompile Include="Modals\Importer.cpp">
       <RuntimeLibrary>MultiThreadedDebugDll</RuntimeLibrary>
       <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
@@ -270,6 +271,7 @@
   <ItemGroup>
     <ClInclude Include="FileExplorer.h" />
     <ClInclude Include="imfilebrowser.h" />
+    <ClInclude Include="Interface\FieldUI.h" />
     <ClInclude Include="Modals\Importer.h" />
     <ClInclude Include="Modals\NewDirectory.h" />
     <ClInclude Include="Modals\FileMove.h" />

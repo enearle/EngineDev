@@ -90,4 +90,10 @@ bool ResourceManager::ValidateAssetID(const AssetID& id, std::string& path)
     return true;
 }
 
+bool ResourceManager::ValidateAssetType(const AssetID& id, ResourceType type)
+{
+    if (!Registry.contains(id)) return false;
+    return Registry[id].Type == type;
+}
+
 

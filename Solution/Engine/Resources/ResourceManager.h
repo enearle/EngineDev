@@ -42,6 +42,7 @@ public:
     static void UpdateAssetPath(AssetID id, const std::string& newPath);
     static AssetID ReadMetaFile(const std::string& filePath);
     static bool ValidateAssetID(const AssetID& id, std::string& path);
+    static bool ValidateAssetType(const AssetID& id, ResourceType type);
     // Handle asset loading and baking later, maybe with hooks for runtimes
     
     // Validate AssetUUIDs point to existing file, also needed
