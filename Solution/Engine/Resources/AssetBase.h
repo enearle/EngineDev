@@ -32,12 +32,16 @@ public:
     
 };
 
-class ENGINE_API SceneComponentBase : public DependencyBase
+class ENGINE_API SceneComponentBase : DependencyBase
 {
 protected:
+    std::vector<Field> Fields;
     SceneNode* Owner;
-    SceneComponentBase(std::string name, AssetID id, std::vector<Field> fields, SceneNode* owner) : DependencyBase(std::move(name), id, std::move(fields)), Owner(owner) {}
+    SceneComponentBase(std::string name, AssetID id, std::vector<Field> fields, SceneNode* owner) : DependencyBase(std::move(name), id, std::move(fields)), Fields(std::move(fields)), Owner(owner) {}
     virtual ~SceneComponentBase() = default;
     
+    //SceneComponentBase(std::vector<Field> fields, SceneNode* owner) : Fields(std::move(fields)), Owner(owner) {}
+    //virtual void Serialize(std::string& data);
+    //virtual void Deserialize(std::string& data, long offset = 0);
 };
 

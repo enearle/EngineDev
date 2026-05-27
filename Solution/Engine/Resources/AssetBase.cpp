@@ -45,3 +45,33 @@ void DependencyBase::Deserialize(std::string& data, long offset)
     
     offset += 1 + count * 36;
 }
+
+// Scene components are not themselves assets but may need some sort of 
+// identification later for duplicate cases? Maybe they are just assets? 
+// IDK I'm not a philosopher. I'm sure I will comment/uncomment this 
+// 100x times.
+//
+// Current stance: Components as assets have UUIDs for individual identification 
+// and can be renamed. I don't hate it... but now half of everything in registry 
+// will just be scene components...
+
+//void SceneComponentBase::Serialize(std::string& data)
+//{
+//    data += static_cast<char>(Fields.size());
+//    for (const Field& field : Fields)
+//        data += field.GetID().to_string();
+//}
+//
+//void SceneComponentBase::Deserialize(std::string& data, long offset)
+//{
+//    if (data.empty()) return;
+//    int count = static_cast<uint8_t>(data[offset]);
+//    for (int i = 0; i < count && i < static_cast<int>(Fields.size()); ++i)
+//    {
+//        size_t current = offset + 1 + i * 36;
+//        if (current + 36 > data.size()) break;
+//        Fields[i].SetID(AssetID::from_string(data.substr(current, 36)));
+//    }
+//    
+//    offset += 1 + count * 36;
+//}
