@@ -4,7 +4,6 @@
 #include "../ENGINE_API_Macro.h"
 #include "../Engine/Resources/AssetBase.h"
 #include "DirectXMath.h"
-#include "SceneComponent.h"
 
 enum class RotationAxis
 {
@@ -21,12 +20,12 @@ protected:
     DirectX::XMMATRIX WorldMatrix = DirectX::XMMatrixIdentity();
     bool IsWorldMatrixDirty = true;
     bool IsStatic = false;
-    std::string Name;
+    std::string Name = "";
     SceneNode* Parent = nullptr;
     std::vector<SceneNode*> Children = {};
-    std::vector<SceneComponent*> Components = {};
+    std::vector<SceneComponentBase*> Components = {};
     
-    SceneNode() = default;
+    
     
     // Init() is required because a polymorphic inherited class 
     // cannot be added to mChildren at the time of initialization.
@@ -39,6 +38,12 @@ public:
     static void UpdateAll(float dt);
     static void DestroyAll();
 
+    // Deserialize constructor
+    SceneNode(SceneNode* parent = nullptr);
+    
+    // New node creation constructor
+    SceneNode(const std::string& name, AssetID assetId, SceneNode* parent = nullptr);
+    
     virtual ~SceneNode();
     
     virtual void Update(float dt);
@@ -66,10 +71,7 @@ public:
     void SetLocalMatrix(DirectX::XMMATRIX localMatrix);
     void SetWorldMatrix(DirectX::XMMATRIX worldMatrix);
     
-    void Serialize() override;
-    void Deserialize() override;
-
-private:
-    void SerializeNode();
-    void DeserializeNode(SceneNode* parent);
+    void Serialize(std::string& data) override;
+    void Deserialize(std::string& data, long& offset) override;
+    
 };

@@ -1,4 +1,6 @@
 ﻿#include "SceneNode.h"
+
+#include "../NoesisUILayer.h"
 #include "../Resources/AssetSerializer.h"
 
 using namespace DirectX;
@@ -30,6 +32,31 @@ void SceneNode::DestroyAll()
     for(auto root : RootNodes)
         delete root;
     RootNodes.clear();
+}
+
+// Deserialization constructor does not initialize AssetBase because it is handled by Deserialize()
+SceneNode::SceneNode(SceneNode* parent) : Parent(parent), AssetBase("", {})
+{
+    if (!parent)
+    {
+        RootNodes.push_back(this);
+    }
+    else
+    {
+        parent->AddChild(this);
+    }
+}
+
+SceneNode::SceneNode(const std::string& name, AssetID assetId, SceneNode* parent) : AssetBase(name, assetId), Parent(parent)
+{
+    if (!parent)
+    {
+        RootNodes.push_back(this);
+    }
+    else
+    {
+        parent->AddChild(this);
+    }
 }
 
 SceneNode::~SceneNode()
@@ -133,87 +160,107 @@ void SceneNode::SetWorldMatrix(DirectX::XMMATRIX worldMatrix)
     SetChildrenDirty();
 }
 
-void SceneNode::Serialize()
+void SceneNode::Serialize(std::string& data)
 {
-    uint32_t rootCount = static_cast<uint32_t>(RootNodes.size());
-    Write(&rootCount, sizeof(rootCount));
-    for (auto* root : RootNodes)
-        root->SerializeNode();
-}
+    AssetBase::Serialize(data);
 
-void SceneNode::SerializeNode()
-{
-    WriteString(GetTypeName());
-    WriteString(Name);
-    Write(&IsStatic, sizeof(bool));
-    Write(&LocalMatrix, sizeof(XMMATRIX));
+    // Transform
+    XMFLOAT4X4 transform;
+    XMStoreFloat4x4(&transform, GetLocalMatrix());
 
-    SerializeFields();
-
-    uint32_t compCount = static_cast<uint32_t>(Components.size());
-    Write(&compCount, sizeof(compCount));
-    for (auto* comp : Components)
+    char matrix[64];
+    for (uint32_t i = 0; i < 16; ++i)
     {
-        WriteString(comp->GetTypeName());
-        comp->Serialize();
+        uint32_t bits;
+        memcpy(&bits, &transform.m[i / 4][i % 4], sizeof(uint32_t));
+        matrix[i * 4]     = (bits >> 24) & 0xFF;
+        matrix[i * 4 + 1] = (bits >> 16) & 0xFF;
+        matrix[i * 4 + 2] = (bits >> 8)  & 0xFF;
+        matrix[i * 4 + 3] =  bits        & 0xFF;
+    }
+    data.append(matrix, 64);
+
+    // Components (max 255)
+    data += static_cast<char>(Components.size());
+    for (auto& component : Components)
+    {
+        uint32_t type = component->GetType();
+        char typeData[4];
+        typeData[0] = (type >> 24) & 0xFF;
+        typeData[1] = (type >> 16) & 0xFF;
+        typeData[2] = (type >> 8)  & 0xFF;
+        typeData[3] =  type        & 0xFF;
+        data.append(typeData);
+        component->Serialize(data);
     }
 
-    uint32_t childCount = static_cast<uint32_t>(Children.size());
-    Write(&childCount, sizeof(childCount));
-    for (auto* child : Children)
-        child->SerializeNode();
+    // Children
+    uint32_t numChildren = static_cast<uint32_t>(Children.size());
+    char children[4];
+    children[0] = (numChildren >> 24) & 0xFF;
+    children[1] = (numChildren >> 16) & 0xFF;
+    children[2] = (numChildren >> 8)  & 0xFF;
+    children[3] =  numChildren        & 0xFF;
+    data.append(children, 4);
+
+    for (auto& child : Children)
+        child->Serialize(data);
 }
 
-void SceneNode::Deserialize()
+void SceneNode::Deserialize(std::string& data, long& offset)
 {
-    uint32_t rootCount = 0;
-    Read(&rootCount, sizeof(rootCount));
-    for (uint32_t i = 0; i < rootCount; ++i)
+    AssetBase::Deserialize(data, offset);
+    
+    // Transform
+    XMFLOAT4X4 transform;
+    std::string matrix = data.substr(offset, 64);
+    for (uint32_t i = 0; i < 16; i++)
     {
-        std::string typeName = ReadString();
-        auto it = AssetSerializer::NodeFactories.find(typeName);
-        if (it == AssetSerializer::NodeFactories.end()) continue;
-        SceneNode* node = it->second();
-        node->DeserializeNode(nullptr);
+        std::string value = matrix.substr(i * 4, 4);
+        uint32_t bits = static_cast<uint32_t>(static_cast<uint8_t>(value[0])) << 24 |
+                        static_cast<uint32_t>(static_cast<uint8_t>(value[1])) << 16 |
+                        static_cast<uint32_t>(static_cast<uint8_t>(value[2])) << 8  |
+                        static_cast<uint32_t>(static_cast<uint8_t>(value[3]));
+        
+        memcpy(&transform.m[i / 4][i % 4], &bits, sizeof(float));
     }
-}
-
-void SceneNode::DeserializeNode(SceneNode* parent)
-{
-    Name = ReadString();
-    Read(&IsStatic, sizeof(bool));
-    Read(&LocalMatrix, sizeof(XMMATRIX));
-    IsWorldMatrixDirty = true;
-
-    DeserializeFields();
-
-    uint32_t compCount = 0;
-    Read(&compCount, sizeof(compCount));
-    for (uint32_t i = 0; i < compCount; ++i)
+    
+    LocalMatrix = XMLoadFloat4x4(&transform);
+    offset += 64;
+    
+    // Components
+    uint8_t numComponents = static_cast<uint8_t>(data[offset++]);
+    for (uint8_t i = 0; i < numComponents; i++)
     {
-        std::string typeName = ReadString();
-        auto it = AssetSerializer::ComponentFactories.find(typeName);
-        if (it == AssetSerializer::ComponentFactories.end()) continue;
-        SceneComponent* comp = it->second();
-        comp->Deserialize();
-        Components.push_back(comp);
+        std::string typeData = data.substr(offset, 4);
+        offset += 4;
+        
+        uint32_t type = static_cast<uint32_t>(static_cast<uint8_t>(typeData[0])) << 24 |
+                        static_cast<uint32_t>(static_cast<uint8_t>(typeData[1])) << 16 |
+                        static_cast<uint32_t>(static_cast<uint8_t>(typeData[2])) << 8  |
+                        static_cast<uint32_t>(static_cast<uint8_t>(typeData[3]));
+        
+
+        SceneComponentBase* component = SceneComponentFactory::SceneComponentBuilder(ComponentTypeFromInt(type));
+        if (component)
+        {
+            component->Deserialize(data, offset);
+            Components.push_back(component);
+        }
     }
-
-    Parent = parent;
-    if (parent)
-        parent->Children.push_back(this);
-    else
-        RootNodes.push_back(this);
-
-    uint32_t childCount = 0;
-    Read(&childCount, sizeof(childCount));
-    for (uint32_t i = 0; i < childCount; ++i)
+    
+    // Children
+    std::string numChildData = data.substr(offset, 4);
+    offset += 4;
+    uint32_t numChildren = static_cast<uint32_t>(static_cast<uint8_t>(numChildData[0])) << 24 |
+                           static_cast<uint32_t>(static_cast<uint8_t>(numChildData[1])) << 16 |
+                           static_cast<uint32_t>(static_cast<uint8_t>(numChildData[2])) << 8  |
+                           static_cast<uint32_t>(static_cast<uint8_t>(numChildData[3]));
+    
+    for (uint32_t i = 0; i < numChildren; i++)
     {
-        std::string typeName = ReadString();
-        auto it = AssetSerializer::NodeFactories.find(typeName);
-        if (it == AssetSerializer::NodeFactories.end()) continue;
-        SceneNode* child = it->second();
-        child->DeserializeNode(this);
+        SceneNode* child = new SceneNode(this);
+        child->Deserialize(data, offset);
     }
 }
 
