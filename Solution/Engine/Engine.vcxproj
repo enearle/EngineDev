@@ -250,6 +250,7 @@
     <ClCompile Include="NoesisUILayer.cpp" />
     <ClCompile Include="Resources\AssetBase.cpp" />
     <ClCompile Include="Resources\AssetSerializer.cpp" />
+    <ClCompile Include="Resources\Assets\MaterialAsset.cpp" />
     <ClCompile Include="Resources\Assets\MeshAsset.cpp" />
     <ClCompile Include="Resources\Field.cpp" />
     <ClCompile Include="Resources\ResourceManager.cpp">
@@ -329,6 +330,7 @@
       <AdditionalIncludeDirectories>C:\Users\SwaggyJ\Desktop\GameEnginesDev2\EngineDev\Solution\../External/imgui;C:\Users\SwaggyJ\Desktop\GameEnginesDev2\EngineDev\Solution\Engine;C:\Users\SwaggyJ\Desktop\GameEnginesDev2\EngineDev\Solution\RHI;C:\Users\SwaggyJ\Desktop\GameEnginesDev2\EngineDev\Solution\Game;C:\Users\SwaggyJ\Desktop\GameEnginesDev2\EngineDev\Solution\../External/NoesisGUI-NativeSDK-win-3.2.12-Indie/Include;C:\Users\SwaggyJ\Documents\Vinyl\VulkanAPI\Include;</AdditionalIncludeDirectories>
       <LinkCompiled>true</LinkCompiled>
     </ClCompile>
+    <ClCompile Include="Resources\SceneComponent.cpp" />
     <ClCompile Include="Resources\UUID.cpp">
       <RuntimeLibrary>MultiThreadedDebugDll</RuntimeLibrary>
       <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
@@ -429,9 +431,11 @@
     <ClInclude Include="ENGINE_API_Macro.h" />
     <ClInclude Include="Resources\AssetBase.h" />
     <ClInclude Include="Resources\AssetSerializer.h" />
+    <ClInclude Include="Resources\Assets\MaterialAsset.h" />
     <ClInclude Include="Resources\Assets\MeshAsset.h" />
     <ClInclude Include="Resources\Field.h" />
     <ClInclude Include="Resources\ResourceManager.h" />
+    <ClInclude Include="Resources\SceneComponent.h" />
     <ClInclude Include="Resources\UUID.h" />
     <ClInclude Include="Scene\SceneNode.h" />
     <ClInclude Include="TempGameObject.h" />
