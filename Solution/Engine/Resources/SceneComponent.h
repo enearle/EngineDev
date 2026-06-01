@@ -2,6 +2,7 @@
 #include <stdexcept>
 #include <vector>
 #include "Field.h"
+#include "Assets/MeshAsset.h"
 
 class SceneNode;
 
@@ -39,24 +40,26 @@ public:
 
 class ENGINE_API MeshComponent : public SceneComponentBase
 {
+    MeshAsset* LoadedMesh;
 public:
-    // Deserialize constructor
-    MeshComponent(SceneNode* owner) : SceneComponentBase({}, owner) {}
-    
-    // New component constructor
-    MeshComponent(std::vector<Field> fields, SceneNode* owner) : SceneComponentBase(std::move(fields), owner) {}
+    // Create single field for MeshAsset
+    MeshComponent(SceneNode* owner) : SceneComponentBase({Field(ResourceType::Mesh, "MeshAsset")}, owner) { }
+
     virtual SceneComponentType GetType() const override { return SceneComponentType::MeshComponentType; }
+    
+    virtual void Deserialize(std::string& data, long& offset) override;
 };
 
+// Scene components are responsible for managing their own resources and lifecycle
 class ENGINE_API SceneComponentFactory
 {
 public:
-    static SceneComponentBase* SceneComponentBuilder(SceneComponentType sceneComponentType)
+    static SceneComponentBase* SceneComponentBuilder(SceneComponentType sceneComponentType, SceneNode* owner)
     {
         switch (sceneComponentType)
         {
         case SceneComponentType::MeshComponentType:
-            return new MeshComponent({}, nullptr);
+            return new MeshComponent(owner);
         default:
             return nullptr;
         }

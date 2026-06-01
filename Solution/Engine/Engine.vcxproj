@@ -249,7 +249,6 @@
     <ClCompile Include="Light.cpp" />
     <ClCompile Include="NoesisUILayer.cpp" />
     <ClCompile Include="Resources\AssetBase.cpp" />
-    <ClCompile Include="Resources\AssetSerializer.cpp" />
     <ClCompile Include="Resources\Assets\MaterialAsset.cpp" />
     <ClCompile Include="Resources\Assets\MeshAsset.cpp" />
     <ClCompile Include="Resources\Field.cpp" />

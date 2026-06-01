@@ -3,6 +3,29 @@
 #include <sstream>
 #include <random>
 #include <stdexcept>
+
+bool AssetID::IsValid() const
+{
+    if (first == 0 || second == 0)
+        return false;
+
+    // RFC 4122: version 4 — bits 12-15 of time_hi_and_version must be 0100
+    if ((first & 0x000000000000F000ULL) != 0x0000000000004000ULL)
+        return false;
+
+    // RFC 4122: variant 1 — top two bits of clock_seq_hi_and_reserved must be 10
+    if ((second & 0xC000000000000000ULL) != 0x8000000000000000ULL)
+        return false;
+
+    return true;
+}
+
+void AssetID::Clear()
+{
+    first = 0;
+    second = 0;
+}
+
 bool AssetID::operator==(const AssetID& other) const
 {
     return first == other.first && second == other.second;

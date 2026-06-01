@@ -4,8 +4,12 @@
 #include <string>
 
 struct alignas(16) ENGINE_API AssetID {
-    uint64_t first;
-    uint64_t second;
+    uint64_t first = 0;
+    uint64_t second = 0;
+    
+    bool IsValid() const;
+    
+    void Clear();
 
     // Equality operator
     bool operator==(const AssetID& other) const;

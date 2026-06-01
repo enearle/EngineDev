@@ -27,6 +27,11 @@ MeshNode* GeometryImport::LoadNode(aiNode* node, const aiScene* scene, const XMM
         else
             meshes[i] = LoadMesh(assimpMesh, newTransform);
     }
+    
+    //////////////////////////////////////////////////////////////////////////
+    // TODO: Convert to load SceneNode with MeshComponent that has a MeshAsset
+    //////////////////////////////////////////////////////////////////////////
+    
     MeshNode* newNode = new MeshNode(meshes, newTransform, name, parent);
     for (size_t i = 0; i < node->mNumChildren; i++)
         newNode->AddChild(LoadNode(node->mChildren[i], scene, newTransform, name, allowSkinned, newNode));
@@ -35,83 +40,82 @@ MeshNode* GeometryImport::LoadNode(aiNode* node, const aiScene* scene, const XMM
 
 Mesh GeometryImport::LoadMesh(aiMesh* mesh, const XMMATRIX& transform)
 {
-    std::vector<RHIStructures::Vertex> vertices;
-    std::vector<uint32_t> indices;
+
+    VertexCache* vertexCache = new VertexCache();
     
-    vertices.resize(mesh->mNumVertices);
-    indices.reserve(mesh->mNumFaces * 3);
+    vertexCache->Vertices.resize(mesh->mNumVertices);
+    vertexCache->Indices.reserve(mesh->mNumFaces * 3);
     
     for (size_t i = 0; i < mesh->mNumVertices; i++)
     {
-        vertices[i].Position.x = mesh->mVertices[i].x;
-        vertices[i].Position.y = mesh->mVertices[i].y;
-        vertices[i].Position.z = mesh->mVertices[i].z;
+        vertexCache->Vertices[i].Position.x = mesh->mVertices[i].x;
+        vertexCache->Vertices[i].Position.y = mesh->mVertices[i].y;
+        vertexCache->Vertices[i].Position.z = mesh->mVertices[i].z;
         
         if (mesh->mTextureCoords[0])
         {
-            vertices[i].TexCoord.x = mesh->mTextureCoords[0][i].x;
-            vertices[i].TexCoord.y = mesh->mTextureCoords[0][i].y;
+            vertexCache->Vertices[i].TexCoord.x = mesh->mTextureCoords[0][i].x;
+            vertexCache->Vertices[i].TexCoord.y = mesh->mTextureCoords[0][i].y;
         }
 
-        vertices[i].Normal.x = mesh->mNormals[i].x;
-        vertices[i].Normal.y = mesh->mNormals[i].y;
-        vertices[i].Normal.z = mesh->mNormals[i].z;
+        vertexCache->Vertices[i].Normal.x = mesh->mNormals[i].x;
+        vertexCache->Vertices[i].Normal.y = mesh->mNormals[i].y;
+        vertexCache->Vertices[i].Normal.z = mesh->mNormals[i].z;
 
-        vertices[i].Tangent.x = mesh->mTangents[i].x;
-        vertices[i].Tangent.y = mesh->mTangents[i].y;
-        vertices[i].Tangent.z = mesh->mTangents[i].z;
+        vertexCache->Vertices[i].Tangent.x = mesh->mTangents[i].x;
+        vertexCache->Vertices[i].Tangent.y = mesh->mTangents[i].y;
+        vertexCache->Vertices[i].Tangent.z = mesh->mTangents[i].z;
 
-        vertices[i].Bitangent.x = mesh->mBitangents[i].x;
-        vertices[i].Bitangent.y = mesh->mBitangents[i].y;
-        vertices[i].Bitangent.z = mesh->mBitangents[i].z;
+        vertexCache->Vertices[i].Bitangent.x = mesh->mBitangents[i].x;
+        vertexCache->Vertices[i].Bitangent.y = mesh->mBitangents[i].y;
+        vertexCache->Vertices[i].Bitangent.z = mesh->mBitangents[i].z;
     }
     
     for (size_t i = 0; i < mesh->mNumFaces; i++)
     {
         aiFace face = mesh->mFaces[i];
         for (size_t j = 0; j < face.mNumIndices; j++)
-            indices.push_back(face.mIndices[j]);
+            vertexCache->Indices.push_back(face.mIndices[j]);
     }
     
-    return Mesh(&vertices, &indices, mesh->mMaterialIndex);
+    return Mesh(vertexCache, mesh->mMaterialIndex);
 }
 
 Mesh GeometryImport::LoadSkinnedMesh(aiMesh* mesh, const XMMATRIX& transform)
 {
     using namespace RHIStructures;
     
-    std::vector<SkinnedVertex> vertices;
-    std::vector<uint32_t> indices;
+    SkinnedVertexCache* skinnedVertexCache = new SkinnedVertexCache();
     
-    vertices.resize(mesh->mNumVertices);
-    indices.reserve(mesh->mNumFaces * 3);
+    skinnedVertexCache->Vertices.resize(mesh->mNumVertices);
+    skinnedVertexCache->Indices.reserve(mesh->mNumFaces * 3);
     
     for (size_t i = 0; i < mesh->mNumVertices; i++)
     {
-        vertices[i].Position.x = mesh->mVertices[i].x;
-        vertices[i].Position.y = mesh->mVertices[i].y;
-        vertices[i].Position.z = mesh->mVertices[i].z;
+        skinnedVertexCache->Vertices[i].Position.x = mesh->mVertices[i].x;
+        skinnedVertexCache->Vertices[i].Position.y = mesh->mVertices[i].y;
+        skinnedVertexCache->Vertices[i].Position.z = mesh->mVertices[i].z;
         
         if (mesh->mTextureCoords[0])
         {
-            vertices[i].TexCoord.x = mesh->mTextureCoords[0][i].x;
-            vertices[i].TexCoord.y = mesh->mTextureCoords[0][i].y;
+            skinnedVertexCache->Vertices[i].TexCoord.x = mesh->mTextureCoords[0][i].x;
+            skinnedVertexCache->Vertices[i].TexCoord.y = mesh->mTextureCoords[0][i].y;
         }
 
-        vertices[i].Normal.x = mesh->mNormals[i].x;
-        vertices[i].Normal.y = mesh->mNormals[i].y;
-        vertices[i].Normal.z = mesh->mNormals[i].z;
+        skinnedVertexCache->Vertices[i].Normal.x = mesh->mNormals[i].x;
+        skinnedVertexCache->Vertices[i].Normal.y = mesh->mNormals[i].y;
+        skinnedVertexCache->Vertices[i].Normal.z = mesh->mNormals[i].z;
 
-        vertices[i].Tangent.x = mesh->mTangents[i].x;
-        vertices[i].Tangent.y = mesh->mTangents[i].y;
-        vertices[i].Tangent.z = mesh->mTangents[i].z;
+        skinnedVertexCache->Vertices[i].Tangent.x = mesh->mTangents[i].x;
+        skinnedVertexCache->Vertices[i].Tangent.y = mesh->mTangents[i].y;
+        skinnedVertexCache->Vertices[i].Tangent.z = mesh->mTangents[i].z;
 
-        vertices[i].Bitangent.x = mesh->mBitangents[i].x;
-        vertices[i].Bitangent.y = mesh->mBitangents[i].y;
-        vertices[i].Bitangent.z = mesh->mBitangents[i].z;
+        skinnedVertexCache->Vertices[i].Bitangent.x = mesh->mBitangents[i].x;
+        skinnedVertexCache->Vertices[i].Bitangent.y = mesh->mBitangents[i].y;
+        skinnedVertexCache->Vertices[i].Bitangent.z = mesh->mBitangents[i].z;
         
-        vertices[i].BoneWeights = XMFLOAT4(0.0f, 0.0f, 0.0f, 0.0f);
-        vertices[i].BoneIndices = XMUINT4(0, 0, 0, 0);
+        skinnedVertexCache->Vertices[i].BoneWeights = XMFLOAT4(0.0f, 0.0f, 0.0f, 0.0f);
+        skinnedVertexCache->Vertices[i].BoneIndices = XMUINT4(0, 0, 0, 0);
     }
     
     std::vector<XMMATRIX> boneOffsets;
@@ -170,18 +174,18 @@ Mesh GeometryImport::LoadSkinnedMesh(aiMesh* mesh, const XMMATRIX& transform)
                 weights[i] /= weightSum;
         }
         
-        vertices[vertexIndex].BoneWeights = XMFLOAT4(weights[0], weights[1], weights[2], weights[3]);
-        vertices[vertexIndex].BoneIndices = XMUINT4(indices[0], indices[1], indices[2], indices[3]);
+        skinnedVertexCache->Vertices[vertexIndex].BoneWeights = XMFLOAT4(weights[0], weights[1], weights[2], weights[3]);
+        skinnedVertexCache->Vertices[vertexIndex].BoneIndices = XMUINT4(indices[0], indices[1], indices[2], indices[3]);
     }
     
     for (size_t i = 0; i < mesh->mNumFaces; i++)
     {
         aiFace face = mesh->mFaces[i];
         for (size_t j = 0; j < face.mNumIndices; j++)
-            indices.push_back(face.mIndices[j]);
+            skinnedVertexCache->Indices.push_back(face.mIndices[j]);
     }
     
-    return Mesh(&vertices, &indices, mesh->mMaterialIndex, boneOffsets, boneTransforms);
+    return Mesh(skinnedVertexCache, mesh->mMaterialIndex, boneOffsets, boneTransforms);
 }
 
 MeshNode* GeometryImport::CreateMeshGroup(std::string filePath, const std::string& name, const XMMATRIX& transform, bool allowSkinned)

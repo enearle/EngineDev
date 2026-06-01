@@ -3,6 +3,7 @@
 #include <vector>
 #include "../ENGINE_API_Macro.h"
 #include "../Engine/Resources/AssetBase.h"
+#include "../Engine/Resources/SceneComponent.h"
 #include "DirectXMath.h"
 
 enum class RotationAxis
@@ -24,8 +25,6 @@ protected:
     SceneNode* Parent = nullptr;
     std::vector<SceneNode*> Children = {};
     std::vector<SceneComponentBase*> Components = {};
-    
-    
     
     // Init() is required because a polymorphic inherited class 
     // cannot be added to mChildren at the time of initialization.

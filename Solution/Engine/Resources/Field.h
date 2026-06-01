@@ -1,11 +1,12 @@
 ﻿#pragma once
+#include <memory>
+#include "AssetBase.h"
 #include "ResourceManager.h"
 #include "UUID.h"
 #include "../ENGINE_API_Macro.h"
 
 class ENGINE_API Field
 {
-    
     ResourceType Type;
     std::string Name;
 public:
@@ -17,3 +18,4 @@ public:
     const AssetID& GetID() const { return ID; }
     void SetID(const AssetID& id);
 };
+

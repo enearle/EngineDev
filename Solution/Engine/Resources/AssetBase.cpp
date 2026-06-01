@@ -1,5 +1,4 @@
 #include "AssetBase.h"
-
 #include <stdexcept>
 #include "ResourceManager.h"
 #include "UUID.h"

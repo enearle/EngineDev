@@ -2,6 +2,9 @@
 
 #include <string>
 #include <map>
+#include <optional>
+
+#include "AssetBase.h"
 #include "UUID.h"
 #include "../ENGINE_API_Macro.h"
 
@@ -19,7 +22,7 @@ enum class ResourceType : uint32_t {
     Material,
     Mesh,
     MeshSkinned,
-    GameObject
+    SceneNode
 };
 
 struct AssetData {
@@ -31,13 +34,14 @@ class ENGINE_API ResourceManager {
 private:
 
     static std::map<AssetID, AssetData> Registry;
-    static void CreateMetaFile(const AssetID& id, const std::string& filePath);
+    static std::optional<std::string> ReadAllBytes(const std::string& filePath);
     
 public:
 
     static void LoadRegistry();
     static void SaveRegistry();
     
+    static AssetBase* GetAsset(const AssetID& id, ResourceType type);
     static AssetID Import(const std::string& sourcePath, ResourceType type);
     static void UpdateAssetPath(AssetID id, const std::string& newPath);
     static AssetID ReadMetaFile(const std::string& filePath);

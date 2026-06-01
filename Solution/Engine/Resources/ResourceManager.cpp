@@ -2,6 +2,8 @@
 #include <filesystem>
 #include <fstream>
 
+#include "Assets/MeshAsset.h"
+
 
 namespace fs = std::filesystem;
 std::map<AssetID, AssetData> ResourceManager::Registry;
@@ -45,6 +47,49 @@ void ResourceManager::SaveRegistry()
         uint32_t pathLen = static_cast<uint32_t>(data.FilePath.size());
         file.write(reinterpret_cast<const char*>(&pathLen), sizeof(pathLen));
         file.write(data.FilePath.data(), pathLen);
+    }
+}
+
+std::optional<std::string> ResourceManager::ReadAllBytes(const std::string& filePath)
+{
+    std::ifstream file(filePath, std::ios::binary | std::ios::ate);
+    if (!file) return std::nullopt;
+
+    std::streamsize size = file.tellg();
+    if (size < 0) return std::nullopt;
+
+    std::string buffer;
+    buffer.resize(static_cast<size_t>(size));
+    file.seekg(0, std::ios::beg);
+    if (size > 0 && !file.read(buffer.data(), size))
+        return std::nullopt;
+
+    return buffer;
+}
+
+AssetBase* ResourceManager::GetAsset(const AssetID& id, ResourceType type)
+{
+    if (!ValidateAssetType(id, type)) return nullptr;
+
+    auto data = ReadAllBytes(Registry[id].FilePath);
+    if (!data) return nullptr;
+    
+    AssetBase* asset = nullptr;
+    long offset = 0;
+    switch (type)
+    {
+    case ResourceType::Mesh:
+        asset = new MeshAsset();
+        asset->Deserialize(data.value(), offset);
+        return asset;
+        
+    case ResourceType::SceneNode:
+        asset = new SceneNode();
+        asset->Deserialize(data.value(), offset);
+        return asset;
+        
+    case default:
+        return nullptr;
     }
 }
 

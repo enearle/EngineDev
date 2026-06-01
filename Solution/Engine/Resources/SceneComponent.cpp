@@ -20,3 +20,15 @@ void SceneComponentBase::Deserialize(std::string& data, long& offset)
     
     offset += 1 + count * 36;
 }
+
+void MeshComponent::Deserialize(std::string& data, long& offset)
+{
+    SceneComponentBase::Deserialize(data, offset);
+    
+    // Load mesh if one is selected
+    if (Fields[0].GetID().IsValid())
+    {
+        LoadedMesh = static_cast<MeshAsset*>(ResourceManager::GetAsset(Fields[0].GetID(), ResourceType::Mesh));
+    }
+    
+}

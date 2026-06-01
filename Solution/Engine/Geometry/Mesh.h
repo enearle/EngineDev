@@ -8,16 +8,29 @@
 #include "../RHI/RHI/RHIStructures.h"
 #include "../ENGINE_API_Macro.h"
 #include "../Scene/SceneNode.h"
+#include "../RHI/Uploader.h"
 
 struct aiScene;
 struct DirectX::XMMATRIX;
+
+struct SkinnedVertexCache
+{
+    std::vector<RHIStructures::SkinnedVertex> Vertices;
+    std::vector<uint32_t> Indices;
+};
+
+struct VertexCache
+{
+    std::vector<RHIStructures::Vertex> Vertices;
+    std::vector<uint32_t> Indices;
+};
 
 class ENGINE_API Mesh
 {
 public:
     Mesh();
-    Mesh(std::vector<RHIStructures::Vertex>* vertices, std::vector<uint32_t>* indices, uint32_t LocalMaterialIndex);
-    Mesh(std::vector<RHIStructures::SkinnedVertex>* vertices, std::vector<uint32_t>* indices, uint32_t LocalMaterialIndex, 
+    Mesh(VertexCache* vertexCache, uint32_t LocalMaterialIndex);
+    Mesh(SkinnedVertexCache* skinnedVertexCache, uint32_t LocalMaterialIndex, 
         const std::vector<DirectX::XMMATRIX>& boneOffsets = {}, const std::vector<DirectX::XMMATRIX>& boneTransforms = {});
     ~Mesh();
 
@@ -27,8 +40,8 @@ public:
     bool IsSkinned() const                              { return bIsSkinned; }
     uint32_t GetVertexStride() const                    { return bIsSkinned ? sizeof(RHIStructures::SkinnedVertex) : sizeof(RHIStructures::Vertex); }
     uint32_t GetPipelineVariantID() const               { return bIsSkinned ? 1 : 0; }
-    uint64_t GetVertexBufferID() const                  { return VertexBufferID; }
-    uint64_t GetIndexBufferID() const                   { return IndexBufferID; }
+    Uploader::BufferID GetVertexBufferID() const        { return VertexBufferID; }
+    Uploader::BufferID GetIndexBufferID() const         { return IndexBufferID; }
     void* GetVertexBufferHandle() const;
     void* GetIndexBufferHandle() const;
     std::vector<DirectX::XMMATRIX> GetBoneOffsets() const { return BoneOffsets; }
@@ -40,11 +53,18 @@ private:
     uint32_t VertexCount;
     uint32_t IndexCount;
     uint32_t LocalMaterialIndex;
-    
-    uint64_t VertexBufferID = 0;
-    uint64_t IndexBufferID = 0;
     std::vector<DirectX::XMMATRIX> BoneOffsets;
     std::vector<DirectX::XMMATRIX> BoneTransforms;
+    
+    Uploader::BufferID VertexBufferID = 0;
+    Uploader::BufferID IndexBufferID = 0;
+    VertexCache* TempVertexCache = nullptr;
+    SkinnedVertexCache* TempSkinnedVertexCache = nullptr;
+    
+public:
+    void* GetCachedIndexData() const;
+    void* GetCachedVertexData() const;
+    void WipeCachedData();
     
 };
 
@@ -55,9 +75,6 @@ public:
     MeshNode(std::vector<Mesh>& meshes, const DirectX::XMMATRIX localMatrix, const std::string& name, SceneNode* parent = nullptr);
     ~MeshNode() = default;
     
-    void AddMesh(Mesh mesh)                             { Meshes.push_back(std::move(mesh)); }
-    
-    std::vector<Mesh> GetMeshes() const                 { return Meshes; }
     size_t GetUVCount() const                           { return Meshes.size(); }
     const Mesh* GetMesh(uint32_t index) const;
     std::vector<Mesh> Meshes;
