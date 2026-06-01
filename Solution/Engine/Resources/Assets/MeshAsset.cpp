@@ -72,7 +72,7 @@ void MeshAsset::UploadToGPU()
     for (uint32_t i = 0; i < Meshes.size(); ++i)
     {
         // TODO: Upload mesh data to GPU
-        
+        // use RHI/Uploader.cpp
         
         Meshes[i].WipeCachedData();
     }
@@ -83,5 +83,6 @@ void MeshAsset::FreeGPUResources()
     for (uint32_t i = 0; i < Meshes.size(); ++i)
     {
         // TODO: Free GPU resources for mesh
+        // use RHI/Uploader.cpp
     }
 }

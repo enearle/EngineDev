@@ -25,7 +25,7 @@ enum class ResourceType : uint32_t {
     SceneNode
 };
 
-struct AssetData {
+struct AssetRegistry {
     ResourceType Type;
     std::string FilePath;
 };
@@ -33,7 +33,7 @@ struct AssetData {
 class ENGINE_API ResourceManager {
 private:
 
-    static std::map<AssetID, AssetData> Registry;
+    static std::map<AssetID, AssetRegistry> Registry;
     static std::optional<std::string> ReadAllBytes(const std::string& filePath);
     
 public:
@@ -42,6 +42,7 @@ public:
     static void SaveRegistry();
     
     static AssetBase* GetAsset(const AssetID& id, ResourceType type);
+    static void CreateAsset(AssetBase* asset, const std::string& filePath);
     static AssetID Import(const std::string& sourcePath, ResourceType type);
     static void UpdateAssetPath(AssetID id, const std::string& newPath);
     static AssetID ReadMetaFile(const std::string& filePath);

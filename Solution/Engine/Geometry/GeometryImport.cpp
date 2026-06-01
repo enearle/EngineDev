@@ -9,11 +9,12 @@
 #include "Mesh.h"
 #include "DirectXMath.h"
 #include "../RHI/RHI/RHIStructures.h"
+#include "../Resources/ResourceManager.h"
 
 using namespace DirectX;
 
-MeshNode* GeometryImport::LoadNode(aiNode* node, const aiScene* scene, const XMMATRIX& transform, const std::string name, 
-    bool allowSkinned, SceneNode* parent)
+SceneNode* GeometryImport::LoadNode(aiNode* node, const aiScene* scene, const XMMATRIX& transform, const std::string name,
+                                    bool allowSkinned, SceneNode* parent, std::string path)
 {
     XMMATRIX newTransform = XMMatrixTranspose(XMMATRIX(&node->mTransformation.a1)) * transform;
     std::vector<Mesh> meshes(node->mNumMeshes);
@@ -29,22 +30,21 @@ MeshNode* GeometryImport::LoadNode(aiNode* node, const aiScene* scene, const XMM
     }
     
     //////////////////////////////////////////////////////////////////////////
-    // TODO: Convert to load SceneNode with MeshComponent that has a MeshAsset
+    // Convert to load SceneNode with MeshComponent that has a MeshAsset    //
     //////////////////////////////////////////////////////////////////////////
-    ///
+
     SceneNode* newSceneNode = new SceneNode(name, newTransform, parent);
     MeshComponent* meshComponent = static_cast<MeshComponent*>(newSceneNode->AddComponent(MeshComponentType));
     if (meshComponent)
     {
         MeshAsset* meshAsset = new MeshAsset(meshes, name);
         meshComponent->SetMeshAsset(meshAsset);
-        meshAsset->ResourceManager->
+        ResourceManager::CreateAsset(meshAsset, path);
     }
-    
-    MeshNode* newNode = new MeshNode(meshes, newTransform, name, parent);
+
     for (size_t i = 0; i < node->mNumChildren; i++)
-        newNode->AddChild(LoadNode(node->mChildren[i], scene, newTransform, name, allowSkinned, newNode));
-    return newNode;
+        newSceneNode->AddChild(LoadNode(node->mChildren[i], scene, newTransform, name, allowSkinned, newSceneNode, path));
+    return newSceneNode;
 }
 
 Mesh GeometryImport::LoadMesh(aiMesh* mesh, const XMMATRIX& transform)
@@ -197,7 +197,7 @@ Mesh GeometryImport::LoadSkinnedMesh(aiMesh* mesh, const XMMATRIX& transform)
     return Mesh(skinnedVertexCache, mesh->mMaterialIndex, boneOffsets, boneTransforms);
 }
 
-MeshNode* GeometryImport::CreateMeshGroup(std::string filePath, const std::string& name, const XMMATRIX& transform, bool allowSkinned)
+SceneNode* GeometryImport::CreateMeshGroup(std::string filePath, const std::string& name, const XMMATRIX& transform, bool allowSkinned)
 {
     Assimp::Importer importer;
     const aiScene* scene = importer.ReadFile("../Engine/Meshes/" + filePath, 
@@ -206,5 +206,5 @@ MeshNode* GeometryImport::CreateMeshGroup(std::string filePath, const std::strin
     if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode)
         throw std::runtime_error("Failed to load model: " + filePath);
     
-    return LoadNode(scene->mRootNode, scene, transform, name, allowSkinned);
+    return LoadNode(scene->mRootNode, scene, transform, name, allowSkinned, nullptr, filePath);
 }

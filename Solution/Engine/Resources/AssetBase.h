@@ -22,6 +22,7 @@ public:
     virtual void Deserialize(std::string& data, long& offset);
     
     virtual const AssetID& GetID() const { return ID; }
+    std::string GetAssetName() const { return Name; }
 };
 
 class ENGINE_API DependentAssetBase : public AssetBase

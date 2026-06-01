@@ -6,7 +6,7 @@
 
 
 namespace fs = std::filesystem;
-std::map<AssetID, AssetData> ResourceManager::Registry;
+std::map<AssetID, AssetRegistry> ResourceManager::Registry;
 void ResourceManager::LoadRegistry()
 {
     std::ifstream file(REGISTRY_FILE, std::ios::binary);
@@ -20,7 +20,7 @@ void ResourceManager::LoadRegistry()
         AssetID uuid;
         file.read(reinterpret_cast<char*>(&uuid), sizeof(AssetID));
 
-        AssetData data;
+        AssetRegistry data;
         file.read(reinterpret_cast<char*>(&data.Type), sizeof(ResourceType));
 
         uint32_t pathLen = 0;
@@ -93,11 +93,25 @@ AssetBase* ResourceManager::GetAsset(const AssetID& id, ResourceType type)
     }
 }
 
+void ResourceManager::CreateAsset(AssetBase* asset, const std::string& filePath)
+{
+    // Create file and write asset data
+    std::string path = filePath + "/" + asset->GetAssetName() + ".asset";
+    std::ofstream outFile(path, std::ios::binary);
+    std::string data;
+    asset->Serialize(data);
+    outFile.write(data.data(), data.size());
+    outFile.close();
+    AssetRegistry assetRegistry = {ResourceType::Mesh, path};
+    Registry[asset->GetID()] = assetRegistry;
+}
+
+
 AssetID ResourceManager::Import(const std::string& sourcePath, ResourceType type)
 {
     AssetID newID = AssetID::Generate();
 
-    AssetData data;
+    AssetRegistry data;
     data.FilePath = sourcePath;
     data.Type = type;
     Registry[newID] = data;
