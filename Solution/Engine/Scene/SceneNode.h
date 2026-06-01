@@ -21,7 +21,6 @@ protected:
     DirectX::XMMATRIX WorldMatrix = DirectX::XMMatrixIdentity();
     bool IsWorldMatrixDirty = true;
     bool IsStatic = false;
-    std::string Name = "";
     SceneNode* Parent = nullptr;
     std::vector<SceneNode*> Children = {};
     std::vector<SceneComponentBase*> Components = {};
@@ -41,7 +40,7 @@ public:
     SceneNode(SceneNode* parent = nullptr);
     
     // New node creation constructor
-    SceneNode(const std::string& name, AssetID assetId, SceneNode* parent = nullptr);
+    SceneNode(const std::string& name, DirectX::XMMATRIX localMatrix = {}, SceneNode* parent = nullptr);
     
     virtual ~SceneNode();
     
@@ -49,8 +48,13 @@ public:
     virtual void Reset();
     
     SceneNode* GetRootNode() { return Parent ? Parent->GetRootNode() : this; }
+    virtual AssetID& GetID() const override;
+    
     std::vector<SceneNode*> GetChildren() const { return Children; }
     void AddChild(SceneNode* child);
+    
+    SceneComponentBase* AddComponent(SceneComponentType type);
+    std::vector<SceneComponentBase*> GetComponents() const { return Components; }
     
     void UpdateWorldMatrix();
     void SetChildrenDirty();

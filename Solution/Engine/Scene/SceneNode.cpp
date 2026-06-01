@@ -15,7 +15,10 @@ void SceneNode::Init(std::string name, SceneNode* parent, XMMATRIX localMatrix)
         parent->AddChild(this);
     }
     else
-        RootNodes.push_back(this);   
+    {
+        RootNodes.push_back(this);
+        ID = AssetID::Generate();
+    } 
     
     LocalMatrix = localMatrix;
     Name = name;
@@ -47,16 +50,9 @@ SceneNode::SceneNode(SceneNode* parent) : Parent(parent), AssetBase("", {})
     }
 }
 
-SceneNode::SceneNode(const std::string& name, AssetID assetId, SceneNode* parent) : AssetBase(name, assetId), Parent(parent)
+SceneNode::SceneNode(const std::string& name, XMMATRIX localMatrix, SceneNode* parent)
 {
-    if (!parent)
-    {
-        RootNodes.push_back(this);
-    }
-    else
-    {
-        parent->AddChild(this);
-    }
+    SceneNode::Init(name, parent, localMatrix);
 }
 
 SceneNode::~SceneNode()
@@ -92,6 +88,16 @@ void SceneNode::AddChild(SceneNode* child)
     Children.push_back(child);
 }
 
+SceneComponentBase* SceneNode::AddComponent(SceneComponentType type)
+{
+    if (SceneComponentFactory::SceneComponentExists(type, this))
+        return nullptr;
+    
+    SceneComponentBase* component = SceneComponentFactory::SceneComponentBuilder(type, this);
+    Components.push_back(component);
+    return component;
+}
+
 void SceneNode::Update(float dt)
 {
     for(auto child : Children)
@@ -102,6 +108,12 @@ void SceneNode::Reset()
 {
     for (auto node : Children)
         node->Reset();
+}
+
+AssetID& SceneNode::GetID() const
+{
+    if (Parent) return Parent->GetRootNode()->GetID();
+    return GetID();
 }
 
 void SceneNode::UpdateWorldMatrix()

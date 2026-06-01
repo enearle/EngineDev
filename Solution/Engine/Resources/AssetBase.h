@@ -11,14 +11,17 @@ class SceneNode;
 class ENGINE_API AssetBase
 {
 protected:
-    std::string Name;
-    AssetID ID;
+    std::string Name = "";
+    AssetID ID = {};
+    AssetBase() = default;
     AssetBase(std::string name, AssetID id) : Name(std::move(name)), ID(id) {}
     virtual ~AssetBase() = default;
+    
 public:
     virtual void Serialize(std::string& data);
     virtual void Deserialize(std::string& data, long& offset);
     
+    virtual const AssetID& GetID() const { return ID; }
 };
 
 class ENGINE_API DependentAssetBase : public AssetBase

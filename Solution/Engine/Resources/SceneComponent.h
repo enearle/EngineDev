@@ -46,14 +46,28 @@ public:
     MeshComponent(SceneNode* owner) : SceneComponentBase({Field(ResourceType::Mesh, "MeshAsset")}, owner) { }
 
     virtual SceneComponentType GetType() const override { return SceneComponentType::MeshComponentType; }
-    
     virtual void Deserialize(std::string& data, long& offset) override;
+    
+    void SetMeshAsset(MeshAsset* meshAsset) { LoadedMesh = meshAsset; Fields[0].SetID(meshAsset->GetID());}
 };
 
 // Scene components are responsible for managing their own resources and lifecycle
 class ENGINE_API SceneComponentFactory
 {
 public:
+    static bool SceneComponentExists(SceneComponentType sceneComponentType, SceneNode* owner)
+    {
+        if (owner == nullptr)
+            return false;
+        
+        for (auto& component : owner->GetComponents())
+        {
+            if (component->GetType() == sceneComponentType)
+                return true;
+        }
+        return false;
+    }
+    
     static SceneComponentBase* SceneComponentBuilder(SceneComponentType sceneComponentType, SceneNode* owner)
     {
         switch (sceneComponentType)

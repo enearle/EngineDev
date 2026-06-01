@@ -31,6 +31,15 @@ MeshNode* GeometryImport::LoadNode(aiNode* node, const aiScene* scene, const XMM
     //////////////////////////////////////////////////////////////////////////
     // TODO: Convert to load SceneNode with MeshComponent that has a MeshAsset
     //////////////////////////////////////////////////////////////////////////
+    ///
+    SceneNode* newSceneNode = new SceneNode(name, newTransform, parent);
+    MeshComponent* meshComponent = static_cast<MeshComponent*>(newSceneNode->AddComponent(MeshComponentType));
+    if (meshComponent)
+    {
+        MeshAsset* meshAsset = new MeshAsset(meshes, name);
+        meshComponent->SetMeshAsset(meshAsset);
+        meshAsset->ResourceManager->
+    }
     
     MeshNode* newNode = new MeshNode(meshes, newTransform, name, parent);
     for (size_t i = 0; i < node->mNumChildren; i++)

@@ -12,7 +12,7 @@ class MeshAsset : public GPUAssetBase
 public:
     
     // Deserialize Constructor
-    MeshAsset();
+    MeshAsset() : GPUAssetBase("", {}, {}) {}
     
     // Import Mesc Constructor
     MeshAsset(std::vector<Mesh>& meshes, const std::string& name);

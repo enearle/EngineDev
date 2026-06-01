@@ -105,5 +105,5 @@ void Mesh::WipeCachedData()
 
 MeshNode::MeshNode(std::vector<Mesh>& meshes, const DirectX::XMMATRIX localMatrix, const std::string& name, SceneNode* parent) : Meshes(std::move(meshes))
 {
-    SceneNode::Init(name, parent, localMatrix);
+    SceneNode::Init(name, parent, TODO, localMatrix);
 }
