@@ -109,6 +109,26 @@ SceneComponentBase* SceneNode::GetComponent(SceneComponentType type) const
     return nullptr;
 }
 
+void SceneNode::UploadToGPU()
+{
+    MeshAsset* meshAsset = static_cast<MeshComponent*>(GetComponent(MeshComponentType))->GetMeshAsset();
+    if (meshAsset)
+        meshAsset->UploadToGPU();
+    
+    for (auto child : Children)
+        child->UploadToGPU();
+}
+
+void SceneNode::FreeGPUResources()
+{
+    MeshAsset* meshAsset = static_cast<MeshComponent*>(GetComponent(MeshComponentType))->GetMeshAsset();
+    if (meshAsset)
+        meshAsset->FreeGPUResources();
+    
+    for (auto child : Children)
+        child->FreeGPUResources();
+}
+
 void SceneNode::Update(float dt)
 {
     for(auto child : Children)

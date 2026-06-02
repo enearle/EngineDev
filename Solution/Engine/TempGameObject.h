@@ -24,6 +24,7 @@ public:
     uint64_t GetBoneBufferID() const { return BoneBufferID; }
     std::vector<DirectX::XMMATRIX> GetBoneOffsets() const { return BoneOffsets; }
     std::vector<DirectX::XMMATRIX> GetBoneTransforms() const { return BoneTransforms; }
-    void AddMeshNode(SceneNode* node);
+    void CreateDrawForMeshNode(SceneNode* node);
     void UploadToGPU();
+    void FreeGPUResources();
 };

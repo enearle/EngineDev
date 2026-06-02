@@ -56,6 +56,8 @@ public:
     SceneComponentBase* AddComponent(SceneComponentType type);
     std::vector<SceneComponentBase*> GetComponents() const { return Components; }
     SceneComponentBase* GetComponent(SceneComponentType type) const;
+    void UploadToGPU();
+    void FreeGPUResources();
     
     void UpdateWorldMatrix();
     void SetChildrenDirty();

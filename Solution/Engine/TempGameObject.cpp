@@ -66,10 +66,10 @@ TempGameObject::TempGameObject(std::vector<std::string> materials, std::string f
         BoneDescriptorSet = Uploader::AllocateDescriptor(BoneBufferID);
     }
     
-    AddMeshNode(SceneRoot);
+    CreateDrawForMeshNode(SceneRoot);
 }
 
-void TempGameObject::AddMeshNode(SceneNode* node)
+void TempGameObject::CreateDrawForMeshNode(SceneNode* node)
 {
     MeshAsset* meshAsset = static_cast<MeshComponent*>(node->GetComponent(MeshComponentType))->GetMeshAsset();
     
@@ -120,18 +120,18 @@ void TempGameObject::AddMeshNode(SceneNode* node)
 
     for (SceneNode* child : node->GetChildren())
     {
-        SceneNode* meshNode = static_cast<SceneNode*>(child);
+        SceneNode* meshNode = child;
         if (meshNode)
-            AddMeshNode(meshNode);
+            CreateDrawForMeshNode(meshNode);
     }
 }
 
 void TempGameObject::UploadToGPU()
 {
-    for (SceneNode* node : MeshNodes)
-    {
-        MeshNode* meshNode = static_cast<MeshNode*>(node);
-        if (meshNode)
-            meshNode->UploadToGPU();
-    }
+    SceneRoot->UploadToGPU();
+}
+
+void TempGameObject::FreeGPUResources()
+{
+    SceneRoot->FreeGPUResources();
 }
