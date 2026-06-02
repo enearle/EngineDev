@@ -7,7 +7,6 @@
 #include <vector>
 #include "../RHI/RHI/RHIStructures.h"
 #include "../ENGINE_API_Macro.h"
-#include "../Scene/SceneNode.h"
 #include "../RHI/Uploader.h"
 
 struct aiScene;
@@ -30,9 +29,15 @@ class ENGINE_API Mesh
 public:
     Mesh();
     Mesh(VertexCache* vertexCache, uint32_t LocalMaterialIndex);
-    Mesh(SkinnedVertexCache* skinnedVertexCache, uint32_t LocalMaterialIndex, 
+    Mesh(SkinnedVertexCache* skinnedVertexCache, uint32_t LocalMaterialIndex,
         const std::vector<DirectX::XMMATRIX>& boneOffsets = {}, const std::vector<DirectX::XMMATRIX>& boneTransforms = {});
     ~Mesh();
+
+    // Move-only: cache pointers are owned exclusively; copy would double-free.
+    Mesh(const Mesh&) = delete;
+    Mesh& operator=(const Mesh&) = delete;
+    Mesh(Mesh&& other) noexcept;
+    Mesh& operator=(Mesh&& other) noexcept;
 
     uint32_t GetVertexCount() const                     { return VertexCount; }
     uint32_t GetIndexCount() const                      { return IndexCount; }
@@ -46,7 +51,7 @@ public:
     void* GetIndexBufferHandle() const;
     std::vector<DirectX::XMMATRIX> GetBoneOffsets() const { return BoneOffsets; }
     std::vector<DirectX::XMMATRIX> GetBoneTransforms() const { return BoneTransforms; }
-    
+    void UploadToGPU();
 private:
     
     bool bIsSkinned = false;
@@ -66,16 +71,4 @@ public:
     void* GetCachedVertexData() const;
     void WipeCachedData();
     
-};
-
-class ENGINE_API MeshNode : public SceneNode
-{
-public:
-    MeshNode() = default;
-    MeshNode(std::vector<Mesh>& meshes, const DirectX::XMMATRIX localMatrix, const std::string& name, SceneNode* parent = nullptr);
-    ~MeshNode() = default;
-    
-    size_t GetUVCount() const                           { return Meshes.size(); }
-    const Mesh* GetMesh(uint32_t index) const;
-    std::vector<Mesh> Meshes;
 };

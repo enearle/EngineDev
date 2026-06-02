@@ -1,5 +1,6 @@
 #include "GeometryImport.h"
 
+#include <filesystem>
 #include <iostream>
 #include <stdexcept>
 #include <assimp/Importer.hpp>
@@ -13,37 +14,41 @@
 
 using namespace DirectX;
 
-SceneNode* GeometryImport::LoadNode(aiNode* node, const aiScene* scene, const XMMATRIX& transform, const std::string name,
-                                    bool allowSkinned, SceneNode* parent, std::string path)
+SceneNode* GeometryImport::LoadNode(aiNode* node, const aiScene* scene, const XMMATRIX& transform, const std::string& name,
+                                    bool allowSkinned, const std::string& destDir, SceneNode* parent)
 {
     XMMATRIX newTransform = XMMatrixTranspose(XMMATRIX(&node->mTransformation.a1)) * transform;
-    std::vector<Mesh> meshes(node->mNumMeshes);
-    uint32_t numMats = 0;
+
+    std::vector<Mesh> meshes;
+    meshes.reserve(node->mNumMeshes);
     for (size_t i = 0; i < node->mNumMeshes; i++)
     {
         uint32_t meshIndex = node->mMeshes[i];
         aiMesh* assimpMesh = scene->mMeshes[meshIndex];
         if (allowSkinned && assimpMesh->mNumBones > 0)
-            meshes[i] = LoadSkinnedMesh(assimpMesh, XMMATRIX(&node->mTransformation.a1) * transform);
+            meshes.emplace_back(LoadSkinnedMesh(assimpMesh, XMMATRIX(&node->mTransformation.a1) * transform));
         else
-            meshes[i] = LoadMesh(assimpMesh, newTransform);
+            meshes.emplace_back(LoadMesh(assimpMesh, newTransform));
     }
-    
-    //////////////////////////////////////////////////////////////////////////
-    // Convert to load SceneNode with MeshComponent that has a MeshAsset    //
-    //////////////////////////////////////////////////////////////////////////
 
-    SceneNode* newSceneNode = new SceneNode(name, newTransform, parent);
-    MeshComponent* meshComponent = static_cast<MeshComponent*>(newSceneNode->AddComponent(MeshComponentType));
-    if (meshComponent)
+    std::string nodeName = node->mName.length ? std::string(node->mName.C_Str()) : name;
+    SceneNode* newSceneNode = new SceneNode(nodeName, newTransform, parent); // ctor adds to parent->Children
+
+    if (!meshes.empty())
     {
-        MeshAsset* meshAsset = new MeshAsset(meshes, name);
-        meshComponent->SetMeshAsset(meshAsset);
-        ResourceManager::CreateAsset(meshAsset, path);
+        MeshComponent* meshComponent = static_cast<MeshComponent*>(newSceneNode->AddComponent(MeshComponentType));
+        if (meshComponent)
+        {
+            MeshAsset* meshAsset = new MeshAsset(meshes, nodeName);
+            // Register asset BEFORE wiring it onto the component so Field::SetID's
+            // type validation against the registry passes.
+            ResourceManager::CreateAsset(meshAsset, ResourceType::Mesh, destDir);
+            meshComponent->SetMeshAsset(meshAsset);
+        }
     }
 
     for (size_t i = 0; i < node->mNumChildren; i++)
-        newSceneNode->AddChild(LoadNode(node->mChildren[i], scene, newTransform, name, allowSkinned, newSceneNode, path));
+        LoadNode(node->mChildren[i], scene, newTransform, name, allowSkinned, destDir, newSceneNode); // B10: no outer AddChild
     return newSceneNode;
 }
 
@@ -197,14 +202,16 @@ Mesh GeometryImport::LoadSkinnedMesh(aiMesh* mesh, const XMMATRIX& transform)
     return Mesh(skinnedVertexCache, mesh->mMaterialIndex, boneOffsets, boneTransforms);
 }
 
-SceneNode* GeometryImport::CreateMeshGroup(std::string filePath, const std::string& name, const XMMATRIX& transform, bool allowSkinned)
+SceneNode* GeometryImport::CreateMeshGroup(const std::string& sourcePath, const std::string& name, const XMMATRIX& transform, bool allowSkinned)
 {
     Assimp::Importer importer;
-    const aiScene* scene = importer.ReadFile("../Engine/Meshes/" + filePath, 
-        aiProcess_Triangulate | aiProcess_JoinIdenticalVertices | 
+    const aiScene* scene = importer.ReadFile(sourcePath,
+        aiProcess_Triangulate | aiProcess_JoinIdenticalVertices |
         aiProcess_CalcTangentSpace | aiProcess_GenSmoothNormals | aiProcess_ConvertToLeftHanded);
     if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode)
-        throw std::runtime_error("Failed to load model: " + filePath);
-    
-    return LoadNode(scene->mRootNode, scene, transform, name, allowSkinned, nullptr, filePath);
+        throw std::runtime_error("Failed to load model: " + sourcePath);
+
+    std::filesystem::path src(sourcePath);
+    std::string destDir = src.parent_path().string();
+    return LoadNode(scene->mRootNode, scene, transform, name, allowSkinned, destDir, nullptr);
 }

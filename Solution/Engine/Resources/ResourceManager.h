@@ -42,9 +42,10 @@ public:
     static void SaveRegistry();
     
     static AssetBase* GetAsset(const AssetID& id, ResourceType type);
-    static void CreateAsset(AssetBase* asset, const std::string& filePath);
+    static void CreateAsset(AssetBase* asset, ResourceType type, const std::string& directory);
     static AssetID Import(const std::string& sourcePath, ResourceType type);
     static void UpdateAssetPath(AssetID id, const std::string& newPath);
+    // Deprecated: kept until editor migrates off .meta sidecars.
     static AssetID ReadMetaFile(const std::string& filePath);
     static bool ValidateAssetID(const AssetID& id, std::string& path);
     static bool ValidateAssetType(const AssetID& id, ResourceType type);

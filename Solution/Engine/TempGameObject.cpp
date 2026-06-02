@@ -4,13 +4,17 @@
 #include "Geometry/GeometryImport.h"
 #include "Renderer.h"
 #include "Uploader.h"
+#include "Geometry/Mesh.h"
+#include "Scene/SceneNode.h"
 
-void CollectBoneMatrices(const MeshNode* node, std::vector<DirectX::XMMATRIX>& outOffsetMatrices,
+void CollectBoneMatrices(const SceneNode* node, std::vector<DirectX::XMMATRIX>& outOffsetMatrices,
                          std::vector<DirectX::XMMATRIX>& outTransformMatrices)
 {
-    for (size_t i = 0; i < node->GetUVCount(); i++)
+    MeshAsset* meshAsset = static_cast<MeshComponent*>(node->GetComponent(MeshComponentType))->GetMeshAsset();
+    
+    for (size_t i = 0; i < meshAsset->GetMeshCount(); i++)
     {
-        const Mesh* mesh = node->GetMesh(i);
+        const Mesh* mesh = &meshAsset->GetMesh(i);
         if (mesh && mesh->IsSkinned())
         {
             const std::vector<DirectX::XMMATRIX>& boneOffsets = mesh->GetBoneOffsets();
@@ -31,9 +35,9 @@ void CollectBoneMatrices(const MeshNode* node, std::vector<DirectX::XMMATRIX>& o
     
     for (SceneNode* child : node->GetChildren())
     {
-        MeshNode* meshNode = static_cast<MeshNode*>(child);
-        if (meshNode)
-            CollectBoneMatrices(meshNode, outOffsetMatrices, outTransformMatrices);
+        SceneNode* sceneNode = child;
+        if (sceneNode)
+            CollectBoneMatrices(sceneNode, outOffsetMatrices, outTransformMatrices);
     }
 }
 
@@ -44,12 +48,12 @@ TempGameObject::TempGameObject(std::vector<std::string> materials, std::string f
         Materials.push_back(Material(material, Material::PBR).LoadMaterial(1, 2));
     }
     
-    MeshRoot = GeometryImport::CreateMeshGroup(filename, name, DirectX::XMMatrixIdentity(), useSkinning);
+    SceneRoot = GeometryImport::CreateMeshGroup(filename, name, DirectX::XMMatrixIdentity(), useSkinning);
     ModelDataArray.reserve(100);
     
     if (useSkinning)
     {
-        CollectBoneMatrices(MeshRoot, BoneOffsets, BoneTransforms);
+        CollectBoneMatrices(SceneRoot, BoneOffsets, BoneTransforms);
         
         std::vector<DirectX::XMFLOAT4X4> boneMatrices(MAX_BONES);
         for (uint32_t i = 0; i < MAX_BONES; i++)
@@ -62,14 +66,16 @@ TempGameObject::TempGameObject(std::vector<std::string> materials, std::string f
         BoneDescriptorSet = Uploader::AllocateDescriptor(BoneBufferID);
     }
     
-    AddMeshNode(MeshRoot);
+    AddMeshNode(SceneRoot);
 }
 
-void TempGameObject::AddMeshNode(MeshNode* node)
+void TempGameObject::AddMeshNode(SceneNode* node)
 {
-    for (size_t i = 0; i < node->GetUVCount(); i++)
+    MeshAsset* meshAsset = static_cast<MeshComponent*>(node->GetComponent(MeshComponentType))->GetMeshAsset();
+    
+    for (size_t i = 0; i < meshAsset->GetMeshCount(); i++)
     {
-        const Mesh* mesh = node->GetMesh(i);
+        const Mesh* mesh = &meshAsset->GetMesh(i);
         
         uint32_t materialIndex = mesh->GetLocalMaterialIndex();
         
@@ -114,8 +120,18 @@ void TempGameObject::AddMeshNode(MeshNode* node)
 
     for (SceneNode* child : node->GetChildren())
     {
-        MeshNode* meshNode = static_cast<MeshNode*>(child);
+        SceneNode* meshNode = static_cast<SceneNode*>(child);
         if (meshNode)
             AddMeshNode(meshNode);
+    }
+}
+
+void TempGameObject::UploadToGPU()
+{
+    for (SceneNode* node : MeshNodes)
+    {
+        MeshNode* meshNode = static_cast<MeshNode*>(node);
+        if (meshNode)
+            meshNode->UploadToGPU();
     }
 }

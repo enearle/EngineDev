@@ -2,7 +2,10 @@
 #include <filesystem>
 #include <fstream>
 
+#include "AssetBase.h"
 #include "Assets/MeshAsset.h"
+#include "../Geometry/GeometryImport.h"
+#include "../Scene/SceneNode.h"
 
 
 namespace fs = std::filesystem;
@@ -73,63 +76,67 @@ AssetBase* ResourceManager::GetAsset(const AssetID& id, ResourceType type)
 
     auto data = ReadAllBytes(Registry[id].FilePath);
     if (!data) return nullptr;
-    
+
     AssetBase* asset = nullptr;
     long offset = 0;
     switch (type)
     {
     case ResourceType::Mesh:
+    case ResourceType::MeshSkinned:
         asset = new MeshAsset();
-        asset->Deserialize(data.value(), offset);
-        return asset;
-        
+        break;
     case ResourceType::SceneNode:
         asset = new SceneNode();
-        asset->Deserialize(data.value(), offset);
-        return asset;
-        
-    case default:
+        break;
+    default:
         return nullptr;
     }
+
+    asset->Deserialize(data.value(), offset);
+    return asset;
 }
 
-void ResourceManager::CreateAsset(AssetBase* asset, const std::string& filePath)
+void ResourceManager::CreateAsset(AssetBase* asset, ResourceType type, const std::string& directory)
 {
-    // Create file and write asset data
-    std::string path = filePath + "/" + asset->GetAssetName() + ".asset";
-    std::ofstream outFile(path, std::ios::binary);
+    std::string path = directory + "/" + asset->GetAssetName() + ".asset";
+
     std::string data;
     asset->Serialize(data);
+
+    std::ofstream outFile(path, std::ios::binary);
     outFile.write(data.data(), data.size());
     outFile.close();
-    AssetRegistry assetRegistry = {ResourceType::Mesh, path};
-    Registry[asset->GetID()] = assetRegistry;
-}
 
+    Registry[asset->GetID()] = AssetRegistry{ type, path };
+    SaveRegistry();
+}
 
 AssetID ResourceManager::Import(const std::string& sourcePath, ResourceType type)
 {
-    AssetID newID = AssetID::Generate();
+    // D8: no meta files. Dispatch by type.
+    if (type == ResourceType::Mesh || type == ResourceType::MeshSkinned)
+    {
+        fs::path src(sourcePath);
+        std::string name = src.stem().string();
+        SceneNode* root = GeometryImport::CreateMeshGroup(sourcePath, name,
+                                                         DirectX::XMMatrixIdentity(),
+                                                         type == ResourceType::MeshSkinned);
+        if (!root) return {};
 
-    AssetRegistry data;
-    data.FilePath = sourcePath;
-    data.Type = type;
-    Registry[newID] = data;
-    SaveRegistry();
-    CreateMetaFile(newID, sourcePath);
-    return newID;
+        // D2: persist the SceneNode hierarchy itself alongside per-node MeshAssets.
+        std::string destDir = src.parent_path().string();
+        CreateAsset(root, ResourceType::SceneNode, destDir);
+        return root->GetID();
+    }
+
+    // Textures and other types not yet implemented under the new flow.
+    return {};
 }
 
 void ResourceManager::UpdateAssetPath(AssetID id, const std::string& newPath)
 {
     Registry[id].FilePath = newPath;
     SaveRegistry();
-}
-
-void ResourceManager::CreateMetaFile(const AssetID& id, const std::string& filePath)
-{
-    std::ofstream outFile(filePath + ".meta", std::ios::binary);
-    outFile.write(reinterpret_cast<const char*>(&id), sizeof(AssetID));
 }
 
 AssetID ResourceManager::ReadMetaFile(const std::string& filePath)

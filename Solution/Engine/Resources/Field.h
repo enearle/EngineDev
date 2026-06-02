@@ -10,6 +10,7 @@ class ENGINE_API Field
     ResourceType Type;
     std::string Name;
 public:
+    Field() : Type(ResourceType::Mesh), Name("") {}
     Field(ResourceType type, std::string name) : Type(type), Name(std::move(name)) {}
     AssetID ID = {};
 

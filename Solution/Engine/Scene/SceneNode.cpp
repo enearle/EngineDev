@@ -75,7 +75,7 @@ SceneNode::~SceneNode()
     
     for(auto child : childrenToDelete)
     {
-        if(child && child != this) // Don't delete self!
+        if(child && child != this)
         {
             child->Parent = nullptr;
             delete child;
@@ -98,6 +98,17 @@ SceneComponentBase* SceneNode::AddComponent(SceneComponentType type)
     return component;
 }
 
+SceneComponentBase* SceneNode::GetComponent(SceneComponentType type) const
+{
+    for (auto& component : Components)
+    {
+        if (component->GetType() == type)
+            return component;
+    }
+    
+    return nullptr;
+}
+
 void SceneNode::Update(float dt)
 {
     for(auto child : Children)
@@ -110,10 +121,10 @@ void SceneNode::Reset()
         node->Reset();
 }
 
-AssetID& SceneNode::GetID() const
+const AssetID& SceneNode::GetID() const
 {
     if (Parent) return Parent->GetRootNode()->GetID();
-    return GetID();
+    return ID;
 }
 
 void SceneNode::UpdateWorldMatrix()

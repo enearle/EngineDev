@@ -35,12 +35,11 @@ public:
     virtual SceneComponentType GetType() const = 0;
     virtual void Serialize(std::string& data);
     virtual void Deserialize(std::string& data, long& offset);
-    
 };
 
 class ENGINE_API MeshComponent : public SceneComponentBase
 {
-    MeshAsset* LoadedMesh;
+    MeshAsset* LoadedMesh = nullptr;
 public:
     // Create single field for MeshAsset
     MeshComponent(SceneNode* owner) : SceneComponentBase({Field(ResourceType::Mesh, "MeshAsset")}, owner) { }
@@ -49,33 +48,13 @@ public:
     virtual void Deserialize(std::string& data, long& offset) override;
     
     void SetMeshAsset(MeshAsset* meshAsset) { LoadedMesh = meshAsset; Fields[0].SetID(meshAsset->GetID());}
+    MeshAsset* GetMeshAsset();
 };
 
 // Scene components are responsible for managing their own resources and lifecycle
 class ENGINE_API SceneComponentFactory
 {
 public:
-    static bool SceneComponentExists(SceneComponentType sceneComponentType, SceneNode* owner)
-    {
-        if (owner == nullptr)
-            return false;
-        
-        for (auto& component : owner->GetComponents())
-        {
-            if (component->GetType() == sceneComponentType)
-                return true;
-        }
-        return false;
-    }
-    
-    static SceneComponentBase* SceneComponentBuilder(SceneComponentType sceneComponentType, SceneNode* owner)
-    {
-        switch (sceneComponentType)
-        {
-        case SceneComponentType::MeshComponentType:
-            return new MeshComponent(owner);
-        default:
-            return nullptr;
-        }
-    }
+    static bool SceneComponentExists(SceneComponentType sceneComponentType, SceneNode* owner);
+    static SceneComponentBase* SceneComponentBuilder(SceneComponentType sceneComponentType, SceneNode* owner);
 };

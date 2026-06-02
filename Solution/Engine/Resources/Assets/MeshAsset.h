@@ -8,6 +8,7 @@
 
 class MeshAsset : public GPUAssetBase
 {
+    // Every set of UVs represents a unique mesh
     std::vector<Mesh> Meshes;
 public:
     
@@ -22,6 +23,9 @@ public:
     
     virtual void UploadToGPU() override;
     virtual void FreeGPUResources() override;
+    
+    uint32_t GetMeshCount() const { return Meshes.size(); }
+    Mesh& GetMesh(uint32_t index) { return Meshes[index]; }
     
 };
 

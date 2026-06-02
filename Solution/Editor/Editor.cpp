@@ -172,8 +172,6 @@ int main()
         ImGui::Separator();
         ImGui::Spacing();
         ImGui::TextUnformatted("Files");
-        ImGui::SameLine();
-        if (ImGui::Button("Import")) Importer::GetInstance().Open();
         ImGui::Separator();
         FileExplorer::ShowFileTree("../Game/Assets");
         ImGui::EndChild();

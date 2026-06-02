@@ -6,6 +6,7 @@
 #include <algorithm>
 
 #include "Modals/FileMove.h"
+#include "Modals/Importer.h"
 #include "Modals/NewDirectory.h"
 #include "Resources/ResourceManager.h"
 
@@ -85,7 +86,7 @@ static fs::path DrawDirectoryNode(const fs::path& path,
         if (ImGui::BeginPopupContextItem()) // Uses the ID of the previous item (the button)
         {
             if (ImGui::Selectable("New Folder")) { NewDirectory::GetInstance().Open(dir.path().generic_string()); }
-            if (ImGui::Selectable("Option 2")) { /* Action 2 */ }
+            if (ImGui::Selectable("Import Asset")) { Importer::GetInstance().Open();}
     
             ImGui::EndPopup();
         }

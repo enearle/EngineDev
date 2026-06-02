@@ -48,13 +48,14 @@ public:
     virtual void Reset();
     
     SceneNode* GetRootNode() { return Parent ? Parent->GetRootNode() : this; }
-    virtual AssetID& GetID() const override;
+    const AssetID& GetID() const override;
     
     std::vector<SceneNode*> GetChildren() const { return Children; }
     void AddChild(SceneNode* child);
     
     SceneComponentBase* AddComponent(SceneComponentType type);
     std::vector<SceneComponentBase*> GetComponents() const { return Components; }
+    SceneComponentBase* GetComponent(SceneComponentType type) const;
     
     void UpdateWorldMatrix();
     void SetChildrenDirty();

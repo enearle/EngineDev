@@ -19,12 +19,6 @@ Mesh::Mesh(VertexCache* vertexCache, uint32_t LocalMaterialIndex) :
     VertexCount = vertexCache->Vertices.size();
     IndexCount = vertexCache->Indices.size();
     TempVertexCache = vertexCache;
-    
-    if (VertexCount > 0)
-        VertexBufferID = Uploader::UploadVertices(vertexCache->Vertices.size() * sizeof(Vertex), vertexCache->Vertices.data());
-    
-    if (IndexCount > 0)
-        IndexBufferID = Uploader::UploadIndices(vertexCache->Indices.size() * sizeof(uint32_t), vertexCache->Indices.data());
 }
 
 Mesh::Mesh(SkinnedVertexCache* skinnedVertexCache, uint32_t LocalMaterialIndex, 
@@ -36,12 +30,6 @@ Mesh::Mesh(SkinnedVertexCache* skinnedVertexCache, uint32_t LocalMaterialIndex,
     VertexCount = skinnedVertexCache->Vertices.size();
     IndexCount = skinnedVertexCache->Indices.size();
     TempSkinnedVertexCache = skinnedVertexCache;
-    
-    if (VertexCount > 0)
-        VertexBufferID = Uploader::UploadVertices(skinnedVertexCache->Vertices.size() * sizeof(SkinnedVertex), skinnedVertexCache->Vertices.data());
-    
-    if (IndexCount > 0)
-        IndexBufferID = Uploader::UploadIndices(skinnedVertexCache->Indices.size() * sizeof(uint32_t), skinnedVertexCache->Indices.data());
 }
 
 Mesh::~Mesh()
@@ -49,14 +37,47 @@ Mesh::~Mesh()
     WipeCachedData();
 }
 
-const Mesh* MeshNode::GetMesh(uint32_t index) const
+Mesh::Mesh(Mesh&& other) noexcept
+    : bIsSkinned(other.bIsSkinned),
+      VertexCount(other.VertexCount),
+      IndexCount(other.IndexCount),
+      LocalMaterialIndex(other.LocalMaterialIndex),
+      BoneOffsets(std::move(other.BoneOffsets)),
+      BoneTransforms(std::move(other.BoneTransforms)),
+      VertexBufferID(other.VertexBufferID),
+      IndexBufferID(other.IndexBufferID),
+      TempVertexCache(other.TempVertexCache),
+      TempSkinnedVertexCache(other.TempSkinnedVertexCache)
 {
-    if (index >= Meshes.size())
-        throw std::out_of_range("Mesh index: " + std::to_string(index) + " is out of range in mesh group: " + Name + ".");
-        
-    return &Meshes[index];
+    other.TempVertexCache = nullptr;
+    other.TempSkinnedVertexCache = nullptr;
+    other.VertexBufferID = 0;
+    other.IndexBufferID = 0;
 }
 
+Mesh& Mesh::operator=(Mesh&& other) noexcept
+{
+    if (this != &other)
+    {
+        WipeCachedData();
+        bIsSkinned = other.bIsSkinned;
+        VertexCount = other.VertexCount;
+        IndexCount = other.IndexCount;
+        LocalMaterialIndex = other.LocalMaterialIndex;
+        BoneOffsets = std::move(other.BoneOffsets);
+        BoneTransforms = std::move(other.BoneTransforms);
+        VertexBufferID = other.VertexBufferID;
+        IndexBufferID = other.IndexBufferID;
+        TempVertexCache = other.TempVertexCache;
+        TempSkinnedVertexCache = other.TempSkinnedVertexCache;
+
+        other.TempVertexCache = nullptr;
+        other.TempSkinnedVertexCache = nullptr;
+        other.VertexBufferID = 0;
+        other.IndexBufferID = 0;
+    }
+    return *this;
+}
 
 void* Mesh::GetVertexBufferHandle() const
 {
@@ -75,35 +96,50 @@ void* Mesh::GetIndexBufferHandle() const
     return allocation.Buffer;
 }
 
+void Mesh::UploadToGPU()
+{
+    if (!bIsSkinned && TempVertexCache)
+    {
+        if (VertexCount > 0)
+            VertexBufferID = Uploader::UploadVertices(TempVertexCache->Vertices.size() * sizeof(Vertex), TempVertexCache->Vertices.data());
+    
+        if (IndexCount > 0)
+            IndexBufferID = Uploader::UploadIndices(TempVertexCache->Indices.size() * sizeof(uint32_t), TempVertexCache->Indices.data());
+    }
+    else if (bIsSkinned && TempSkinnedVertexCache)
+    {
+        if (VertexCount > 0)
+            VertexBufferID = Uploader::UploadVertices(TempSkinnedVertexCache->Vertices.size() * sizeof(Vertex), TempSkinnedVertexCache->Vertices.data());
+        
+        if (IndexCount > 0)
+            IndexBufferID = Uploader::UploadIndices(TempSkinnedVertexCache->Indices.size() * sizeof(uint32_t), TempSkinnedVertexCache->Indices.data());
+    }
+}
+
 void* Mesh::GetCachedIndexData() const
 {
+    if (!bIsSkinned &&TempVertexCache)
+        return TempVertexCache->Indices.data();
+    
     if (bIsSkinned && TempSkinnedVertexCache)
-            return TempSkinnedVertexCache->Indices.data();
-    
-    else if (TempVertexCache)
-            return TempVertexCache->Indices.data();
-    
+        return TempSkinnedVertexCache->Indices.data();
+
     throw std::runtime_error("No cached index data available.");
 }
 
 void* Mesh::GetCachedVertexData() const
 {
-    if (bIsSkinned && TempSkinnedVertexCache)
-            return TempSkinnedVertexCache->Vertices.data();
+    if (!bIsSkinned && TempVertexCache)
+        return TempVertexCache->Vertices.data();
     
-    else if (TempVertexCache)
-            return TempVertexCache->Vertices.data();
+    if (bIsSkinned && TempSkinnedVertexCache)
+        return TempSkinnedVertexCache->Vertices.data();
     
     throw std::runtime_error("No cached vertex data available.");
 }
 
 void Mesh::WipeCachedData()
 {
-    delete TempSkinnedVertexCache;
-    delete TempVertexCache;
-}
-
-MeshNode::MeshNode(std::vector<Mesh>& meshes, const DirectX::XMMATRIX localMatrix, const std::string& name, SceneNode* parent) : Meshes(std::move(meshes))
-{
-    SceneNode::Init(name, parent, TODO, localMatrix);
+    delete TempSkinnedVertexCache; TempSkinnedVertexCache = nullptr;
+    delete TempVertexCache;        TempVertexCache        = nullptr;
 }
