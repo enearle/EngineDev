@@ -82,7 +82,7 @@ void FileMove::Render()
             else
             {
                 // Updates existing meta files for each asset in the sub directories
-                for (auto& entry : fs::recursive_directory_iterator(end))
+                for (const fs::directory_entry& entry : fs::recursive_directory_iterator(end))
                 {
                     if (!entry.is_regular_file() || entry.path().extension() == ".meta")
                         continue;

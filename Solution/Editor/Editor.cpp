@@ -13,6 +13,7 @@
 #include "Window.h"
 #include "../Game/Game.h"
 #include "FileExplorer.h"
+#include "SceneExplorer.h"
 #include "Modals/FileMove.h"
 #include "Modals/Importer.h"
 #include "Modals/NewDirectory.h"
@@ -168,12 +169,18 @@ int main()
         float sideW  = 220.f;
 
         ImGui::BeginChild("##LeftPanel", ImVec2(sideW, totalH), true);
+        float halfH = (ImGui::GetContentRegionAvail().y - ImGui::GetStyle().ItemSpacing.y * 4.f) * 0.5f;
         ImGui::TextUnformatted("Scene Hierarchy");
         ImGui::Separator();
+        ImGui::BeginChild("##SceneTreeHost", ImVec2(0, halfH), false);
+        SceneExplorer::ShowSceneTree();
+        ImGui::EndChild();
         ImGui::Spacing();
         ImGui::TextUnformatted("Files");
         ImGui::Separator();
+        ImGui::BeginChild("##FileTreeHost", ImVec2(0, 0), false);
         FileExplorer::ShowFileTree("../Game/Assets");
+        ImGui::EndChild();
         ImGui::EndChild();
         ImGui::SameLine();
 

@@ -4,13 +4,16 @@
 #include <map>
 #include <optional>
 
-#include "AssetBase.h"
 #include "UUID.h"
 #include "../ENGINE_API_Macro.h"
 
+// Forward decl: AssetBase.h includes Field.h which includes this header,
+// so we cannot include AssetBase.h directly without breaking the cycle.
+class AssetBase;
+
 static constexpr const char* REGISTRY_FILE = "registry.bin";
 
-enum class ResourceType : uint32_t {
+enum class ENGINE_API ResourceType : uint32_t {
     Texture1CH8,
     Texture2CH8,
     Texture3CH8,
@@ -25,7 +28,7 @@ enum class ResourceType : uint32_t {
     SceneNode
 };
 
-struct AssetRegistry {
+struct ENGINE_API AssetRegistry {
     ResourceType Type;
     std::string FilePath;
 };
@@ -43,7 +46,7 @@ public:
     
     static AssetBase* GetAsset(const AssetID& id, ResourceType type);
     static void CreateAsset(AssetBase* asset, ResourceType type, const std::string& directory);
-    static AssetID Import(const std::string& sourcePath, ResourceType type);
+    static AssetID Import(const std::string& sourcePath, const std::string& destPath, ResourceType type);
     static void UpdateAssetPath(AssetID id, const std::string& newPath);
     // Deprecated: kept until editor migrates off .meta sidecars.
     static AssetID ReadMetaFile(const std::string& filePath);

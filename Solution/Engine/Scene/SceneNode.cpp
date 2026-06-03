@@ -32,7 +32,7 @@ void SceneNode::UpdateAll(float dt)
 
 void SceneNode::DestroyAll()
 {
-    for(auto root : RootNodes)
+    for(SceneNode* root : RootNodes)
         delete root;
     RootNodes.clear();
 }
@@ -60,7 +60,7 @@ SceneNode::~SceneNode()
     // Detach from parent first to break circular references
     if (Parent)
     {
-        auto& siblings = Parent->Children;
+        std::vector<SceneNode*>& siblings = Parent->Children;
         auto it = std::find(siblings.begin(), siblings.end(), this);
         if (it != siblings.end())
         {
@@ -73,7 +73,7 @@ SceneNode::~SceneNode()
     std::vector<SceneNode*> childrenToDelete;
     childrenToDelete.swap(Children);
     
-    for(auto child : childrenToDelete)
+    for(SceneNode* child : childrenToDelete)
     {
         if(child && child != this)
         {
@@ -100,7 +100,7 @@ SceneComponentBase* SceneNode::AddComponent(SceneComponentType type)
 
 SceneComponentBase* SceneNode::GetComponent(SceneComponentType type) const
 {
-    for (auto& component : Components)
+    for (SceneComponentBase* component : Components)
     {
         if (component->GetType() == type)
             return component;
@@ -115,7 +115,7 @@ void SceneNode::UploadToGPU()
     if (meshAsset)
         meshAsset->UploadToGPU();
     
-    for (auto child : Children)
+    for (SceneNode* child : Children)
         child->UploadToGPU();
 }
 
@@ -125,19 +125,19 @@ void SceneNode::FreeGPUResources()
     if (meshAsset)
         meshAsset->FreeGPUResources();
     
-    for (auto child : Children)
+    for (SceneNode* child : Children)
         child->FreeGPUResources();
 }
 
 void SceneNode::Update(float dt)
 {
-    for(auto child : Children)
+    for(SceneNode* child : Children)
         child->Update(dt);
 }
 
 void SceneNode::Reset()
 {
-    for (auto node : Children)
+    for (SceneNode* node : Children)
         node->Reset();
 }
 
@@ -213,7 +213,7 @@ void SceneNode::Serialize(std::string& data)
 
     // Components (max 255)
     AssetSerializer::Write<uint8_t>(data, static_cast<uint8_t>(Components.size()));
-    for (auto& component : Components)
+    for (SceneComponentBase* component : Components)
     {
         AssetSerializer::Write<uint32_t>(data, component->GetType());
         component->Serialize(data);
@@ -221,7 +221,7 @@ void SceneNode::Serialize(std::string& data)
 
     // Children
     AssetSerializer::Write<uint32_t>(data, static_cast<uint32_t>(Children.size()));
-    for (auto& child : Children)
+    for (SceneNode* child : Children)
         child->Serialize(data);
 }
 

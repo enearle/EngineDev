@@ -1,6 +1,5 @@
 ﻿#pragma once
 #include <memory>
-#include "AssetBase.h"
 #include "ResourceManager.h"
 #include "UUID.h"
 #include "../ENGINE_API_Macro.h"

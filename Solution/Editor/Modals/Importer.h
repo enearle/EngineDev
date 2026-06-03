@@ -5,6 +5,6 @@ class Importer
 {
 public:
     static Importer& GetInstance();
-    void Open();
+    void Open(std::string path);
     void Render();
 };

@@ -7,6 +7,10 @@
 #include "../Geometry/GeometryImport.h"
 #include "../Scene/SceneNode.h"
 
+struct OptString
+{
+    std::optional<std::string> Value;
+};
 
 namespace fs = std::filesystem;
 std::map<AssetID, AssetRegistry> ResourceManager::Registry;
@@ -111,12 +115,13 @@ void ResourceManager::CreateAsset(AssetBase* asset, ResourceType type, const std
     SaveRegistry();
 }
 
-AssetID ResourceManager::Import(const std::string& sourcePath, ResourceType type)
+AssetID ResourceManager::Import(const std::string& sourcePath, const std::string& destPath, ResourceType type)
 {
     // D8: no meta files. Dispatch by type.
     if (type == ResourceType::Mesh || type == ResourceType::MeshSkinned)
     {
         fs::path src(sourcePath);
+        fs::path dst(destPath);
         std::string name = src.stem().string();
         SceneNode* root = GeometryImport::CreateMeshGroup(sourcePath, name,
                                                          DirectX::XMMatrixIdentity(),
@@ -124,7 +129,7 @@ AssetID ResourceManager::Import(const std::string& sourcePath, ResourceType type
         if (!root) return {};
 
         // D2: persist the SceneNode hierarchy itself alongside per-node MeshAssets.
-        std::string destDir = src.parent_path().string();
+        std::string destDir = dst.parent_path().string();
         CreateAsset(root, ResourceType::SceneNode, destDir);
         return root->GetID();
     }

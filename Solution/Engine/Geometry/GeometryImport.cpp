@@ -11,6 +11,7 @@
 #include "DirectXMath.h"
 #include "../RHI/RHI/RHIStructures.h"
 #include "../Resources/ResourceManager.h"
+#include "../Engine/Scene/SceneNode.h"
 
 using namespace DirectX;
 

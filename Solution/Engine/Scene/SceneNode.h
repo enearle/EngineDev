@@ -35,6 +35,7 @@ public:
     
     static void UpdateAll(float dt);
     static void DestroyAll();
+    static const std::vector<SceneNode*>& GetRootNodes() { return RootNodes; }
 
     // Deserialize constructor
     SceneNode(SceneNode* parent = nullptr);

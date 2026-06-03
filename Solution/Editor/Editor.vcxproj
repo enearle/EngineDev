@@ -176,6 +176,7 @@
     <ClCompile Include="$(SolutionDir)../External/imgui/backends/imgui_impl_win32.cpp" />
     <ClCompile Include="$(SolutionDir)../External/imgui/backends/imgui_impl_dx12.cpp" />
     <ClCompile Include="FileExplorer.cpp" />
+    <ClCompile Include="SceneExplorer.cpp" />
     <ClCompile Include="Interface\FieldUI.cpp" />
     <ClCompile Include="Modals\Importer.cpp">
       <RuntimeLibrary>MultiThreadedDebugDll</RuntimeLibrary>
@@ -249,7 +250,7 @@
       <ExternalWarningLevel>InheritWarningLevel</ExternalWarningLevel>
       <TreatExternalTemplatesAsInternal>true</TreatExternalTemplatesAsInternal>
       <DisableAnalyzeExternal>false</DisableAnalyzeExternal>
-      <PreprocessorDefinitions>ENGINE_EXPORTS;_DEBUG;_CONSOLE;_WINDLL;_UNICODE;UNICODE;</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_DEBUG;_CONSOLE;_UNICODE;UNICODE;</PreprocessorDefinitions>
       <AdditionalIncludeDirectories>C:\Users\SwaggyJ\Desktop\GameEnginesDev2\EngineDev\Solution\Engine;C:\Users\SwaggyJ\Desktop\GameEnginesDev2\EngineDev\Solution\/RHI;C:\Users\SwaggyJ\Desktop\GameEnginesDev2\EngineDev\Solution\..\External\assimp\include;C:\Users\SwaggyJ\Desktop\GameEnginesDev2\EngineDev\Solution\..\External\imgui;C:\Users\SwaggyJ\Desktop\GameEnginesDev2\EngineDev\Solution\../External/NoesisGUI-NativeSDK-win-3.2.12-Indie/Include;C:\Users\SwaggyJ\Desktop\GameEnginesDev2\EngineDev\Solution\../External/NoesisGUI-NativeSDK-win-3.2.12-Indie/Src/Packages/Render/VKRenderDevice/Include;C:\Users\SwaggyJ\Desktop\GameEnginesDev2\EngineDev\Solution\../External/NoesisGUI-NativeSDK-win-3.2.12-Indie/Src/Packages/Render/D3D12RenderDevice/Include;C:\Users\SwaggyJ\Desktop\GameEnginesDev2\EngineDev\Solution\../External/NoesisGUI-NativeSDK-win-3.2.12-Indie/Src/Packages/App/Interactivity/Include;C:\Users\SwaggyJ\Desktop\GameEnginesDev2\EngineDev\Solution\../External/NoesisGUI-NativeSDK-win-3.2.12-Indie/Src/Packages/App/Shaders/Include;C:\Users\SwaggyJ\Desktop\GameEnginesDev2\EngineDev\Solution\../External/NoesisGUI-NativeSDK-win-3.2.12-Indie/Src/Packages/App/Providers/Include;C:\Users\SwaggyJ\Desktop\GameEnginesDev2\EngineDev\Solution\../External/NoesisGUI-NativeSDK-win-3.2.12-Indie/Src/Packages/App/Launcher/Include;C:\Users\SwaggyJ\Documents\Vinyl\VulkanAPI\Include;</AdditionalIncludeDirectories>
       <SDLCheck>true</SDLCheck>
       <LinkCompiled>true</LinkCompiled>
@@ -270,6 +271,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="FileExplorer.h" />
+    <ClInclude Include="SceneExplorer.h" />
     <ClInclude Include="imfilebrowser.h" />
     <ClInclude Include="Interface\FieldUI.h" />
     <ClInclude Include="Modals\Importer.h" />

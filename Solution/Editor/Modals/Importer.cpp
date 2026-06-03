@@ -4,22 +4,22 @@
 #include <assimp/scene.h>
 #include <imgui.h>
 #include "../imfilebrowser.h"
-
 #include <fstream>
 namespace fs = std::filesystem;
 ImGui::FileBrowser FILE_DIALOG;
+std::string PATH_TO_IMPORT_TO;
 
 ResourceType ParsePNGFile(const fs::path& path)
 {
-    std::ifstream f(path, std::ios::binary);
-    if (!f)
+    std::ifstream fileStream(path, std::ios::binary);
+    if (!fileStream)
         throw std::runtime_error("Failed to open file: " + path.string());
 
-    f.seekg(24);
+    fileStream.seekg(24);
     uint8_t bitDepth, colorType;
-    f.read(reinterpret_cast<char*>(&bitDepth), 1);
-    f.read(reinterpret_cast<char*>(&colorType), 1);
-    if (!f)
+    fileStream.read(reinterpret_cast<char*>(&bitDepth), 1);
+    fileStream.read(reinterpret_cast<char*>(&colorType), 1);
+    if (!fileStream)
         throw std::runtime_error("Failed to read PNG header: " + path.string());
 
     int channels = 0;
@@ -80,12 +80,13 @@ Importer& Importer::GetInstance()
     static Importer instance;
     return instance;
 }
-void Importer::Open()
+void Importer::Open(std::string path)
 {
     FILE_DIALOG.Open();
     FILE_DIALOG.SetDirectory("../Game/Assets");
     FILE_DIALOG.SetRootDirectory("../Game/Assets");
     FILE_DIALOG.SetTypeFilters({".png", ".fbx"});
+    PATH_TO_IMPORT_TO = path;
 }
 
 void Importer::Render()
@@ -94,7 +95,7 @@ void Importer::Render()
 
     if (FILE_DIALOG.HasSelected())
     {
-        ResourceManager::Import(FILE_DIALOG.GetSelected().string(), ParseExtension(FILE_DIALOG.GetSelected()));
+        ResourceManager::Import(FILE_DIALOG.GetSelected().string(), PATH_TO_IMPORT_TO, ParseExtension(FILE_DIALOG.GetSelected()));
         FILE_DIALOG.ClearSelected();
         FILE_DIALOG.Close();
     }

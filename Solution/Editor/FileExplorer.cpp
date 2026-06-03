@@ -86,7 +86,7 @@ static fs::path DrawDirectoryNode(const fs::path& path,
         if (ImGui::BeginPopupContextItem()) // Uses the ID of the previous item (the button)
         {
             if (ImGui::Selectable("New Folder")) { NewDirectory::GetInstance().Open(dir.path().generic_string()); }
-            if (ImGui::Selectable("Import Asset")) { Importer::GetInstance().Open();}
+            if (ImGui::Selectable("Import Asset")) { Importer::GetInstance().Open(dir.path().generic_string()); }
     
             ImGui::EndPopup();
         }
@@ -129,8 +129,9 @@ static fs::path DrawDirectoryNode(const fs::path& path,
 
         if (ImGui::BeginDragDropSource())
         {
-            std::string startPath = file.path().generic_string();
-            ImGui::SetDragDropPayload("PATH", startPath.c_str(), startPath.size());
+            // Only one payload survives per source; emit the asset ID for
+            // consumers like SceneExplorer. Directories still drag a "PATH"
+            // payload for the move flow.
             ImGui::SetDragDropPayload("ID", &id, sizeof(AssetID));
             ImGui::EndDragDropSource();
         }
