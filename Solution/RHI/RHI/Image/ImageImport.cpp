@@ -11,10 +11,10 @@ ImageImport::ImageImport(const std::string& fileName, bool is16Bit, bool forceNo
         Data = LoadImage_8Bit(fileName, forceNotEmpty);
 }
 
-ImageImport::ImageImport(const std::vector<std::string>& fileNames, std::vector<std::vector<uint8_t>> imagecChannelDefaults)
+ImageImport::ImageImport(const std::vector<std::string>& fileNames, std::vector<std::vector<uint8_t>> imageChannelDefaults)
 {
     // Load image data
-    Data = LoadImageSideBySide(fileNames, imagecChannelDefaults);
+    Data = LoadImageSideBySide(fileNames, imageChannelDefaults);
 }
 
 ImageImport::~ImageImport()
@@ -103,14 +103,14 @@ ImageData* ImageImport::LoadImage_16Bit(const std::string& imagePath, bool force
     return result;
 }
 
-ImageData* ImageImport::LoadImageSideBySide(const std::vector<std::string>& fileNames, std::vector<std::vector<uint8_t>> imagecChannelDefaults)
+ImageData* ImageImport::LoadImageSideBySide(const std::vector<std::string>& fileNames, std::vector<std::vector<uint8_t>> imageChannelDefaults)
 {
     ImageData* result = new ImageData{};
     
     if (fileNames.empty() || fileNames.size() > 4)
         throw std::runtime_error("LoadImageSideBySide requires between 1 and 4 file names.");
 
-    if (imagecChannelDefaults.size() != fileNames.size())
+    if (imageChannelDefaults.size() != fileNames.size())
         throw std::runtime_error("LoadImageSideBySide requires a channel default for each image.");
 
     std::vector<stbi_uc*> loadedFiles(fileNames.size(), nullptr);
@@ -143,7 +143,7 @@ ImageData* ImageImport::LoadImageSideBySide(const std::vector<std::string>& file
 
             channelsPerImage[i] = static_cast<uint32_t>(channels);
             
-            if (imagecChannelDefaults[i].size() != channelsPerImage[i])
+            if (imageChannelDefaults[i].size() != channelsPerImage[i])
             {
                 throw std::runtime_error(
                     "channelDefaults[" + std::to_string(i) + "] size must match loaded image channels.");
@@ -151,7 +151,7 @@ ImageData* ImageImport::LoadImageSideBySide(const std::vector<std::string>& file
         }
         else
         {
-            channelsPerImage[i] = static_cast<uint32_t>(imagecChannelDefaults[i].size());
+            channelsPerImage[i] = static_cast<uint32_t>(imageChannelDefaults[i].size());
         }
 
         totalChannels += channelsPerImage[i];
@@ -202,7 +202,7 @@ ImageData* ImageImport::LoadImageSideBySide(const std::vector<std::string>& file
                 for (uint32_t channelIndex = 0; channelIndex < nCh; ++channelIndex)
                 {
                     const uint8_t fallback =
-                        (channelIndex < imagecChannelDefaults[imageIndex].size()) ? imagecChannelDefaults[imageIndex][channelIndex] : 0;
+                        (channelIndex < imageChannelDefaults[imageIndex].size()) ? imageChannelDefaults[imageIndex][channelIndex] : 0;
 
                     static_cast<stbi_uc*>(result->Pixels)[pixelIndex * outputStride + outputChannel++] =
                         static_cast<stbi_uc>(fallback);

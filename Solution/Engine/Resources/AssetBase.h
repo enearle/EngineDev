@@ -39,8 +39,6 @@ public:
 
 class ENGINE_API GPUAssetBase : public DependentAssetBase
 {
-    bool HostCached = false;
-    bool GPUCached = false;
 protected:
     GPUAssetBase(std::string name, AssetID id, std::vector<Field> fields) : DependentAssetBase(std::move(name), id, std::move(fields)) {}
     virtual ~GPUAssetBase() = default;

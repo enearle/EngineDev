@@ -1,5 +1,4 @@
 #include "GeometryImport.h"
-
 #include <filesystem>
 #include <iostream>
 #include <stdexcept>

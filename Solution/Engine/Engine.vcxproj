@@ -249,6 +249,7 @@
     <ClCompile Include="Light.cpp" />
     <ClCompile Include="NoesisUILayer.cpp" />
     <ClCompile Include="Resources\AssetBase.cpp" />
+    <ClCompile Include="Resources\Assets\ImageAsset.cpp" />
     <ClCompile Include="Resources\Assets\MaterialAsset.cpp" />
     <ClCompile Include="Resources\Assets\MeshAsset.cpp" />
     <ClCompile Include="Resources\Field.cpp" />
@@ -430,6 +431,7 @@
     <ClInclude Include="ENGINE_API_Macro.h" />
     <ClInclude Include="Resources\AssetBase.h" />
     <ClInclude Include="Resources\AssetSerializer.h" />
+    <ClInclude Include="Resources\Assets\ImageAsset.h" />
     <ClInclude Include="Resources\Assets\MaterialAsset.h" />
     <ClInclude Include="Resources\Assets\MeshAsset.h" />
     <ClInclude Include="Resources\Field.h" />

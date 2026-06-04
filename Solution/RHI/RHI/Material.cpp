@@ -10,7 +10,6 @@ using namespace RHIConstants;
 
 PreBufferCache::~PreBufferCache()
 {
-    // TODO handle cleanup/structure better (2 pointers to Data.Pixels)
     delete ImportHandle;
     delete Desc;
 }

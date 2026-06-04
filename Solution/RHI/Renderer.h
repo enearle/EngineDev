@@ -18,7 +18,6 @@ private:
     static void* CurrentBackBufferView;
     static void* CurrentBackBuffer;
     static std::vector<RHIStructures::PipelineFrameContext> PipelineFrameContexts;
-    
     static Event<> OnStartOfFrame;
     static Event<> OnEndOfFrame;
     static Event<uint32_t, uint32_t> OnResize;
@@ -32,7 +31,6 @@ public:
     static void AddIndexedDrawToContext(uint32_t contextIndex, RHIStructures::IndexedDraw draw);
     static void AddDescriptorIDToContext(uint32_t contextIndex, uint64_t descriptorID);
     static Window* GetWindow() { return MainWindow; }
-    
     static Event<>& EventOnStartOfFrame() { return OnStartOfFrame; }
     static Event<>& EventOnEndOfFrame() { return OnEndOfFrame; }
     static Event<uint32_t, uint32_t>& EventOnResize() { return OnResize; }

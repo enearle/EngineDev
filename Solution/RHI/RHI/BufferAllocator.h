@@ -2,8 +2,7 @@
 #include <unordered_map>
 #include <map>
 #include "RHIStructures.h"
-#include "../RHI_API_Macro.h"
-class BitPool;
+
 using namespace RHIStructures;
 using Microsoft::WRL::ComPtr;
 

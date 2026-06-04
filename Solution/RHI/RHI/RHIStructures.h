@@ -658,14 +658,18 @@ namespace RHIStructures
         std::vector<uint64_t> PerDrawDescriptors;
     };
     
-    // Must also create a method for instanced draws here
+    struct MaterialDraw
+    {
+        std::vector<uint64_t> PerMaterialDescriptors;
+        std::vector<IndexedDraw> Draws;
+    };
     
     struct PipelineFrameContext
     {
         Pipeline* ContextPipeline = nullptr;
         bool IsFSQuad = false;
         bool IsPresented = false;
-        std::vector<std::vector<IndexedDraw>> IndexedDrawBins;
+        std::vector<MaterialDraw> IndexedDrawBins;
         std::vector<uint64_t> PerFrameDescriptors;
     };
 
