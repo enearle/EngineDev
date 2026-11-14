@@ -3,10 +3,10 @@
 #include <iostream>
 
 #include "ForwardInterface.h"
-#include <NsApp/Interaction.h>
+#include <NsGui/Interaction.h>
 #include <NsApp/BackgroundEffectBehavior.h>
-#include <NsApp/BehaviorCollection.h>
-#include <NsApp/TriggerCollection.h>
+#include <NsGui/BehaviorCollection.h>
+#include <NsGui/TriggerBaseCollection.h>
 #include <NsApp/MouseDragElementBehavior.h>
 #include <NsApp/EventTrigger.h>
 #include <NsApp/ControlStoryboardAction.h>
@@ -28,6 +28,13 @@
 #include <NsGui/Uri.h>
 
 #include "Input/InputEventSystem.h"
+
+// Noesis 4.0: SetCommandList takes the last frame the GPU has finished plus the frame being recorded.
+static uint64_t D3D12CompletedFrame(uint64_t frame)
+{
+    const uint64_t inFlight = ForwardInterface::GetD3D12FramesInFlight();
+    return frame > inFlight ? frame - inFlight : 0;
+}
 
 NoesisUILayer& NoesisUILayer::Instance()
 {
@@ -66,17 +73,11 @@ void NoesisUILayer::NoesisInit()
     }
     else if (ForwardInterface::GetCurrentAPI() == DirectX12)
     {
-        {
-            ID3D12Fence* fence = nullptr;
-            ForwardInterface::GetD3D12Device()->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence));
-            NoesFence = fence;
-        }
         frameCounter   = 0;
         accumulatedTime = 0.0;
 
         RenderDevice = NoesisApp::D3D12Factory::CreateDevice(
             ForwardInterface::GetD3D12Device(),
-            static_cast<ID3D12Fence*>(NoesFence),
             ForwardInterface::GetD3D12RenderTargetFormat(),
             DXGI_FORMAT_D24_UNORM_S8_UINT,
             ForwardInterface::GetD3D12SampleDesc(),
@@ -142,7 +143,7 @@ void NoesisUILayer::NoesisRenderOffscreen()
     {
         NoesisApp::D3D12Factory::SetCommandList(RenderDevice.GetPtr(), 
             ForwardInterface::GetD3D12CommandList(),
-            frameCounter);
+            D3D12CompletedFrame(frameCounter), frameCounter);
     }
     View->GetRenderer()->UpdateRenderTree();
     View->GetRenderer()->RenderOffscreen();
@@ -187,7 +188,7 @@ void NoesisUILayer::NoesisRenderOnscreen()
 
         NoesisApp::D3D12Factory::SetCommandList(RenderDevice.GetPtr(),
             ForwardInterface::GetD3D12CommandList(),
-            frameCounter);
+            D3D12CompletedFrame(frameCounter), frameCounter);
         View->GetRenderer()->Render();
         NoesisApp::D3D12Factory::EndPendingSplitBarriers(RenderDevice);
     }

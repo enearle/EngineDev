@@ -107,7 +107,7 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>$(SolutionDir)/RHI;$(SolutionDir)..\External\assimp\include;$(SolutionDir)../External/NoesisGUI-NativeSDK-win-3.2.12-Indie/Include;$(SolutionDir)../External/NoesisGUI-NativeSDK-win-3.2.12-Indie/Src/Packages/Render/VKRenderDevice/Include;$(SolutionDir)../External/NoesisGUI-NativeSDK-win-3.2.12-Indie/Src/Packages/Render/D3D12RenderDevice/Include;$(SolutionDir)../External/NoesisGUI-NativeSDK-win-3.2.12-Indie/Src/Packages/App/Interactivity/Include;$(SolutionDir)../External/NoesisGUI-NativeSDK-win-3.2.12-Indie/Src/Packages/App/Shaders/Include;$(SolutionDir)../External/NoesisGUI-NativeSDK-win-3.2.12-Indie/Src/Packages/App/Providers/Include;$(SolutionDir)../External/NoesisGUI-NativeSDK-win-3.2.12-Indie/Src/Packages/App/Launcher/Include;$(VULKAN_SDK)\Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)/RHI;$(SolutionDir)..\External\assimp\include;$(SolutionDir)../External/NoesisGUI-NativeSDK-win-4.0.1-Indie/Include;$(SolutionDir)../External/NoesisGUI-NativeSDK-win-4.0.1-Indie/Src/Packages/Render/VKRenderDevice/Include;$(SolutionDir)../External/NoesisGUI-NativeSDK-win-4.0.1-Indie/Src/Packages/Render/D3D12RenderDevice/Include;$(SolutionDir)../External/NoesisGUI-NativeSDK-win-4.0.1-Indie/Src/Packages/App/Interactivity/Include;$(SolutionDir)../External/NoesisGUI-NativeSDK-win-4.0.1-Indie/Src/Packages/App/Shaders/Include;$(SolutionDir)../External/NoesisGUI-NativeSDK-win-4.0.1-Indie/Src/Packages/App/Providers/Include;$(SolutionDir)../External/NoesisGUI-NativeSDK-win-4.0.1-Indie/Src/Packages/App/Launcher/Include;$(SolutionDir)../External/NoesisGUI-NativeSDK-win-4.0.1-Indie/Src/Packages/App/Display/Include;$(SolutionDir)../External/NoesisGUI-NativeSDK-win-4.0.1-Indie/Src/Packages/Render/RenderContext/Include;$(VULKAN_SDK)\Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
@@ -120,7 +120,7 @@
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>$(CoreLibraryDependencies);$(SolutionDir)../External/NoesisGUI-NativeSDK-win-3.2.12-Indie/Lib/windows_x86_64/Noesis.lib;$(SolutionDir)../External/NoesisGUI-NativeSDK-win-3.2.12-Indie/Lib/windows_x86_64/NoesisApp.lib;$(SolutionDir)..\External\assimp\lib\Release\assimp-vc143-mt.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>$(CoreLibraryDependencies);$(SolutionDir)../External/NoesisGUI-NativeSDK-win-4.0.1-Indie/Lib/windows_x86_64/Noesis.lib;$(SolutionDir)../External/NoesisGUI-NativeSDK-win-4.0.1-Indie/Lib/windows_x86_64/NoesisApp.lib;$(SolutionDir)..\External\assimp\lib\Release\assimp-vc143-mt.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -242,7 +242,7 @@
       <TreatExternalTemplatesAsInternal>true</TreatExternalTemplatesAsInternal>
       <DisableAnalyzeExternal>false</DisableAnalyzeExternal>
       <PreprocessorDefinitions>ENGINE_EXPORTS;_DEBUG;_CONSOLE;_UNICODE;UNICODE;</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>C:\Users\SwaggyJ\Desktop\GameEnginesDev2\EngineDev\Solution\..;C:\Users\SwaggyJ\Desktop\GameEnginesDev2\EngineDev\Solution\../External/NoesisGUI-NativeSDK-win-3.2.12-Indie/Include;C:\Users\SwaggyJ\Desktop\GameEnginesDev2\EngineDev\Solution\../External/NoesisGUI-NativeSDK-win-3.2.12-Indie/Src/Packages/Render/VKRenderDevice/Include;C:\Users\SwaggyJ\Desktop\GameEnginesDev2\EngineDev\Solution\../External/NoesisGUI-NativeSDK-win-3.2.12-Indie/Src/Packages/Render/D3D12RenderDevice/Include;C:\Users\SwaggyJ\Desktop\GameEnginesDev2\EngineDev\Solution\../External/NoesisGUI-NativeSDK-win-3.2.12-Indie/Src/Packages/App/Interactivity/Include;C:\Users\SwaggyJ\Desktop\GameEnginesDev2\EngineDev\Solution\../External/NoesisGUI-NativeSDK-win-3.2.12-Indie/Src/Packages/App/Shaders/Include;C:\Users\SwaggyJ\Desktop\GameEnginesDev2\EngineDev\Solution\../External/NoesisGUI-NativeSDK-win-3.2.12-Indie/Src/Packages/App/Providers/Include;C:\Users\SwaggyJ\Desktop\GameEnginesDev2\EngineDev\Solution\../External/NoesisGUI-NativeSDK-win-3.2.12-Indie/Src/Packages/App/Launcher/Include;C:\Users\SwaggyJ\Documents\Vinyl\VulkanAPI\Include;</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)..;$(SolutionDir)../External/NoesisGUI-NativeSDK-win-4.0.1-Indie/Include;$(SolutionDir)../External/NoesisGUI-NativeSDK-win-4.0.1-Indie/Src/Packages/Render/VKRenderDevice/Include;$(SolutionDir)../External/NoesisGUI-NativeSDK-win-4.0.1-Indie/Src/Packages/Render/D3D12RenderDevice/Include;$(SolutionDir)../External/NoesisGUI-NativeSDK-win-4.0.1-Indie/Src/Packages/App/Interactivity/Include;$(SolutionDir)../External/NoesisGUI-NativeSDK-win-4.0.1-Indie/Src/Packages/App/Shaders/Include;$(SolutionDir)../External/NoesisGUI-NativeSDK-win-4.0.1-Indie/Src/Packages/App/Providers/Include;$(SolutionDir)../External/NoesisGUI-NativeSDK-win-4.0.1-Indie/Src/Packages/App/Launcher/Include;$(SolutionDir)../External/NoesisGUI-NativeSDK-win-4.0.1-Indie/Src/Packages/App/Display/Include;$(SolutionDir)../External/NoesisGUI-NativeSDK-win-4.0.1-Indie/Src/Packages/Render/RenderContext/Include;$(VULKAN_SDK)\Include;</AdditionalIncludeDirectories>
       <SDLCheck>true</SDLCheck>
       <LinkCompiled>true</LinkCompiled>
     </ClCompile>
@@ -327,7 +327,7 @@
       <DisableAnalyzeExternal>false</DisableAnalyzeExternal>
       <PreprocessorDefinitions>ENGINE_EXPORTS;_DEBUG;_CONSOLE;_UNICODE;UNICODE;</PreprocessorDefinitions>
       <SDLCheck>true</SDLCheck>
-      <AdditionalIncludeDirectories>C:\Users\SwaggyJ\Desktop\GameEnginesDev2\EngineDev\Solution\../External/imgui;C:\Users\SwaggyJ\Desktop\GameEnginesDev2\EngineDev\Solution\Engine;C:\Users\SwaggyJ\Desktop\GameEnginesDev2\EngineDev\Solution\RHI;C:\Users\SwaggyJ\Desktop\GameEnginesDev2\EngineDev\Solution\Game;C:\Users\SwaggyJ\Desktop\GameEnginesDev2\EngineDev\Solution\../External/NoesisGUI-NativeSDK-win-3.2.12-Indie/Include;C:\Users\SwaggyJ\Documents\Vinyl\VulkanAPI\Include;</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)../External/imgui;$(SolutionDir)Engine;$(SolutionDir)RHI;$(SolutionDir)Game;$(SolutionDir)../External/NoesisGUI-NativeSDK-win-4.0.1-Indie/Include;$(VULKAN_SDK)\Include;</AdditionalIncludeDirectories>
       <LinkCompiled>true</LinkCompiled>
     </ClCompile>
     <ClCompile Include="Resources\SceneComponent.cpp" />
@@ -405,7 +405,7 @@
       <DisableAnalyzeExternal>false</DisableAnalyzeExternal>
       <PreprocessorDefinitions>RHI_EXPORTS;_DEBUG;_WINDOWS;_WINDLL;_UNICODE;UNICODE;</PreprocessorDefinitions>
       <SDLCheck>true</SDLCheck>
-      <AdditionalIncludeDirectories>C:\Users\SwaggyJ\Documents\Vinyl\VulkanAPI\Include;</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(VULKAN_SDK)\Include;</AdditionalIncludeDirectories>
       <LinkCompiled>true</LinkCompiled>
     </ClCompile>
     <ClCompile Include="Scene\SceneNode.cpp" />

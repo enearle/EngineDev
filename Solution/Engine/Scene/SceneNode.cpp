@@ -111,7 +111,8 @@ SceneComponentBase* SceneNode::GetComponent(SceneComponentType type) const
 
 void SceneNode::UploadToGPU()
 {
-    MeshAsset* meshAsset = static_cast<MeshComponent*>(GetComponent(MeshComponentType))->GetMeshAsset();
+    auto* meshComponent = static_cast<MeshComponent*>(GetComponent(MeshComponentType));
+    MeshAsset* meshAsset = meshComponent ? meshComponent->GetMeshAsset() : nullptr;
     if (meshAsset)
         meshAsset->UploadToGPU();
     
@@ -121,7 +122,8 @@ void SceneNode::UploadToGPU()
 
 void SceneNode::FreeGPUResources()
 {
-    MeshAsset* meshAsset = static_cast<MeshComponent*>(GetComponent(MeshComponentType))->GetMeshAsset();
+    auto* meshComponent = static_cast<MeshComponent*>(GetComponent(MeshComponentType));
+    MeshAsset* meshAsset = meshComponent ? meshComponent->GetMeshAsset() : nullptr;
     if (meshAsset)
         meshAsset->FreeGPUResources();
     

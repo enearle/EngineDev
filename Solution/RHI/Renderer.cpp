@@ -133,15 +133,26 @@ uint32_t Renderer::CreatePipelineFrameContext(Pipeline* pipeline, bool isQuad, b
     return PipelineFrameContexts.size() - 1;
 }
 
-void Renderer::AddIndexedDrawToContext(uint32_t contextIndex, IndexedDraw draw)
+void Renderer::AddIndexedDrawToContext(uint32_t contextIndex, IndexedDraw draw,
+    const std::vector<uint64_t>& perMaterialDescriptors)
 {
     if (PipelineFrameContexts[contextIndex].IndexedDrawBins.size() <= draw.PipelineVarientID)
     {
-        std::cout << "Pipeline variant ID " << draw.PipelineVarientID << " out of range (max: " 
+        std::cout << "Pipeline variant ID " << draw.PipelineVarientID << " out of range (max: "
           << PipelineFrameContexts[contextIndex].IndexedDrawBins.size() - 1 << ")" << std::endl;
         return;
     }
-    PipelineFrameContexts[contextIndex].IndexedDrawBins[draw.PipelineVarientID].push_back(draw);
+
+    // Find or create this material's bucket within the variant's bin
+    std::vector<MaterialDraw>& materialBins = PipelineFrameContexts[contextIndex].IndexedDrawBins[draw.PipelineVarientID];
+    auto it = std::find_if(materialBins.begin(), materialBins.end(),
+        [&](const MaterialDraw& m) { return m.PerMaterialDescriptors == perMaterialDescriptors; });
+    if (it == materialBins.end())
+    {
+        materialBins.push_back(MaterialDraw{ perMaterialDescriptors, {} });
+        it = std::prev(materialBins.end());
+    }
+    it->Draws.push_back(std::move(draw));
 }
 
 void Renderer::AddDescriptorIDToContext(uint32_t contextIndex, uint64_t descriptorID)
@@ -213,10 +224,15 @@ void Renderer::ExecutePipelineContext(uint32_t contextIndex, bool finalContext)
         bool renderingStarted = false;
         int lastNonEmptyBinIndex = -1;
 
+        auto binHasDraws = [](const std::vector<MaterialDraw>& bin)
+        {
+            return std::any_of(bin.begin(), bin.end(), [](const MaterialDraw& m) { return !m.Draws.empty(); });
+        };
+
         // Find last non-empty bin
         for (int i = context.IndexedDrawBins.size() - 1; i >= 0; i--)
         {
-            if (!context.IndexedDrawBins[i].empty())
+            if (binHasDraws(context.IndexedDrawBins[i]))
             {
                 lastNonEmptyBinIndex = i;
                 break;
@@ -225,7 +241,7 @@ void Renderer::ExecutePipelineContext(uint32_t contextIndex, bool finalContext)
 
         for (int i = 0; i < context.IndexedDrawBins.size(); i++)
         {
-            if (context.IndexedDrawBins[i].empty())
+            if (!binHasDraws(context.IndexedDrawBins[i]))
                 continue;  // Skip empty bins entirely
     
             if (i == 0)
@@ -251,20 +267,29 @@ void Renderer::ExecutePipelineContext(uint32_t contextIndex, bool finalContext)
             
             Executor->BindPipelineDescriptorSets(perFrameDescriptors);
             
-            for (int j = 0; j < context.IndexedDrawBins[i].size(); j++)
+            // Draw every mesh sharing a material before moving on to the next material
+            for (MaterialDraw& materialDraw : context.IndexedDrawBins[i])
             {
-                IndexedDraw& draw = context.IndexedDrawBins[i][j];
+                if (materialDraw.Draws.empty())
+                    continue;
 
-                Executor->BindDrawDescriptorSets(&draw.PerDrawDescriptors, numFrameDescs);
-                Executor->DrawIndexed(
-                    draw.VertexBufferID,
-                    draw.VertexCount,
-                    draw.IndexBufferID,
-                    draw.IndexCount,
-                    draw.PushConstants,
-                    draw.PushConstantSize,
-                    draw.VertexStride
-                );
+                // Descriptor sets carry their own set index, so binding the material's sets here
+                // leaves the per-frame sets alone, and per-draw sets below don't disturb them.
+                Executor->BindDrawDescriptorSets(&materialDraw.PerMaterialDescriptors, numFrameDescs);
+
+                for (IndexedDraw& draw : materialDraw.Draws)
+                {
+                    Executor->BindDrawDescriptorSets(&draw.PerDrawDescriptors, numFrameDescs);
+                    Executor->DrawIndexed(
+                        draw.VertexBufferID,
+                        draw.VertexCount,
+                        draw.IndexBufferID,
+                        draw.IndexCount,
+                        draw.PushConstants,
+                        draw.PushConstantSize,
+                        draw.VertexStride
+                    );
+                }
             }
             
             // End Pipeline

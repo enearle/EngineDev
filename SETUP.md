@@ -1,8 +1,8 @@
 # Setup — EngineDev on a fresh machine
 
 Everything needed to go from a bare Windows box to a building/running solution.
-Last verified: 2026-08-30 (branch `NewArchitectureRough`, commit `8356f20`) by cloning the repo into
-a clean directory and building it end to end.
+Last verified: 2026-11-12 (branch `NewArchitectureRough`) by building Debug|x64 with MSVC 14.44, the
+Vulkan SDK 1.4.363 and NoesisGUI 4.0.1, then running the Editor (DX12) and Standalone (Vulkan).
 
 ---
 
@@ -12,8 +12,9 @@ a clean directory and building it end to end.
 - [ ] Vulkan SDK 1.4.313.0 (LunarG) — sets `VULKAN_SDK`, and supplies `dxc`
 - [ ] `git config --global core.longpaths true`, clone to a **short path** (e.g. `C:\Dev\EngineDev`)
 - [ ] `git clone https://github.com/enearle/EngineDev.git`
-- [ ] Build `Solution/Engine.sln`, **x64 only** (Debug or Release)
-- [ ] Copy `Noesis.dll` + `NoesisApp.dll` into the output dir (see §5)
+- [ ] Build `NoesisApp.dll`/`.lib` from the NoesisGUI 4.0.1 SDK sources, once (see §3a)
+- [ ] Build `Solution/Engine.sln`, **x64 Debug** (RHI's Release|x64 is mis-set, see §6)
+- [ ] Copy `Noesis.dll` + `NoesisApp.dll` + `NoesisEditor.dll` into the output dir (see §5)
 
 ---
 
@@ -98,14 +99,48 @@ Vulkan backend.
 
 ## 3. Third-party dependencies
 
-Everything the solution needs is committed — a clone builds with no extra downloads.
+Everything the solution needs is committed, except `NoesisApp.dll`/`.lib`, which you build once from
+the committed Noesis sources (§3a).
 
 | Dependency | Version | Location | Notes |
 |---|---|---|---|
 | **Dear ImGui** | 1.92.8 (master branch, not docking) | `External/imgui/` | unmodified upstream extract — `imconfig.h` has no custom defines. `Engine` and `Editor` compile `imgui.cpp`, `imgui_draw.cpp`, `imgui_tables.cpp`, `imgui_widgets.cpp`, `backends/imgui_impl_dx12.cpp`, `backends/imgui_impl_win32.cpp` straight out of this folder; `Editor/imfilebrowser.h` includes `imgui.h`. To upgrade, replace the folder contents with a newer tag from <https://github.com/ocornut/imgui> |
 | **assimp** | 5.4.3, prebuilt vc143 | `External/assimp/` | headers + `lib/Release/assimp-vc143-mt.lib` + `bin/assimp-vc143-mt.dll`; the DLL is auto-copied to `$(OutDir)` by an Engine post-build step |
-| **NoesisGUI Native SDK** | 3.2.12 Indie (Windows) | `External/NoesisGUI-NativeSDK-win-3.2.12-Indie/` | full SDK including `Lib/windows_x86_64/*.lib` and `Bin/windows_x86_64/*.dll`; linked by Engine, Game, Editor, Standalone. DLLs are **not** auto-copied — see §5 |
+| **NoesisGUI Native SDK** | 4.0.1 Indie (Windows) | `External/NoesisGUI-NativeSDK-win-4.0.1-Indie/` | full SDK. `Noesis.lib`/`.dll` ship prebuilt; `NoesisApp` must be built from source (§3a). Engine also includes headers from `Src/Packages/{App,Render}/*/Include`. Linked by Engine, Game, Editor, Standalone. DLLs are **not** auto-copied — see §5 |
 | **ImGuizmo** | vendored snapshot | `External/ImGuizmo/` | present, but not referenced by any project yet |
+
+### 3a. NoesisGUI 4.0.1 and building NoesisApp
+
+The project used NoesisGUI 3.2.12 until 2026-11. That SDK is no longer downloadable, and the copy in
+the repo was incomplete (see the `.gitignore` note below), so the project moved to **4.0.1**. The
+zip from noesisengine.com is named `NoesisGUI-NativeSDK-win-4.0.0-Indie.zip`, but its `version.txt`
+says 4.0.1. It is extracted to `External/NoesisGUI-NativeSDK-win-4.0.1-Indie/`.
+
+4.0 ships **no prebuilt `NoesisApp.lib`/`.dll`**. Build it once from the SDK's own project, from a
+Developer PowerShell (Release is fine even for a Debug engine build):
+
+```powershell
+msbuild External\NoesisGUI-NativeSDK-win-4.0.1-Indie\Src\Projects\NoesisApp\windows_x86_64\NoesisApp-vs2022.vcxproj `
+  -m -p:Configuration=Release -p:Platform=x64
+```
+
+It writes `Bin\windows_x86_64\NoesisApp.dll` and `Lib\windows_x86_64\NoesisApp.lib` inside the SDK
+folder. Its intermediates (`Src/Projects/**/build.vs*/`) are gitignored.
+
+API changes from 3.2 that touched `Engine/NoesisUILayer.cpp`:
+- `D3D12Factory::CreateDevice` no longer takes a fence.
+- `D3D12Factory::SetCommandList` takes the last completed fence value plus the fence value of the frame
+  being recorded (`D3D12CompletedFrame()` derives the first from the frames-in-flight count).
+- The interactivity core moved into `NsGui`: `NsGui/Interaction.h`, `NsGui/BehaviorCollection.h`,
+  `NsGui/TriggerBaseCollection.h` (replaces `NsApp/TriggerCollection.h`). Behaviors and actions such
+  as `MouseDragElementBehavior` and `ControlStoryboardAction` are still in `NsApp`
+  (`Src/Packages/App/Interactivity`).
+
+**`.gitignore` fix.** The stock Visual Studio rule `**/[Pp]ackages/*` matched the Noesis SDK's
+`Src/Packages/`, so the 3.2.12 commit silently left out headers the Engine includes (`NsApp/Launcher.h`
+and others), and fresh clones could not build. `.gitignore` now re-includes
+`External/NoesisGUI-NativeSDK-win-4.0.1-Indie/Src/Packages/*`. If you ever upgrade Noesis again,
+update that path too.
 
 ### Removed: `External/imgui-node-editor`
 It used to be recorded as a submodule gitlink with no `.gitmodules`, so clones got an empty folder that
@@ -143,12 +178,10 @@ msbuild Engine.sln -m -p:Configuration=Debug -p:Platform=x64
 
 ## 5. After the first build — runtime bits
 
-1. **Noesis DLLs (manual, once per output dir).** Nothing copies them; on the old machine they had been
-   copied by hand into `Solution\x64\Debug`:
+1. **Noesis DLLs (manual, once per output dir).** Nothing copies them. From `Solution\`:
    ```powershell
-   $noesis = "..\External\NoesisGUI-NativeSDK-win-3.2.12-Indie\Bin\windows_x86_64"
-   Copy-Item "$noesis\Noesis.dll","$noesis\NoesisApp.dll" .\x64\Debug\
-   Copy-Item "$noesis\Noesis.dll","$noesis\NoesisApp.dll" .\x64\Release\
+   $noesis = "..\External\NoesisGUI-NativeSDK-win-4.0.1-Indie\Bin\windows_x86_64"
+   Copy-Item "$noesis\Noesis.dll","$noesis\NoesisApp.dll","$noesis\NoesisEditor.dll" .\x64\Debug\
    ```
    `assimp-vc143-mt.dll` arrives on its own via the Engine post-build copy.
 
@@ -158,7 +191,12 @@ msbuild Engine.sln -m -p:Configuration=Debug -p:Platform=x64
    - editor asset browser: `../Game/Assets`
    - Noesis XAML: `../Engine/MyXAML/...`
 
-   So launch from the IDE. Double-clicking `x64\Debug\Editor.exe` will not find its data.
+   So launch from the IDE. Double-clicking `x64\Debug\Editor.exe` will not find its data. From a
+   shell, set the working directory to `Solution\Editor` (or `Solution\Standalone`).
+
+   **Backends:** the Editor always runs on **DX12** (`GRAPHICS_SETTINGS.SetEditorMode(true)`, and its
+   ImGui backend is DX12-only). Standalone runs on **Vulkan**. Noesis is initialized in `GameInit()`,
+   so in the Editor it only starts when you press Play.
 
 3. **Shaders are checked in precompiled** (`RHI/DirectX12/Shaders/CSO/*.cso` and
    `RHI/Vulkan/Shaders/SPIRV/*.spv`); no shader step runs during a normal build. After editing any
@@ -175,19 +213,21 @@ msbuild Engine.sln -m -p:Configuration=Debug -p:Platform=x64
 
 ## 6. Known issues to expect on the new machine
 
-- **`NewArchitectureRough` HEAD does not compile.** `RHI/Renderer.cpp` is mid-refactor against the new
-  `RHIStructures::MaterialDraw` bin layout (`IndexedDrawBins` is now `vector<MaterialDraw>`, but
-  `Renderer.cpp` still calls `push_back` / `empty` / `size` / `[]` on the bin elements — errors around
-  lines 144, 219, 228 and 254–256). Pre-existing work in progress, not a setup problem; everything else
-  in the solution compiles. **See §7 for what that refactor was heading toward.**
-- **Hardcoded absolute paths from the old machine** survive in four per-file
-  `AdditionalIncludeDirectories` overrides pointing at `C:\Users\SwaggyJ\Desktop\GameEnginesDev2\...`
-  and `C:\Users\SwaggyJ\Documents\Vinyl\VulkanAPI\Include`:
-  - `Engine/Engine.vcxproj` — `Input\InputEventSystem.cpp`, `Resources\ResourceManager.cpp`, `Resources\UUID.cpp`
-  - `Editor/Editor.vcxproj` — `Modals\Importer.cpp`
-
-  They *replace* rather than extend the project-level include list for those files, and unconditionally
-  define `_DEBUG`. They do not break the build today, but delete them when convenient.
+- **Hardcoded paths from the old machine are gone.** The per-file `AdditionalIncludeDirectories`
+  overrides that pointed at `C:\Users\SwaggyJ\...` now use `$(SolutionDir)` / `$(VULKAN_SDK)`. They
+  still *replace* the project-level include list for those files and define `_DEBUG` unconditionally.
+- **Mesh rendering is broken at runtime (fallout from the `.asset` refactor, §7b).** On Vulkan, every
+  mesh draw binds a 256-byte uniform buffer as its vertex/index buffer. The validation layer reports
+  `vkCmdBindVertexBuffers` / `vkCmdBindIndexBuffer` usage-flag errors and
+  `vkCmdDrawIndexed ... greater than the index buffer size`. The meshes' `VertexBufferID`/`IndexBufferID`
+  are never set: `TempGameObject::UploadToGPU()` is never called. Calling it before
+  `CreateDrawForMeshNode` was tried and did not fix this, so the cache or IDs are lost somewhere in
+  `CreateAsset`/`MeshAsset`. The apps still run and exit cleanly.
+- **Loading the demo meshes writes `.asset` files and `registry.bin`.** `GameInit()` imports
+  `shells.fbx`/`Derp.fbx` through `GeometryImport::CreateMeshGroup`, which writes `*.asset` files next to
+  the FBX in `Engine/Meshes/` and a `registry.bin` in the working directory. Neither is gitignored.
+- Noesis logs `Image not found '../Engine/MyXAML/Assets/tarkov.png'` for `MainPage.xaml`. The image
+  is not in the repo. This is harmless.
 - **`RHI` Release|x64 is `ConfigurationType=Application`** while Debug|x64 is `DynamicLibrary`, so a
   Release build of RHI produces an exe instead of the DLL the rest of the solution expects. Fix before
   relying on Release.
@@ -213,24 +253,30 @@ as the groundwork for instanced draws.
 
 **Done:**
 - `RHIStructures::MaterialDraw { std::vector<uint64_t> PerMaterialDescriptors; std::vector<IndexedDraw> Draws; }`
-  added, and `PipelineFrameContext::IndexedDrawBins` changed from `vector<vector<IndexedDraw>>` to
-  `vector<MaterialDraw>` (`RHI/RHI/RHIStructures.h:661`).
-- Engine side started: `TempGameObject::AddMeshNode` → `CreateDrawForMeshNode`, plus
+  added in `8356f20`.
+- Engine side: `TempGameObject::AddMeshNode` → `CreateDrawForMeshNode`, plus
   `SceneNode::UploadToGPU` / `FreeGPUResources`.
+- **Batching finished (2026-11).** Material grouping nests *inside* the existing pipeline-variant
+  indexing. A variant is its own pipeline bind, so material binds have to sit within it:
+  - `PipelineFrameContext::IndexedDrawBins` is `vector<vector<MaterialDraw>>`, indexed
+    `[pipeline variant][material bucket]`. Index 0 is still the main pipeline and `i` is still
+    `PipelineVariants[i - 1]`.
+  - `Renderer::AddIndexedDrawToContext(context, draw, perMaterialDescriptors = {})` finds or creates
+    the bucket whose `PerMaterialDescriptors` equal the ones passed, then appends to its `Draws`.
+  - The render loop binds per-frame sets once per variant, then each bucket's `PerMaterialDescriptors`
+    once, then each draw's `PerDrawDescriptors` before `DrawIndexed`. It reuses `BindDrawDescriptorSets`
+    for the material bind. Every descriptor set carries its own set index (`SetKey`), so the
+    material, per-draw and per-frame sets never overwrite each other.
+  - `TempGameObject` passes the material's set as the bucket key, and only per-mesh sets (bones) go in
+    `PerDrawDescriptors`. Shadow-pass draws have no material, so they share one empty-key bucket.
+  - Verified on Vulkan: the shells split into 2 material buckets (12 + 1 meshes) and the skinned Derp
+    gets its own bucket in variant 1. The DX12 draw path only runs when you press Play in the Editor
+    and was not exercised.
 
-**Not done — this is the compile break in §6.** `RHI/Renderer.cpp` still treats a bin as a flat vector
-of draws:
-- `AddIndexedDrawToContext` (line ~144) does `IndexedDrawBins[draw.PipelineVarientID].push_back(draw)`.
-  It needs to find-or-create the `MaterialDraw` for the draw's material and push onto its `.Draws`.
-- The render loop (lines ~217–262) calls `.empty()`, `.size()` and `[j]` on the bin. It needs to walk
-  the `MaterialDraw`s, bind `PerMaterialDescriptors` once per material (a per-material bind point next
-  to the existing `Executor->BindPipelineDescriptorSets` / `BindDrawDescriptorSets` pair), then loop
-  that material's `Draws`.
-- **Open design question:** bins are currently indexed *by pipeline variant* —
-  `IndexedDrawBins.resize(pipeline->GetPipelineVariantCount() + 1)` at line 130, and index `i` maps to
-  `mainPipeline->PipelineVariants[i - 1]` at line ~231. Material grouping has to nest inside that
-  indexing, or the indexing scheme has to change. That decision was still open.
-- Instanced draws are not started; `MaterialDraw` is the intended seam for them.
+**Not done:**
+- Instanced draws are not started; `MaterialDraw::Draws` is the intended seam for them.
+- Buckets are keyed by raw descriptor-set IDs. Once `MaterialAsset::LoadedMaterials` exists (§7b), keying
+  by material asset would let two loads of the same material share a bucket.
 
 ### 7b. Asset management (`.asset` pipeline)
 
@@ -269,6 +315,5 @@ of draws:
 2. Open the texture branch of `ResourceManager::Import` so PNG import actually produces assets.
 3. Fill in `MaterialAsset::UploadToGPU` + `LoadedMaterials`, giving materials a GPU handle and
    descriptor set.
-4. Rewrite `Renderer.cpp`'s two bin sites against `MaterialDraw` — that both fixes the build and lands
-   the batching.
+4. ~~Rewrite `Renderer.cpp`'s two bin sites against `MaterialDraw`~~ — done, see §7a.
 5. Then instanced draws on top of `MaterialDraw::Draws`.

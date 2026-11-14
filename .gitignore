@@ -402,3 +402,11 @@ FodyWeavers.xsd
 # JetBrains Rider
 *.sln.iml
 .idea/
+
+# NoesisGUI SDK: licensed, not redistributable. Extract it locally (see README.md).
+External/NoesisGUI-NativeSDK-*/
+
+# Generated at runtime or by the build
+registry.bin
+Solution/Engine/Meshes/*.asset
+Solution/Renderer/Shaders/Compiled/

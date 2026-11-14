@@ -10,9 +10,11 @@
 void CollectBoneMatrices(const SceneNode* node, std::vector<DirectX::XMMATRIX>& outOffsetMatrices,
                          std::vector<DirectX::XMMATRIX>& outTransformMatrices)
 {
-    MeshAsset* meshAsset = static_cast<MeshComponent*>(node->GetComponent(MeshComponentType))->GetMeshAsset();
-    
-    for (size_t i = 0; i < meshAsset->GetMeshCount(); i++)
+    // Transform-only nodes (e.g. the FBX root) have no MeshComponent; just recurse into their children.
+    auto* meshComponent = static_cast<MeshComponent*>(node->GetComponent(MeshComponentType));
+    MeshAsset* meshAsset = meshComponent ? meshComponent->GetMeshAsset() : nullptr;
+
+    for (size_t i = 0; meshAsset && i < meshAsset->GetMeshCount(); i++)
     {
         const Mesh* mesh = &meshAsset->GetMesh(i);
         if (mesh && mesh->IsSkinned())
@@ -71,16 +73,20 @@ TempGameObject::TempGameObject(std::vector<std::string> materials, std::string f
 
 void TempGameObject::CreateDrawForMeshNode(SceneNode* node)
 {
-    MeshAsset* meshAsset = static_cast<MeshComponent*>(node->GetComponent(MeshComponentType))->GetMeshAsset();
-    
-    for (size_t i = 0; i < meshAsset->GetMeshCount(); i++)
+    // Transform-only nodes (e.g. the FBX root) have no MeshComponent; just recurse into their children.
+    auto* meshComponent = static_cast<MeshComponent*>(node->GetComponent(MeshComponentType));
+    MeshAsset* meshAsset = meshComponent ? meshComponent->GetMeshAsset() : nullptr;
+
+    for (size_t i = 0; meshAsset && i < meshAsset->GetMeshCount(); i++)
     {
         const Mesh* mesh = &meshAsset->GetMesh(i);
         
         uint32_t materialIndex = mesh->GetLocalMaterialIndex();
         
-        std::vector<uint64_t> descriptorSets = {Materials[materialIndex]};
-        
+        // The material's set is bound once per material bucket; only per-mesh sets stay on the draw.
+        std::vector<uint64_t> materialDescriptors = {Materials[materialIndex]};
+        std::vector<uint64_t> descriptorSets;
+
         if (mesh->IsSkinned())
             descriptorSets.push_back(BoneDescriptorSet);
 
@@ -109,13 +115,11 @@ void TempGameObject::CreateDrawForMeshNode(SceneNode* node)
         indexedDraw.VertexStride = mesh->GetVertexStride();
         
         //Janky but works for now.
-        IndexedDraw shadowDraw = indexedDraw;
-        shadowDraw.PerDrawDescriptors.clear();  // Shadow pass doesn't need material textures
-        if (mesh->IsSkinned())
-            shadowDraw.PerDrawDescriptors.push_back(BoneDescriptorSet); 
-        
+        IndexedDraw shadowDraw = indexedDraw;  // Shadow pass doesn't need material textures,
+                                               // so its draws all share one material-less bucket
+
         Renderer::AddIndexedDrawToContext(0, shadowDraw);
-        Renderer::AddIndexedDrawToContext(1, indexedDraw);
+        Renderer::AddIndexedDrawToContext(1, indexedDraw, materialDescriptors);
     }
 
     for (SceneNode* child : node->GetChildren())

@@ -658,18 +658,21 @@ namespace RHIStructures
         std::vector<uint64_t> PerDrawDescriptors;
     };
     
+    // All draws that share a material. PerMaterialDescriptors are bound once, then every draw in
+    // Draws is issued (the seam for instanced draws later).
     struct MaterialDraw
     {
         std::vector<uint64_t> PerMaterialDescriptors;
         std::vector<IndexedDraw> Draws;
     };
-    
+
     struct PipelineFrameContext
     {
         Pipeline* ContextPipeline = nullptr;
         bool IsFSQuad = false;
         bool IsPresented = false;
-        std::vector<MaterialDraw> IndexedDrawBins;
+        // [pipeline variant (0 = main pipeline, i = PipelineVariants[i - 1])][material bucket]
+        std::vector<std::vector<MaterialDraw>> IndexedDrawBins;
         std::vector<uint64_t> PerFrameDescriptors;
     };
 

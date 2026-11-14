@@ -28,7 +28,10 @@ public:
     static void DrawFrame();
     static int End();
     static uint32_t CreatePipelineFrameContext(class Pipeline* pipeline, bool isQuad, bool isPresented);
-    static void AddIndexedDrawToContext(uint32_t contextIndex, RHIStructures::IndexedDraw draw);
+    // Draws are bucketed by pipeline variant, then by material (identified by its descriptor sets),
+    // so each material's descriptors are bound once per frame before all of its draws.
+    static void AddIndexedDrawToContext(uint32_t contextIndex, RHIStructures::IndexedDraw draw,
+        const std::vector<uint64_t>& perMaterialDescriptors = {});
     static void AddDescriptorIDToContext(uint32_t contextIndex, uint64_t descriptorID);
     static Window* GetWindow() { return MainWindow; }
     static Event<>& EventOnStartOfFrame() { return OnStartOfFrame; }

@@ -119,7 +119,7 @@
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>$(SolutionDir)../External/NoesisGUI-NativeSDK-win-3.2.12-Indie/Lib/windows_x86_64/Noesis.lib;$(SolutionDir)../External/NoesisGUI-NativeSDK-win-3.2.12-Indie/Lib/windows_x86_64/NoesisApp.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>$(SolutionDir)../External/NoesisGUI-NativeSDK-win-4.0.1-Indie/Lib/windows_x86_64/Noesis.lib;$(SolutionDir)../External/NoesisGUI-NativeSDK-win-4.0.1-Indie/Lib/windows_x86_64/NoesisApp.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -160,7 +160,7 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>$(SolutionDir)../External/NoesisGUI-NativeSDK-win-3.2.12-Indie/Lib/windows_x86_64/Noesis.lib;$(SolutionDir)../External/NoesisGUI-NativeSDK-win-3.2.12-Indie/Lib/windows_x86_64/NoesisApp.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>$(SolutionDir)../External/NoesisGUI-NativeSDK-win-4.0.1-Indie/Lib/windows_x86_64/Noesis.lib;$(SolutionDir)../External/NoesisGUI-NativeSDK-win-4.0.1-Indie/Lib/windows_x86_64/NoesisApp.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>

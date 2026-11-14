@@ -57,8 +57,8 @@ void GameInit()
        }
    };
    Renderer::CreatePipelines(pipelineDescs, pipelineDescriptors);
-   sGameObjects.push_back(new TempGameObject({"shells_0", "shells_1"}, "shells.fbx", "Shells"));
-   TempGameObject* derp = new TempGameObject({"derp_0"}, "Derp.fbx", "derp", true);
+   sGameObjects.push_back(new TempGameObject({"shells_0", "shells_1"}, "../Engine/Meshes/shells.fbx", "Shells"));
+   TempGameObject* derp = new TempGameObject({"derp_0"}, "../Engine/Meshes/Derp.fbx", "derp", true);
    sGameObjects.push_back(derp);
    sDerpMover = new DerpMover(derp);
    sCameraCon = new CameraController(Camera::ActiveCamera, 5.0f);
