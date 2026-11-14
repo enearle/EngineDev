@@ -1,4 +1,4 @@
-﻿#include "RHIStructures.h"
+#include "RHIStructures.h"
 #include <d3d12.h>
 #include <fstream>
 #include <string>
@@ -130,22 +130,14 @@ namespace RHIStructures
         }
     }
 
-    ShaderStage ImportShader(const std::string& filename, const char* entryPoint)
+    ShaderStage ImportShader(const std::string& compiledDirectory, const std::string& name, const char* entryPoint)
     {
         ShaderStage shaderStage;
         std::string path;
         if (GRAPHICS_SETTINGS.APIToUse == DirectX12)
-        {
-            path = "../RHI/DirectX12/Shaders/CSO/";
-            path += filename;
-            path += ".cso";
-        }
+            path = compiledDirectory + "DXIL/" + name + ".cso";
         else if (GRAPHICS_SETTINGS.APIToUse == Vulkan)
-        {
-            path = "../RHI/Vulkan/Shaders/SPIRV/";
-            path += filename;
-            path += ".spv";
-        }
+            path = compiledDirectory + "SPIRV/" + name + ".spv";
         else
             throw std::runtime_error("Invalid API selected!");
 
@@ -771,11 +763,6 @@ namespace RHIStructures
         }
     
         return flags;
-    }
-
-    UINT GetBufferDeviceAddress(const BufferAllocation& bufferAllocation)
-    {
-        return reinterpret_cast<UINT>(bufferAllocation.Address);
     }
 
     VulkanBufferData* VulkanBuffer(const BufferAllocation& bufferAllocation)

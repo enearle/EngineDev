@@ -1,6 +1,6 @@
-﻿#include "TempGameObject.h"
+#include "TempGameObject.h"
 #include <iostream>
-#include "RHI/Material.h"
+#include "Material.h"
 #include "Geometry/GeometryImport.h"
 #include "Renderer.h"
 #include "Uploader.h"
@@ -21,7 +21,7 @@ void CollectBoneMatrices(const SceneNode* node, std::vector<DirectX::XMMATRIX>& 
         {
             const std::vector<DirectX::XMMATRIX>& boneOffsets = mesh->GetBoneOffsets();
             const std::vector<DirectX::XMMATRIX>& boneTransforms = mesh->GetBoneTransforms();
-            
+
             if (boneOffsets.size() > outOffsetMatrices.size())
             {
                 outOffsetMatrices.resize(boneOffsets.size());
@@ -34,7 +34,7 @@ void CollectBoneMatrices(const SceneNode* node, std::vector<DirectX::XMMATRIX>& 
             }
         }
     }
-    
+
     for (SceneNode* child : node->GetChildren())
     {
         SceneNode* sceneNode = child;
@@ -49,25 +49,25 @@ TempGameObject::TempGameObject(std::vector<std::string> materials, std::string f
     {
         Materials.push_back(Material(material, Material::PBR).LoadMaterial(1, 2));
     }
-    
+
     SceneRoot = GeometryImport::CreateMeshGroup(filename, name, DirectX::XMMatrixIdentity(), useSkinning);
-    ModelDataArray.reserve(100);
-    
+
     if (useSkinning)
     {
         CollectBoneMatrices(SceneRoot, BoneOffsets, BoneTransforms);
-        
+
         std::vector<DirectX::XMFLOAT4X4> boneMatrices(MAX_BONES);
         for (uint32_t i = 0; i < MAX_BONES; i++)
         {
             DirectX::XMStoreFloat4x4(&boneMatrices[i], DirectX::XMMatrixIdentity());
         }
-        
+
         size_t BONE_BUFFER_SIZE = MAX_BONES * sizeof(DirectX::XMFLOAT4X4);
         BoneBufferID = Uploader::UploadDynamic(BONE_BUFFER_SIZE, boneMatrices.data());
         BoneDescriptorSet = Uploader::AllocateDescriptor(BoneBufferID);
     }
-    
+
+    UploadToGPU();
     CreateDrawForMeshNode(SceneRoot);
 }
 
@@ -80,12 +80,11 @@ void TempGameObject::CreateDrawForMeshNode(SceneNode* node)
     for (size_t i = 0; meshAsset && i < meshAsset->GetMeshCount(); i++)
     {
         const Mesh* mesh = &meshAsset->GetMesh(i);
-        
+
         uint32_t materialIndex = mesh->GetLocalMaterialIndex();
-        
-        // The material's set is bound once per material bucket; only per-mesh sets stay on the draw.
-        std::vector<uint64_t> materialDescriptors = {Materials[materialIndex]};
-        std::vector<uint64_t> descriptorSets;
+
+        std::vector<DescriptorSetHandle> materialDescriptors = {Materials[materialIndex]};
+        std::vector<DescriptorSetHandle> descriptorSets;
 
         if (mesh->IsSkinned())
             descriptorSets.push_back(BoneDescriptorSet);
@@ -97,23 +96,22 @@ void TempGameObject::CreateDrawForMeshNode(SceneNode* node)
         DirectX::XMFLOAT4X4 normal;
         DirectX::XMMATRIX inverseTranspose = XMMatrixTranspose(XMMatrixInverse(nullptr, modelMatrix));
         DirectX::XMStoreFloat4x4(&normal, inverseTranspose);
-        
+
         EngineConstants::ModelData mvpData;
         mvpData.ModelMatrix = model;
         mvpData.NormalMatrix = normal;
-        ModelDataArray.push_back(mvpData);
-        
+
         IndexedDraw indexedDraw;
         indexedDraw.PipelineVarientID = mesh->GetPipelineVariantID();
-        indexedDraw.VertexBufferID = mesh->GetVertexBufferID();
-        indexedDraw.IndexBufferID = mesh->GetIndexBufferID();
+        indexedDraw.VertexBuffer = mesh->GetVertexBufferID();
+        indexedDraw.IndexBuffer = mesh->GetIndexBufferID();
         indexedDraw.VertexCount = mesh->GetVertexCount();
         indexedDraw.IndexCount = mesh->GetIndexCount();
         indexedDraw.PerDrawDescriptors = descriptorSets;
-        indexedDraw.PushConstants = &ModelDataArray.back();
+        memcpy(indexedDraw.PushConstants, &mvpData, sizeof(EngineConstants::ModelData));
         indexedDraw.PushConstantSize = sizeof(EngineConstants::ModelData);
         indexedDraw.VertexStride = mesh->GetVertexStride();
-        
+
         //Janky but works for now.
         IndexedDraw shadowDraw = indexedDraw;  // Shadow pass doesn't need material textures,
                                                // so its draws all share one material-less bucket

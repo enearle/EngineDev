@@ -1,4 +1,4 @@
-﻿#include "D3DCore.h"
+#include "D3DCore.h"
 #include "../Windows/Win32ErrorHandler.h"
 #include "../Window.h"
 #include <exception>
@@ -30,11 +30,12 @@ void D3DCore::InitDirect3D(Window* window, CoreInitData data)
         InitDebugLayer();
         CreateFactory();
         CreateDevice();
+        SubscribeDebugMessages();
         CreateFence();
         CreateCommandObjects();
         CreateSwapChain();
         CreateSwapChainDescriptorHeaps();
-        CreateNoesisDepthStencilBuffers();
+        CreateOverlayDepthStencilBuffers();
     }
     catch (const std::exception& exception)
     {
@@ -60,22 +61,43 @@ void D3DCore::Reset()
         CommandQueue->Signal(Fence.Get(), CurrentFence) >> ERROR_HANDLER;
         WaitForGpu();
     }
-    
+
     for (UINT i = 0; i < SwapChainBufferCount; i++)
     {
+        DeferredUploadReleases[i].clear();
         CommandLists[i].Reset();
         CommandAllocators[i].Reset();
+        SwapChainBuffer[i].Reset();
+        OverlayDepthStencilBuffers[i].Reset();
     }
+    DepthStencilBuffer.Reset();
+    RenderTargetDescriptorHeap.Reset();
+    DepthStencilDescriptorHeap.Reset();
+    OverlayDepthStencilDescriptorHeap.Reset();
+    TransferCommandList.Reset();
     TransferCommandAllocator.Reset();
+    TransferCommandQueue.Reset();
+    TransferFence.Reset();
+    Fence.Reset();
     CommandQueue.Reset();
     SwapChain.Reset();
+
+#if defined(DEBUG) || defined(_DEBUG)
+    ComPtr<ID3D12InfoQueue1> infoQueue;
+    if (MessageCallbackCookie != 0 && SUCCEEDED(Device.As(&infoQueue)))
+        infoQueue->UnregisterMessageCallback(MessageCallbackCookie);
+    MessageCallbackCookie = 0;
+#endif
+
     Device.Reset();
     Factory.Reset();
+    Initialized = false;
 }
 
 void D3DCore::BeginFrame()
 {
     WaitForFrame(CurrentFrameIndex);
+    FrameNumber++;
     DeferredUploadReleases[CurrentFrameIndex].clear();
     CommandAllocators[CurrentFrameIndex]->Reset();
     CommandLists[CurrentFrameIndex]->Reset(CommandAllocators[CurrentFrameIndex].Get(), nullptr);
@@ -86,23 +108,23 @@ void D3DCore::EndFrame()
 {
     CommandLists[CurrentFrameIndex]->Close() >> ERROR_HANDLER;
     TransferCommandList->Close() >> ERROR_HANDLER;
-    
+
     ID3D12CommandList* ppCommandLists[] = { TransferCommandList.Get(), CommandLists[CurrentFrameIndex].Get() };
     CommandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
-    
+
     CurrentFence++;
     FrameFences[CurrentFrameIndex] = CurrentFence;
     CommandQueue->Signal(Fence.Get(), CurrentFence) >> ERROR_HANDLER;
     SwapChain->Present(1, 0) >> ERROR_HANDLER;
     CurrentFrameIndex = (CurrentFrameIndex + 1) % SwapChainBufferCount;
-    
+
 }
 
 void D3DCore::DeferUploadBufferRelease(ComPtr<ID3D12Resource> resource)
 {
     if (!resource)
         return;
-    
+
     DeferredUploadReleases[CurrentFrameIndex].emplace_back(resource);
 }
 
@@ -144,10 +166,9 @@ void D3DCore::ResetWindow()
     CurrentBackBuffer = 0;
     CurrentFrameIndex = 0;
 
-    // Recreate Noesis depth stencil buffers to match the new swapchain dimensions
-    for (auto& buf : NoesisDepthStencilBuffers)
+    for (auto& buf : OverlayDepthStencilBuffers)
         buf.Reset();
-    CreateNoesisDepthStencilBuffers();
+    CreateOverlayDepthStencilBuffers();
 }
 
 void D3DCore::InitDebugLayer()
@@ -189,6 +210,24 @@ void D3DCore::CreateDevice()
     adapter->Release();
 }
 
+void D3DCore::SubscribeDebugMessages()
+{
+#if defined(DEBUG) || defined(_DEBUG)
+    // ID3D12InfoQueue1 needs Windows 11; without it the messages still reach the debugger output.
+    ComPtr<ID3D12InfoQueue1> infoQueue;
+    if (FAILED(Device.As(&infoQueue)))
+        return;
+
+    infoQueue->RegisterMessageCallback(
+        [](D3D12_MESSAGE_CATEGORY, D3D12_MESSAGE_SEVERITY severity, D3D12_MESSAGE_ID, LPCSTR description, void*)
+        {
+            if (severity <= D3D12_MESSAGE_SEVERITY_WARNING)
+                std::cerr << "d3d12 debug layer: " << description << std::endl;
+        },
+        D3D12_MESSAGE_CALLBACK_FLAG_NONE, nullptr, &MessageCallbackCookie);
+#endif
+}
+
 void D3DCore::CreateFence()
 {
     Device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&Fence)) >> ERROR_HANDLER;
@@ -204,7 +243,7 @@ void D3DCore::CreateCommandObjects()
         &queueDesc,
         IID_PPV_ARGS(&CommandQueue)
         ) >> ERROR_HANDLER;
-    
+
     for (int i = 0; i < SwapChainBufferCount; ++i)
     {
         Device->CreateCommandAllocator(
@@ -217,9 +256,9 @@ void D3DCore::CreateCommandObjects()
             CommandAllocators[i].Get(),
             nullptr,
             IID_PPV_ARGS(CommandLists[i].GetAddressOf())) >> ERROR_HANDLER;
-        
+
         CommandLists[i]->Close();
-        
+
         FrameFences[i] = 0;
     }
 
@@ -242,7 +281,7 @@ void D3DCore::CreateCommandObjects()
         IID_PPV_ARGS(TransferCommandList.GetAddressOf())) >> ERROR_HANDLER;
 
     TransferCommandList.Get()->Close();
-    
+
 
 }
 
@@ -261,14 +300,14 @@ void D3DCore::CreateSwapChain()
 
     RenderTargetFormat = renderTargetSupport && GRAPHICS_SETTINGS.HDR
         ? DXGI_FORMAT_R16G16B16A16_FLOAT : DXGI_FORMAT_R8G8B8A8_UNORM;
-    
+
     UINT msaaQualityLevels = GetMSAAQualityLevel(RenderTargetFormat, SwapChainMSAASamples);
     bool msaaSupported = msaaQualityLevels > 0;
 
     DXGI_SAMPLE_DESC msaaSampleDesc;
     msaaSampleDesc.Count = SwapChainMSAA && msaaSupported ? SwapChainMSAASamples : 1;
     msaaSampleDesc.Quality = SwapChainMSAA && msaaSupported ? msaaQualityLevels : 0;
-    
+
     SwapChainMSAAQuality = msaaSampleDesc.Quality;
 
     SwapChain.Reset();
@@ -290,7 +329,7 @@ void D3DCore::CreateSwapChain()
     fullscreenDesc.RefreshRate.Denominator = 1;
     fullscreenDesc.ScanlineOrdering = DXGI_MODE_SCANLINE_ORDER_UNSPECIFIED;
     fullscreenDesc.Scaling = DXGI_MODE_SCALING_UNSPECIFIED;
-    fullscreenDesc.Windowed = TRUE; 
+    fullscreenDesc.Windowed = TRUE;
 
     Factory->CreateSwapChainForHwnd(
         CommandQueue.Get(),
@@ -323,13 +362,13 @@ void D3DCore::CreateSwapChainDescriptorHeaps()
     DephtStencilHeapDesc.NodeMask = 0;
     Device->CreateDescriptorHeap(
         &DephtStencilHeapDesc, IID_PPV_ARGS(DepthStencilDescriptorHeap.GetAddressOf())) >> ERROR_HANDLER;
-    
-    D3D12_DESCRIPTOR_HEAP_DESC NoesisDepthHeapDesc;
-    NoesisDepthHeapDesc.NumDescriptors = SwapChainBufferCount;
-    NoesisDepthHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
-    NoesisDepthHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
-    NoesisDepthHeapDesc.NodeMask = 0;
-    Device->CreateDescriptorHeap(&NoesisDepthHeapDesc, IID_PPV_ARGS(NoesisDepthStencilDescriptorHeap.GetAddressOf())) >> ERROR_HANDLER;
+
+    D3D12_DESCRIPTOR_HEAP_DESC OverlayDepthHeapDesc;
+    OverlayDepthHeapDesc.NumDescriptors = SwapChainBufferCount;
+    OverlayDepthHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
+    OverlayDepthHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+    OverlayDepthHeapDesc.NodeMask = 0;
+    Device->CreateDescriptorHeap(&OverlayDepthHeapDesc, IID_PPV_ARGS(OverlayDepthStencilDescriptorHeap.GetAddressOf())) >> ERROR_HANDLER;
 
     for (UINT i = 0; i < SwapChainBufferCount; ++i)
     {
@@ -337,16 +376,16 @@ void D3DCore::CreateSwapChainDescriptorHeaps()
         SwapChain->GetBuffer(i, IID_PPV_ARGS(&backBuffer));
 
         SwapChainBuffer[i] = backBuffer;
-        
-        D3D12_CPU_DESCRIPTOR_HANDLE rtvHandle = 
+
+        D3D12_CPU_DESCRIPTOR_HANDLE rtvHandle =
             RenderTargetDescriptorHeap->GetCPUDescriptorHandleForHeapStart();
         rtvHandle.ptr += i * RenderTargetDescriptorOffset;
-        
+
         Device->CreateRenderTargetView(backBuffer.Get(), nullptr, rtvHandle);
     }
 }
 
-void D3DCore::CreateNoesisDepthStencilBuffers()
+void D3DCore::CreateOverlayDepthStencilBuffers()
 {
     auto heap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
     D3D12_RESOURCE_DESC backBufferDesc = SwapChainBuffer[0]->GetDesc();
@@ -354,7 +393,7 @@ void D3DCore::CreateNoesisDepthStencilBuffers()
     D3D12_RESOURCE_DESC desc = {};
     desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
     desc.Alignment = 0;
-    desc.Width = backBufferDesc.Width;  
+    desc.Width = backBufferDesc.Width;
     desc.Height = backBufferDesc.Height;
     desc.DepthOrArraySize = 1;
     desc.MipLevels = 1;
@@ -363,20 +402,25 @@ void D3DCore::CreateNoesisDepthStencilBuffers()
     desc.SampleDesc.Quality = 0;
     desc.Flags = D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
 
+    D3D12_CLEAR_VALUE clearValue = {};
+    clearValue.Format = desc.Format;
+
     for (UINT i = 0; i < SwapChainBufferCount; ++i)
     {
         Device->CreateCommittedResource(
             &heap,
             D3D12_HEAP_FLAG_NONE,
             &desc,
-            D3D12_RESOURCE_STATE_COMMON,
-            nullptr,
-            IID_PPV_ARGS(NoesisDepthStencilBuffers[i].GetAddressOf())
+            D3D12_RESOURCE_STATE_DEPTH_WRITE,
+            &clearValue,
+            IID_PPV_ARGS(OverlayDepthStencilBuffers[i].GetAddressOf())
         ) >> ERROR_HANDLER;
-           
-        D3D12_CPU_DESCRIPTOR_HANDLE dsvHandle = NoesisDepthStencilDescriptorHeap->GetCPUDescriptorHandleForHeapStart();
+
+        OverlayDepthStencilBuffers[i]->SetName(L"Overlay depth stencil");
+
+        D3D12_CPU_DESCRIPTOR_HANDLE dsvHandle = OverlayDepthStencilDescriptorHeap->GetCPUDescriptorHandleForHeapStart();
         dsvHandle.ptr += i * DepthStencilDescriptorOffset;
-        Device->CreateDepthStencilView(NoesisDepthStencilBuffers[i].Get(), nullptr, dsvHandle);
+        Device->CreateDepthStencilView(OverlayDepthStencilBuffers[i].Get(), nullptr, dsvHandle);
     }
 }
 
@@ -395,35 +439,35 @@ void D3DCore::WaitForFrame(uint32_t frameIndex)
 UINT D3DCore::GetMSAAQualityLevel(DXGI_FORMAT format, UINT sampleCount)
 {
     if (sampleCount <= 1) return 0;
-    
+
     D3D12_FEATURE_DATA_MULTISAMPLE_QUALITY_LEVELS msaaQualityLevels = {};
     msaaQualityLevels.Format = format;
     msaaQualityLevels.SampleCount = sampleCount;
     msaaQualityLevels.Flags = D3D12_MULTISAMPLE_QUALITY_LEVELS_FLAG_NONE;
-    
+
     Device->CheckFeatureSupport(
         D3D12_FEATURE_MULTISAMPLE_QUALITY_LEVELS,
         &msaaQualityLevels,
         sizeof(msaaQualityLevels)
     ) >> ERROR_HANDLER;
 
-    return msaaQualityLevels.NumQualityLevels > 0 
-        ? msaaQualityLevels.NumQualityLevels - 1 
+    return msaaQualityLevels.NumQualityLevels > 0
+        ? msaaQualityLevels.NumQualityLevels - 1
         : 0;
 }
 
 D3D12_CPU_DESCRIPTOR_HANDLE D3DCore::GetRenderTargetDescriptor()
 {
-    D3D12_CPU_DESCRIPTOR_HANDLE rtvHandle = 
+    D3D12_CPU_DESCRIPTOR_HANDLE rtvHandle =
         RenderTargetDescriptorHeap->GetCPUDescriptorHandleForHeapStart();
     rtvHandle.ptr += CurrentFrameIndex * RenderTargetDescriptorOffset;
     return rtvHandle;
 }
 
-D3D12_CPU_DESCRIPTOR_HANDLE D3DCore::GetNoesisDepthStencilDescriptor()
+D3D12_CPU_DESCRIPTOR_HANDLE D3DCore::GetOverlayDepthStencilDescriptor()
 {
     D3D12_CPU_DESCRIPTOR_HANDLE dsvHandle =
-        NoesisDepthStencilDescriptorHeap->GetCPUDescriptorHandleForHeapStart();
+        OverlayDepthStencilDescriptorHeap->GetCPUDescriptorHandleForHeapStart();
     dsvHandle.ptr += CurrentFrameIndex * DepthStencilDescriptorOffset;
     return dsvHandle;
 }

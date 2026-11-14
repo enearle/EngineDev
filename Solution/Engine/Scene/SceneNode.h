@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 #include <string>
 #include <vector>
 #include "../ENGINE_API_Macro.h"
@@ -24,61 +24,61 @@ protected:
     SceneNode* Parent = nullptr;
     std::vector<SceneNode*> Children = {};
     std::vector<SceneComponentBase*> Components = {};
-    
-    // Init() is required because a polymorphic inherited class 
+
+    // Init() is required because a polymorphic inherited class
     // cannot be added to mChildren at the time of initialization.
     // So Init() defers adding a child to the time of construction
     // in the inherited class. Ie. Entity() { Init(); }
     virtual void Init(std::string name, SceneNode* parent, DirectX::XMMATRIX localMatrix);
 
 public:
-    
+
     static void UpdateAll(float dt);
     static void DestroyAll();
     static const std::vector<SceneNode*>& GetRootNodes() { return RootNodes; }
 
     // Deserialize constructor
     SceneNode(SceneNode* parent = nullptr);
-    
+
     // New node creation constructor
     SceneNode(const std::string& name, DirectX::XMMATRIX localMatrix = {}, SceneNode* parent = nullptr);
-    
+
     virtual ~SceneNode();
-    
+
     virtual void Update(float dt);
     virtual void Reset();
-    
+
     SceneNode* GetRootNode() { return Parent ? Parent->GetRootNode() : this; }
     const AssetID& GetID() const override;
-    
-    std::vector<SceneNode*> GetChildren() const { return Children; }
+
+    const std::vector<SceneNode*>& GetChildren() const { return Children; }
     void AddChild(SceneNode* child);
-    
+
     SceneComponentBase* AddComponent(SceneComponentType type);
-    std::vector<SceneComponentBase*> GetComponents() const { return Components; }
+    const std::vector<SceneComponentBase*>& GetComponents() const { return Components; }
     SceneComponentBase* GetComponent(SceneComponentType type) const;
     void UploadToGPU();
     void FreeGPUResources();
-    
+
     void UpdateWorldMatrix();
     void SetChildrenDirty();
     void SetDirty();
-    
+
     DirectX::XMMATRIX GetLocalMatrix() const { return LocalMatrix; }
     DirectX::XMMATRIX GetWorldMatrix();
-    
+
     void RotateEulerLocalAxis(RotationAxis axis, float angle);
-    
+
     DirectX::XMFLOAT3 GetWorldPosition3f();
     DirectX::XMFLOAT3 GetLocalPosition3f();
-    
+
     void SetLocalPosition(DirectX::XMFLOAT3 position);
     void SetWorldPosition(DirectX::XMFLOAT3 position);
-    
+
     void SetLocalMatrix(DirectX::XMMATRIX localMatrix);
     void SetWorldMatrix(DirectX::XMMATRIX worldMatrix);
-    
+
     void Serialize(std::string& data) override;
     void Deserialize(std::string& data, long& offset) override;
-    
+
 };

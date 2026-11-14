@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 #include "RHIStructures.h"
 
 using namespace RHIStructures;
@@ -6,7 +6,7 @@ using namespace RHIStructures;
 namespace RHIConstants
 {
     constexpr uint32_t VARIANT_DESCRIPTOR_SET_BASE = 16;
-    
+
     inline constexpr BlendAttachmentState DisabledBlendAttachmentState {
         .ColorBlendOp = BlendOp::Add,
         .SrcColorBlendFactor = BlendFactor::SrcAlpha,
@@ -16,13 +16,13 @@ namespace RHIConstants
         .DestAlphaBlendFactor = BlendFactor::Zero,
         .BlendEnable = false
     };
-    
+
     inline constexpr ImageMemoryBarrier PRE_BARRIER{
         .SrcStage      = PipelineStage::TopOfPipe,
         .DstStage      = PipelineStage::ColorAttachmentOutput,
         .SrcAccessMask = 0u,
         .DstAccessMask = static_cast<uint32_t>(AccessFlag::ColorAttachmentWrite),
-        .OldLayout     = ImageLayout::Present,
+        .OldLayout     = ImageLayout::Undefined,
         .NewLayout     = ImageLayout::ColorAttachment,
     };
 
@@ -43,7 +43,7 @@ namespace RHIConstants
         .OldLayout = ImageLayout::Undefined,
         .NewLayout = ImageLayout::ShaderReadOnly,
     };
-    
+
     inline constexpr ImageMemoryBarrier INIT_DEPTH_BARRIER{
         .SrcStage = PipelineStage::TopOfPipe,
         .DstStage = PipelineStage::FragmentShader,
@@ -53,7 +53,7 @@ namespace RHIConstants
         .NewLayout = ImageLayout::ShaderReadOnly,
         .IsDepthImage = true
     };
-    
+
     inline constexpr ImageMemoryBarrier ATTACHMENT_TO_READ_BARRIER{
         .SrcStage = PipelineStage::ColorAttachmentOutput,
         .DstStage = PipelineStage::FragmentShader,
@@ -62,7 +62,7 @@ namespace RHIConstants
         .OldLayout = ImageLayout::ColorAttachment,
         .NewLayout = ImageLayout::ShaderReadOnly,
     };
-    
+
     inline constexpr ImageMemoryBarrier READ_TO_ATTACHMENT_BARRIER{
         .SrcStage = PipelineStage::FragmentShader,
         .DstStage = PipelineStage::ColorAttachmentOutput,
@@ -71,7 +71,7 @@ namespace RHIConstants
         .OldLayout = ImageLayout::ShaderReadOnly,
         .NewLayout = ImageLayout::ColorAttachment,
     };
-    
+
     inline constexpr ImageMemoryBarrier READ_TO_DEPTH_ATTACHMENT_BARRIER{
         .SrcStage = PipelineStage::FragmentShader,
         .DstStage = PipelineStage::EarlyFragmentTests,
@@ -91,22 +91,22 @@ namespace RHIConstants
         .NewLayout = ImageLayout::ShaderReadOnly,
         .IsDepthImage = true
     };
-    
-    static const std::vector<std::vector<uint8_t>> DefaultMetalnessRoughnessOcclusion = 
+
+    static const std::vector<std::vector<uint8_t>> DefaultMetalnessRoughnessOcclusion =
     {
         { 0 },
         { 128 },
         { 0 }
     };
-    
+
     inline constexpr ImageUsage DefaultUploadImageUsage
     {
         .TransferSource = false,
         .TransferDestination = true,
         .Type = ImageType::Sampled
     };
-    
-    inline constexpr ImageDesc DefaultTextureDesc 
+
+    inline constexpr ImageDesc DefaultTextureDesc
     {
         .Width = 0,
         .Height = 0,
@@ -118,7 +118,7 @@ namespace RHIConstants
         .Layout = ImageLayout::General,
         .InitialData = nullptr
     };
-    
+
     inline constexpr BufferUsage DefaultDynamicBufferUsage
     {
         .TransferSource = true,
@@ -126,14 +126,14 @@ namespace RHIConstants
         .Access = MemoryAccess(9),
         .Type = BufferType::Constant,
     };
-    
+
     inline constexpr BufferDesc DefaultDynamicBufferDesc
     {
         .Size = 0,
         .Usage = DefaultDynamicBufferUsage,
         .InitialData = nullptr
     };
-    
+
     inline constexpr BufferUsage DefaultStaticUploadBufferUsage
     {
         .TransferSource = false,
@@ -141,14 +141,14 @@ namespace RHIConstants
         .Access = MemoryAccess(8),
         .Type = BufferType::Constant,
     };
-    
+
     inline constexpr BufferDesc DefaultStaticUploadBufferDesc
     {
         .Size = 0,
         .Usage = DefaultStaticUploadBufferUsage,
         .InitialData = nullptr
     };
-    
+
     inline constexpr BufferUsage DefaultVertexBufferUsage
     {
         .TransferSource = false,
@@ -156,14 +156,14 @@ namespace RHIConstants
         .Access = MemoryAccess(8),
         .Type = BufferType::Vertex
     };
-    
+
     inline constexpr BufferDesc DefaultVertexBufferDesc
     {
         .Size = 0,
         .Usage = DefaultVertexBufferUsage,
         .InitialData = nullptr
     };
-    
+
     inline constexpr BufferUsage DefaultIndexBufferUsage
     {
         .TransferSource = false,
@@ -171,7 +171,7 @@ namespace RHIConstants
         .Access = MemoryAccess(8),
         .Type = BufferType::Index
     };
-    
+
     inline constexpr BufferDesc DefaultIndexBufferDesc
     {
         .Size = 0,

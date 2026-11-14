@@ -1,13 +1,13 @@
-﻿#pragma once
+#pragma once
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #define GLFW_INCLUDE_VULKAN
 
 #include <DirectXMath.h>
 #include <string>
 #include <vector>
-#include "../RHI/RHI/RHIStructures.h"
+#include "RHI/RHIStructures.h"
 #include "../ENGINE_API_Macro.h"
-#include "../RHI/Uploader.h"
+#include "Uploader.h"
 
 struct aiScene;
 struct DirectX::XMMATRIX;
@@ -49,26 +49,27 @@ public:
     Uploader::BufferID GetIndexBufferID() const         { return IndexBufferID; }
     void* GetVertexBufferHandle() const;
     void* GetIndexBufferHandle() const;
-    std::vector<DirectX::XMMATRIX> GetBoneOffsets() const { return BoneOffsets; }
-    std::vector<DirectX::XMMATRIX> GetBoneTransforms() const { return BoneTransforms; }
+    const std::vector<DirectX::XMMATRIX>& GetBoneOffsets() const { return BoneOffsets; }
+    const std::vector<DirectX::XMMATRIX>& GetBoneTransforms() const { return BoneTransforms; }
     void UploadToGPU();
+    void FreeGPUResources();
 private:
-    
+
     bool bIsSkinned = false;
     uint32_t VertexCount;
     uint32_t IndexCount;
     uint32_t LocalMaterialIndex;
     std::vector<DirectX::XMMATRIX> BoneOffsets;
     std::vector<DirectX::XMMATRIX> BoneTransforms;
-    
-    Uploader::BufferID VertexBufferID = 0;
-    Uploader::BufferID IndexBufferID = 0;
+
+    Uploader::BufferID VertexBufferID = {};
+    Uploader::BufferID IndexBufferID = {};
     VertexCache* TempVertexCache = nullptr;
     SkinnedVertexCache* TempSkinnedVertexCache = nullptr;
-    
+
 public:
     void* GetCachedIndexData() const;
     void* GetCachedVertexData() const;
     void WipeCachedData();
-    
+
 };

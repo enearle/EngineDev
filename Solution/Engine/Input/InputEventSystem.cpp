@@ -1,10 +1,10 @@
-﻿#include "InputEventSystem.h"
+#include "InputEventSystem.h"
 #include <vector>
 #include <algorithm>
 #include <unordered_set>
-#include <Solution/RHI/Windows/WindowsHeaders.h>
+#include "Windows/WindowsHeaders.h"
 #include <string>
-#include "Solution/RHI/Renderer.h"
+#include "Renderer.h"
 std::unordered_map<std::string, KeyState> InputEventSystem::sRegisteredGameplayInput;
 std::unordered_map<std::string, KeyState> InputEventSystem::sRegisteredMenuInput;
 std::vector<MouseDeltaCallback> InputEventSystem::sMouseCallbacks;
@@ -23,7 +23,7 @@ std::string InputEventSystem::ToUniqueKey(const std::string& keys)
     std::unordered_set<char> uniqueKeys;
     for (char c : keys)
         uniqueKeys.insert(c);
-        
+
     std::string stringSet = std::string(uniqueKeys.begin(), uniqueKeys.end());
     std::sort(stringSet.begin(), stringSet.end());
     return stringSet;
@@ -42,7 +42,7 @@ void InputEventSystem::RegisterCommand(InputMode inputMode, const std::string& k
     case InputMode::Gameplay:
         uniqueKey = ToUniqueKey(keyCombination);
         it = sRegisteredGameplayInput.find(uniqueKey);
-        
+
         if (it != sRegisteredGameplayInput.end())
             it->second.RegisterCommand(action, callback);
         else {
@@ -53,7 +53,7 @@ void InputEventSystem::RegisterCommand(InputMode inputMode, const std::string& k
     case InputMode::UI:
         uniqueKey = ToUniqueKey(keyCombination);
         it = sRegisteredMenuInput.find(uniqueKey);
-        
+
         if (it != sRegisteredMenuInput.end())
             it->second.RegisterCommand(action, callback);
         else {
@@ -118,7 +118,7 @@ void InputEventSystem::PollInput(HWND hwnd, double deltaTime)
 
         break;
     case InputMode::UI:
-        for (auto& [keyString, keyState] : sRegisteredMenuInput) 
+        for (auto& [keyString, keyState] : sRegisteredMenuInput)
         {
             bool combinationActive = true;
             for (char key : keyString)
@@ -126,7 +126,7 @@ void InputEventSystem::PollInput(HWND hwnd, double deltaTime)
                     combinationActive = false;
                     break;
                 }
-            
+
             keyState.Update(combinationActive, sCommandQueue);
         }
         break;

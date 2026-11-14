@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 #include "../Windows/WindowsHeaders.h"
 #include <vector>
 #include "../RHI/RHIStructures.h"
@@ -15,7 +15,7 @@ class VulkanCore
 {
     VulkanCore() = default;
     bool Initialized = false;
-    
+
     Window* RenderWindow;
 
     VkInstance VulkanInstance                           = VK_NULL_HANDLE;   // Instance of Vulkan API.
@@ -23,43 +23,44 @@ class VulkanCore
     VkDevice Device                                     = VK_NULL_HANDLE;   // Interface for GPU.
 
     VkCommandPool CommandPool                           = VK_NULL_HANDLE;
-    
+
     std::vector<VkSemaphore> ImageAvailableSemaphores;
     std::vector<VkSemaphore> RenderFinishedSemaphores;
     std::vector<VkFence> InFlightFences;
     VkFence TransferFence = VK_NULL_HANDLE;
 
     uint32_t SwapChainImageCount = 3;                                       // Maximum number of frames == swapchain size
-    
+
     uint32_t CurrentFrameIndex = 0;                                         // Frame index for CPU work (cycles through command allocators/fences)
-    uint32_t CurrentSwapchainImageIndex = 0;                                // Swapchain image index currently acquired for presentation
-    
+    uint32_t CurrentSwapchainImageIndex = 0;
+    uint64_t FrameNumber = 0;                                // Swapchain image index currently acquired for presentation
+
     VkQueue GraphicsQueue                               = VK_NULL_HANDLE;   // Queue for graphics operations.
     VkQueue PresentQueue                                = VK_NULL_HANDLE;   // Queue for presentation.
 
     VkDebugUtilsMessengerEXT DebugMessenger             = VK_NULL_HANDLE;   // Debug messenger.
     VkSurfaceKHR Surface                                = VK_NULL_HANDLE;   // Interface between Vulkan API and window.
-    
+
     VkSwapchainKHR Swapchain                            = VK_NULL_HANDLE;   // The images to be displayed, written to, and swapped.
     VkExtent2D Extent2D;                                                    // Window dimensions used in current swapchain.
     VkFormat SwapchainFormat;                                               // Colour data packing and colour space.
     std::vector<VulkanImageData> SwapchainImages;                           // Images and their views used in the swapchain.
     std::vector<VkCommandBuffer> CommandBuffers;                            // Command buffer for each swapchain image.
     VkCommandBuffer TransferCommandBuffer               = VK_NULL_HANDLE;
-    
+
     VkSampler LinearSampler                             = VK_NULL_HANDLE;
     VkSampler PointSampler                              = VK_NULL_HANDLE;
     VkDescriptorSetLayout GlobalSamplerSetLayout        = VK_NULL_HANDLE;
     VkDescriptorPool GlobalSamplerDescriptorPool        = VK_NULL_HANDLE;
     VkDescriptorSet GlobalSamplerSet                    = VK_NULL_HANDLE;
-    
-    VkRenderPass NoesisCompatibilityRenderPass          = VK_NULL_HANDLE;
-    std::vector<VkFramebuffer> NoesisFramebuffers;
-    std::vector<VkImage> NoesisStencilImages;
-    std::vector<VkDeviceMemory> NoesisStencilMemory;
-    std::vector<VkImageView> NoesisStencilImageViews;
-    VkFormat NoesisStencilFormat                        = VK_FORMAT_S8_UINT;
-    
+
+    VkRenderPass OverlayRenderPass          = VK_NULL_HANDLE;
+    std::vector<VkFramebuffer> OverlayFramebuffers;
+    std::vector<VkImage> OverlayStencilImages;
+    std::vector<VkDeviceMemory> OverlayStencilMemory;
+    std::vector<VkImageView> OverlayStencilImageViews;
+    VkFormat OverlayStencilFormat                        = VK_FORMAT_S8_UINT;
+
     const std::vector<const char*> DEVICE_EXTENSIONS = {
         VK_KHR_SWAPCHAIN_EXTENSION_NAME,
         VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME,
@@ -72,17 +73,17 @@ class VulkanCore
 
     bool SwapChainMSAA = false;
     UINT SwapChainMSAASamples = 1;
-    
+
     // Descriptorbuffer crap, not used
     VkPhysicalDeviceDescriptorBufferPropertiesEXT DescriptorBufferProperties{};
     PFN_vkCmdBindDescriptorBuffersEXT        vkCmdBindDescriptorBuffersEXT_FnPtr = nullptr;
     PFN_vkCmdSetDescriptorBufferOffsetsEXT   vkCmdSetDescriptorBufferOffsetsEXT_FnPtr = nullptr;
     PFN_vkGetDescriptorEXT vkGetDescriptorEXT_FnPtr = nullptr;
-    
+
 public:
-    
+
     static VulkanCore& Instance();
-    
+
     void InitVulkan(Window* window, RHIStructures::CoreInitData data);
     void Cleanup();
     void BeginFrame();
@@ -91,6 +92,9 @@ public:
     void ResetWindow();
 
     // Getters
+    Window* GetWindow() const { return RenderWindow; }
+    uint64_t GetFrameNumber() const { return FrameNumber; }
+    VkFormat GetOverlayStencilFormat() const { return OverlayStencilFormat; }
     VkDevice GetDevice() const { return Device; }
     VkPhysicalDevice GetPhysicalDevice() const { return PhysicalDevice; }
     VkSurfaceKHR GetSurface() const { return Surface; }
@@ -118,15 +122,15 @@ public:
     const VkSampler* GetLinearSampler() const { return &LinearSampler; }
     const VkSampler* GetNearestSampler() const { return &PointSampler; }
     uint32_t GetQueueFamilyIndex() { return FindQueueFamilies(PhysicalDevice).GraphicsFamily; }
-    VkRenderPass GetNoesisRenderPass() { return NoesisCompatibilityRenderPass; }
-    VkFramebuffer GetCurrentNoesisFramebuffer() { return NoesisFramebuffers[CurrentSwapchainImageIndex]; }
+    VkRenderPass GetOverlayRenderPass() { return OverlayRenderPass; }
+    VkFramebuffer GetCurrentOverlayFramebuffer() { return OverlayFramebuffers[CurrentSwapchainImageIndex]; }
     VkSampler* GetLinearSampler() { return &LinearSampler; }
     VkSampler* GetNearestSampler() { return &PointSampler; }
     VkDescriptorSet GetGlobalSamplerSet() const { return GlobalSamplerSet; }
     VkDescriptorSetLayout GetGlobalSamplerSetLayout() const { return GlobalSamplerSetLayout; }
-    
+
 private:
-    
+
     void WaitForFrame(uint32_t frameIndex);
     void CreateInstance();
     void EnableDebugMessenger();
@@ -137,40 +141,40 @@ private:
     void CreateCommandPool();
     void CreateSwapchain();
     void CreateSamplers();
-    void CreateNoesisCompatibilityRenderPass();
-    void CreateNoesisStencilImages();
-    void CreateNoesisFramebuffers();
+    void CreateOverlayRenderPass();
+    void CreateOverlayStencilImages();
+    void CreateOverlayFramebuffers();
 
-    
+
     uint32_t FindMemoryType(uint32_t allowedTypes, VkMemoryPropertyFlags properties);
-    
+
     // Debug Support
     VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo,
         const VkAllocationCallbacks* pAllocator, VkDebugUtilsMessengerEXT* pDebugMessenger);
-    
+
     static VKAPI_ATTR VkBool32 VKAPI_CALL DebugCallback(
             VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
             VkDebugUtilsMessageTypeFlagsEXT messageType,
             const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
             void* pUserData);
-    
+
     // Swapchain support
     SwapchainDetailsData GetSwapchainDetails();
     VkSurfaceFormatKHR SelectSwapchainSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats);
     VkPresentModeKHR SelectPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes);
     VkExtent2D SelectExtent(const VkSurfaceCapabilitiesKHR& capabilities);
     SwapchainDetailsData GetSwapchainDetails(VkPhysicalDevice device);
-    
+
 
     // Compatability support
     bool CheckInstanceExtensionSupport(std::vector<const char*> extensionsToCheck, uint32_t& erroneousIndex);
     bool CheckDeviceExtensionSupport(VkPhysicalDevice device);
     bool CheckDeviceSuitability(VkPhysicalDevice device);
     bool CheckValidationLayerSupport();
-    
+
 public:
-    
-    QueueFamilyIndicesData FindQueueFamilies(VkPhysicalDevice device);  
+
+    QueueFamilyIndicesData FindQueueFamilies(VkPhysicalDevice device);
 
 private:
     //Cleanup

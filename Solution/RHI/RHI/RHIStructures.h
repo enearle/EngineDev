@@ -1,10 +1,11 @@
-﻿#pragma once
+#pragma once
 #include <cstdint>
 #include <d3d12.h>
 #include <dxgiformat.h>
 #include <string>
 #include <vector>
 #include "../RHI_API_Macro.h"
+#include "Handle.h"
 #include "../Windows/WindowsHeaders.h"
 #include <DirectXMath.h>
 #include <stdexcept>
@@ -27,10 +28,14 @@ namespace RHIStructures
     //=====================================//
     //  ----------  Universal  ----------  //
     //=====================================//
+    using BufferHandle = Handle<struct BufferHandleTag>;
+    using ImageHandle = Handle<struct ImageHandleTag>;
+    using DescriptorSetHandle = Handle<struct DescriptorSetHandleTag>;
+
     struct CoreInitData
     {
         bool SwapchainMSAA = false;
-        bool SwapchainMSAASamples = 1;
+        uint32_t SwapchainMSAASamples = 1;
     };
     
     struct Vertex
@@ -112,7 +117,8 @@ namespace RHIStructures
         const char* EntryPoint = nullptr;
     };
     
-    RHI_API ShaderStage ImportShader(const std::string& filename, const char* entryPoint);
+    // Reads <compiledDirectory>/DXIL/<name>.cso or <compiledDirectory>/SPIRV/<name>.spv for the active backend.
+    RHI_API ShaderStage ImportShader(const std::string& compiledDirectory, const std::string& name, const char* entryPoint);
     VkShaderModule VulkanShaderModule(ShaderStage shaderStage);
     D3D12_SHADER_BYTECODE DXShaderBytecode(ShaderStage shaderStage);
 
@@ -576,7 +582,6 @@ namespace RHIStructures
         uint64_t Descriptor = 0;
         uint8_t DescriptorType = 0;
     };
-    UINT GetBufferDeviceAddress(const BufferAllocation& bufferAllocation);
     VulkanStructs::VulkanBufferData* VulkanBuffer(const BufferAllocation& bufferAllocation);
     D3D12Structs::DX12BufferData* DXBuffer(const BufferAllocation& bufferAllocation);
     D3D12_CPU_DESCRIPTOR_HANDLE DXDescriptor(const BufferAllocation& bufferAllocation);
@@ -616,9 +621,20 @@ namespace RHIStructures
 
     struct DescriptorSetBinding
     {
-        uint32_t Binding;                       // Binding index
-        uint64_t ResourceID;                    // Handle returned from CreateBuffer or CreateImage
-        uint32_t DynamicOffset = 0;             // Used for dynamic descriptors
+        uint32_t Binding = 0;
+        BufferHandle Buffer = {};
+        ImageHandle Image = {};
+        uint32_t DynamicOffset = 0;
+
+        static DescriptorSetBinding ForBuffer(uint32_t binding, BufferHandle buffer, uint32_t dynamicOffset = 0)
+        {
+            return DescriptorSetBinding{ .Binding = binding, .Buffer = buffer, .DynamicOffset = dynamicOffset };
+        }
+
+        static DescriptorSetBinding ForImage(uint32_t binding, ImageHandle image)
+        {
+            return DescriptorSetBinding{ .Binding = binding, .Image = image };
+        }
     };
     
     struct PipelineDescriptorData {
@@ -645,24 +661,24 @@ namespace RHIStructures
     //  ----------  Renderer  ----------  //
     //====================================//
     
+    constexpr size_t MaxPushConstantBytes = 128;
+
     struct IndexedDraw
     {
         uint32_t PipelineVarientID = 0;
-        uint64_t VertexBufferID = 0;
-        uint64_t IndexBufferID = 0;
+        BufferHandle VertexBuffer = {};
+        BufferHandle IndexBuffer = {};
         uint32_t VertexCount = 0;
         uint32_t IndexCount = 0;
         uint32_t VertexStride = 0;
-        void* PushConstants = nullptr;
+        uint8_t PushConstants[MaxPushConstantBytes] = {};
         size_t PushConstantSize = 0;
-        std::vector<uint64_t> PerDrawDescriptors;
+        std::vector<DescriptorSetHandle> PerDrawDescriptors;
     };
-    
-    // All draws that share a material. PerMaterialDescriptors are bound once, then every draw in
-    // Draws is issued (the seam for instanced draws later).
+
     struct MaterialDraw
     {
-        std::vector<uint64_t> PerMaterialDescriptors;
+        std::vector<DescriptorSetHandle> PerMaterialDescriptors;
         std::vector<IndexedDraw> Draws;
     };
 
@@ -673,7 +689,7 @@ namespace RHIStructures
         bool IsPresented = false;
         // [pipeline variant (0 = main pipeline, i = PipelineVariants[i - 1])][material bucket]
         std::vector<std::vector<MaterialDraw>> IndexedDrawBins;
-        std::vector<uint64_t> PerFrameDescriptors;
+        std::vector<DescriptorSetHandle> PerFrameDescriptors;
     };
 
     struct LightData

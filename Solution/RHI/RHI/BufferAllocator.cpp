@@ -16,6 +16,65 @@ using namespace D3D12Structs;
 
 BufferAllocator* BufferAllocator::Instance = nullptr;
 
+void BufferAllocator::DestroyBuffer(BufferHandle buffer)
+{
+    PendingRelease pending;
+    pending.FrameNumber = FrameNumber;
+    pending.Kind = PendingKind::Buffer;
+    pending.Buffer = Buffers.Get(buffer);
+    PendingReleases.push_back(pending);
+    Buffers.Release(buffer);
+}
+
+void BufferAllocator::DestroyImage(ImageHandle image)
+{
+    PendingRelease pending;
+    pending.FrameNumber = FrameNumber;
+    pending.Kind = PendingKind::Image;
+    pending.Image = Images.Get(image);
+    PendingReleases.push_back(pending);
+    Images.Release(image);
+}
+
+void BufferAllocator::FreeDescriptorSet(DescriptorSetHandle set)
+{
+    PendingRelease pending;
+    pending.FrameNumber = FrameNumber;
+    pending.Kind = PendingKind::DescriptorSet;
+    pending.DescriptorSet = DescriptorSets.Get(set);
+    PendingReleases.push_back(pending);
+    DescriptorSets.Release(set);
+}
+
+void BufferAllocator::ReleasePending(PendingRelease& pending)
+{
+    switch (pending.Kind)
+    {
+    case PendingKind::Buffer:        ReleaseBuffer(pending.Buffer); break;
+    case PendingKind::Image:         ReleaseImage(pending.Image); break;
+    case PendingKind::DescriptorSet: ReleaseDescriptorSet(pending.DescriptorSet); break;
+    }
+}
+
+void BufferAllocator::BeginFrame(uint64_t frameNumber, uint32_t framesInFlight)
+{
+    FrameNumber = frameNumber;
+    FramesInFlight = framesInFlight;
+
+    while (!PendingReleases.empty() && PendingReleases.front().FrameNumber + FramesInFlight <= FrameNumber)
+    {
+        ReleasePending(PendingReleases.front());
+        PendingReleases.pop_front();
+    }
+}
+
+void BufferAllocator::ReleaseAllPending()
+{
+    for (PendingRelease& pending : PendingReleases)
+        ReleasePending(pending);
+    PendingReleases.clear();
+}
+
 BufferAllocator* BufferAllocator::GetInstance()
 {
     if (!Instance)
@@ -39,14 +98,14 @@ VulkanBufferAllocator::VulkanBufferAllocator()
 
 }
 
-uint64_t VulkanBufferAllocator::CreateBuffer(BufferDesc bufferDesc)
+BufferHandle VulkanBufferAllocator::CreateBuffer(const BufferDesc& bufferDesc)
 {
     VulkanBufferData* vulkanBufferData = new VulkanBufferData();
     VkBufferUsageFlags bufferFlags = VulkanBufferUsage(bufferDesc.Usage);
     VkMemoryPropertyFlags memoryFlags = VulkanMemoryType(bufferDesc.Usage.Access);
     VkDevice device = VulkanCore::Instance().GetDevice();
     VkPhysicalDevice physicalDevice = VulkanCore::Instance().GetPhysicalDevice();
-    
+
     bool needsDeviceAddress = (bufferDesc.Usage.Type == BufferType::Constant || bufferDesc.Usage.Type == BufferType::ShaderStorage);
     if (needsDeviceAddress)
     {
@@ -58,37 +117,37 @@ uint64_t VulkanBufferAllocator::CreateBuffer(BufferDesc bufferDesc)
     bufferInfo.size = bufferDesc.Size;
     bufferInfo.usage = bufferFlags;
     bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    
+
     VkResult result = vkCreateBuffer(device, &bufferInfo, nullptr, &vulkanBufferData->Buffer);
     if (result != VK_SUCCESS)
         throw std::runtime_error("Failed to create buffer.");
 
     VkMemoryRequirements memoryRequirements;
     vkGetBufferMemoryRequirements(device, vulkanBufferData->Buffer, &memoryRequirements);
-    
+
     VkPhysicalDeviceMemoryProperties memoryProperties;
     vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memoryProperties);
-    
+
     VkMemoryAllocateFlagsInfo allocFlags = {};
     allocFlags.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO;
     allocFlags.flags = needsDeviceAddress ? VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT : 0;
-    
+
     VkMemoryAllocateInfo allocInfo = {};
     allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     allocInfo.allocationSize = memoryRequirements.size;
     allocInfo.memoryTypeIndex = FindMemoryType(memoryRequirements.memoryTypeBits, memoryFlags);
     allocInfo.pNext = needsDeviceAddress ? &allocFlags : nullptr;
-    
+
     result = vkAllocateMemory(device, &allocInfo, nullptr, &vulkanBufferData->Memory);
     if (result != VK_SUCCESS)
         throw std::runtime_error("Failed to allocate buffer memory.");
-    
+
     result = vkBindBufferMemory(device, vulkanBufferData->Buffer, vulkanBufferData->Memory, 0);
     if (result != VK_SUCCESS)
         throw std::runtime_error("Failed to bind vertex buffer memory.");
 
     bool isHostVisible = (memoryFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) != 0;
-    
+
     void* mappedAddress = nullptr;
 
     if (isHostVisible)
@@ -97,7 +156,7 @@ uint64_t VulkanBufferAllocator::CreateBuffer(BufferDesc bufferDesc)
         result = vkMapMemory(device, vulkanBufferData->Memory, 0, bufferDesc.Size, 0, &mappedAddress);
         if (result != VK_SUCCESS)
             throw std::runtime_error("Failed to map buffer memory.");
-        
+
         // Upload initial data if provided
         if (bufferDesc.InitialData != nullptr)
             memcpy(mappedAddress, bufferDesc.InitialData, bufferDesc.Size);
@@ -105,7 +164,7 @@ uint64_t VulkanBufferAllocator::CreateBuffer(BufferDesc bufferDesc)
     else if (bufferDesc.InitialData != nullptr)
         // Device-local: use staging buffer
         CopyToDeviceLocalBuffer(vulkanBufferData->Buffer, bufferDesc.InitialData, bufferDesc.Size);
-    
+
     BufferAllocation allocation;
     allocation.Buffer = vulkanBufferData;
     allocation.Address = mappedAddress;
@@ -114,8 +173,8 @@ uint64_t VulkanBufferAllocator::CreateBuffer(BufferDesc bufferDesc)
     allocation.IsMapped = isHostVisible;
     allocation.Descriptor = 0;
     allocation.DescriptorType = 0;
-    
-    return CacheBuffer(allocation);
+
+    return Buffers.Claim(allocation);
 }
 
 void VulkanBufferAllocator::CopyToDeviceLocalBuffer(VkBuffer dstBuffer, const void* srcData, VkDeviceSize size)
@@ -125,7 +184,7 @@ void VulkanBufferAllocator::CopyToDeviceLocalBuffer(VkBuffer dstBuffer, const vo
     VkCommandBuffer commandBuffer = VulkanCore::Instance().GetTransferCommandBuffer();
     VkQueue transferQueue = VulkanCore::Instance().GetGraphicsQueue();
     VkFence transferFence = VulkanCore::Instance().GetTransferFence();
-    
+
     VkBufferCreateInfo stagingBufferInfo = {};
     stagingBufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     stagingBufferInfo.size = size;
@@ -136,13 +195,13 @@ void VulkanBufferAllocator::CopyToDeviceLocalBuffer(VkBuffer dstBuffer, const vo
     VkResult result = vkCreateBuffer(device, &stagingBufferInfo, nullptr, &stagingBuffer);
     if (result != VK_SUCCESS)
         throw std::runtime_error("Failed to create staging buffer.");
-    
+
     VkMemoryRequirements stagingMemoryReqs;
     vkGetBufferMemoryRequirements(device, stagingBuffer, &stagingMemoryReqs);
 
     VkPhysicalDeviceMemoryProperties memoryProperties;
     vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memoryProperties);
-    
+
     VkMemoryPropertyFlags stagingFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
     VkMemoryAllocateInfo stagingAllocInfo = {};
     stagingAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
@@ -155,16 +214,16 @@ void VulkanBufferAllocator::CopyToDeviceLocalBuffer(VkBuffer dstBuffer, const vo
         throw std::runtime_error("Failed to allocate staging buffer memory.");
 
     vkBindBufferMemory(device, stagingBuffer, stagingMemory, 0);
-    
+
     void* mappedData;
     vkMapMemory(device, stagingMemory, 0, size, 0, &mappedData);
     memcpy(mappedData, srcData, size);
     vkUnmapMemory(device, stagingMemory);
-    
+
     VkCommandBufferBeginInfo beginInfo = {};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    
+
     // Ensure command buffer is ready to be recorded
     // First wait for any previous operation to complete
     VkResult fenceStatus = vkGetFenceStatus(device, transferFence);
@@ -172,45 +231,45 @@ void VulkanBufferAllocator::CopyToDeviceLocalBuffer(VkBuffer dstBuffer, const vo
     {
         vkWaitForFences(device, 1, &transferFence, VK_TRUE, UINT64_MAX);
     }
-    
+
     // Now reset the command buffer and fence for new recording
     vkResetCommandBuffer(commandBuffer, 0);
     vkResetFences(device, 1, &transferFence);
-    
+
     vkBeginCommandBuffer(commandBuffer, &beginInfo);
-    
+
     VkBufferCopy copyRegion = {};
     copyRegion.srcOffset = 0;
     copyRegion.dstOffset = 0;
     copyRegion.size = size;
-    
+
     vkCmdCopyBuffer(commandBuffer, stagingBuffer, dstBuffer, 1, &copyRegion);
-    
+
     vkEndCommandBuffer(commandBuffer);
-    
+
     VkSubmitInfo submitInfo = {};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     submitInfo.commandBufferCount = 1;
     submitInfo.pCommandBuffers = &commandBuffer;
-    
+
     result = vkQueueSubmit(transferQueue, 1, &submitInfo, transferFence);
     if (result != VK_SUCCESS)
         throw std::runtime_error("Failed to submit transfer command buffer");
-    
+
     // Wait for THIS operation to complete before cleaning up staging buffer
     result = vkWaitForFences(device, 1, &transferFence, VK_TRUE, UINT64_MAX);
     if (result != VK_SUCCESS)
         throw std::runtime_error("Failed to wait for transfer fence");
-    
+
     vkDestroyBuffer(device, stagingBuffer, nullptr);
     vkFreeMemory(device, stagingMemory, nullptr);
 }
 
-uint64_t VulkanBufferAllocator::CreateImage(ImageDesc imageDesc)
+ImageHandle VulkanBufferAllocator::CreateImage(const ImageDesc& imageDesc)
 {
     VkDevice device = VulkanCore::Instance().GetDevice();
     VkPhysicalDevice physicalDevice = VulkanCore::Instance().GetPhysicalDevice();
-    
+
     VkBufferCreateInfo stagingBufferInfo = {};
     stagingBufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     stagingBufferInfo.size = imageDesc.Size;
@@ -221,14 +280,14 @@ uint64_t VulkanBufferAllocator::CreateImage(ImageDesc imageDesc)
     VkResult result = vkCreateBuffer(device, &stagingBufferInfo, nullptr, &stagingBuffer);
     if (result != VK_SUCCESS)
         throw std::runtime_error("Failed to create image staging buffer.");
-    
+
     VkMemoryRequirements stagingMemoryReqs;
     vkGetBufferMemoryRequirements(device, stagingBuffer, &stagingMemoryReqs);
 
     VkPhysicalDeviceMemoryProperties memoryProperties;
     vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memoryProperties);
     VkMemoryPropertyFlags stagingFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-    
+
     VkMemoryAllocateInfo stagingAllocInfo = {};
     stagingAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     stagingAllocInfo.allocationSize = stagingMemoryReqs.size;
@@ -238,9 +297,9 @@ uint64_t VulkanBufferAllocator::CreateImage(ImageDesc imageDesc)
     result = vkAllocateMemory(device, &stagingAllocInfo, nullptr, &stagingMemory);
     if (result != VK_SUCCESS)
         throw std::runtime_error("Failed to allocate image staging buffer memory.");
-    
+
     vkBindBufferMemory(device, stagingBuffer, stagingMemory, 0);
-    
+
     void* mappedData;
     vkMapMemory(device, stagingMemory, 0, imageDesc.Size, 0, &mappedData);
     memcpy(mappedData, imageDesc.InitialData, imageDesc.Size);
@@ -248,15 +307,15 @@ uint64_t VulkanBufferAllocator::CreateImage(ImageDesc imageDesc)
 
     VulkanImageData* vulkanImageData = new VulkanImageData();
     vulkanImageData->ImageHandle = CreateVulkanImage(imageDesc, &vulkanImageData->Memory);
-    
+
     TransitionImageLayout(vulkanImageData->ImageHandle, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-    
+
     CopyBufferToImage(stagingBuffer, vulkanImageData->ImageHandle, imageDesc.Width, imageDesc.Height);
-    
+
     TransitionImageLayout(vulkanImageData->ImageHandle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
     vulkanImageData->ImageView = CreateVulkanImageView(vulkanImageData->ImageHandle, imageDesc);
-    
+
     vkDestroyBuffer(device, stagingBuffer, nullptr);
     vkFreeMemory(device, stagingMemory, nullptr);
 
@@ -265,33 +324,33 @@ uint64_t VulkanBufferAllocator::CreateImage(ImageDesc imageDesc)
     allocation.Desc = imageDesc;
     allocation.Descriptor = 0;
     allocation.DescriptorType = 0;
-    
-    
+
+
     return CacheImage(allocation);
 }
 
 void VulkanBufferAllocator::RegisterDescriptorSetLayout(uint32_t pipelineID, const ResourceLayout& layout, bool fillEmptySets)
 {
     VkDevice device = VulkanCore::Instance().GetDevice();
-    
+
     // Group bindings by set
     std::map<uint32_t, std::vector<DescriptorBinding>> bindingsBySet;
     for (const DescriptorBinding& binding : layout.Bindings)
         bindingsBySet[binding.Set].push_back(binding);
-    
+
     // Create descriptor set layout and pool for each set
     for (const auto& [setIndex, bindings] : bindingsBySet)
     {
         uint64_t key = MakeKey(pipelineID, setIndex);
-        
+
         // Skip if already registered
         if (DescriptorSetLayouts.find(key) != DescriptorSetLayouts.end())
             continue;
-        
+
         // Create VkDescriptorSetLayoutBinding array
         std::vector<VkDescriptorSetLayoutBinding> vkBindings;
         std::vector<VkDescriptorPoolSize> poolSizes;
-        
+
         for (const DescriptorBinding& binding : bindings)
         {
             VkDescriptorSetLayoutBinding vkBinding{};
@@ -301,25 +360,25 @@ void VulkanBufferAllocator::RegisterDescriptorSetLayout(uint32_t pipelineID, con
             vkBinding.stageFlags = VulkanShaderStageFlags(layout.VisibleStages);
             vkBinding.pImmutableSamplers = VulkanCore::Instance().GetLinearSampler();
             vkBindings.push_back(vkBinding);
-            
+
             // Add to pool sizes
             VkDescriptorPoolSize poolSize{};
             poolSize.type = vkBinding.descriptorType;
             poolSize.descriptorCount = vkBinding.descriptorCount * 256; // 256 sets max
             poolSizes.push_back(poolSize);
         }
-        
+
         // Create descriptor set layout
         VkDescriptorSetLayoutCreateInfo layoutInfo{};
         layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
         layoutInfo.bindingCount = static_cast<uint32_t>(vkBindings.size());
         layoutInfo.pBindings = vkBindings.data();
-        
+
         VkDescriptorSetLayout descriptorSetLayout;
         VkResult result = vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &descriptorSetLayout);
         if (result != VK_SUCCESS)
             throw std::runtime_error("Failed to create descriptor set layout");
-        
+
         // Create descriptor pool
         VkDescriptorPoolCreateInfo poolInfo{};
         poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
@@ -327,12 +386,12 @@ void VulkanBufferAllocator::RegisterDescriptorSetLayout(uint32_t pipelineID, con
         poolInfo.pPoolSizes = poolSizes.data();
         poolInfo.maxSets = 256;
         poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
-        
+
         VkDescriptorPool descriptorPool;
         result = vkCreateDescriptorPool(device, &poolInfo, nullptr, &descriptorPool);
         if (result != VK_SUCCESS)
             throw std::runtime_error("Failed to create descriptor pool");
-        
+
         // Store layout info
         DescriptorSetLayoutInfo layoutInfoStore;
         layoutInfoStore.Layout = descriptorSetLayout;
@@ -340,29 +399,29 @@ void VulkanBufferAllocator::RegisterDescriptorSetLayout(uint32_t pipelineID, con
         layoutInfoStore.Bindings = bindings;
         DescriptorSetLayouts[key] = layoutInfoStore;
     }
-    
+
     // After creating all layouts with bindings, fill gaps with empty layouts
     if (!bindingsBySet.empty() && fillEmptySets)
     {
         uint32_t maxSetNumber = bindingsBySet.rbegin()->first;
-    
+
         for (uint32_t setIndex = 0; setIndex <= maxSetNumber; setIndex++)
         {
             uint64_t key = MakeKey(pipelineID, setIndex);
-            
+
             if (DescriptorSetLayouts.find(key) != DescriptorSetLayouts.end())
                 continue;
-            
+
             VkDescriptorSetLayoutCreateInfo layoutInfo{};
             layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
             layoutInfo.bindingCount = 0;
             layoutInfo.pBindings = nullptr;
-        
+
             VkDescriptorSetLayout descriptorSetLayout;
             VkResult result = vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &descriptorSetLayout);
             if (result != VK_SUCCESS)
                 throw std::runtime_error("Failed to create empty descriptor set layout");
-            
+
             DescriptorSetLayoutInfo layoutInfoStore;
             layoutInfoStore.Layout = descriptorSetLayout;
             layoutInfoStore.Pool = VK_NULL_HANDLE; // No pool for empty layouts
@@ -371,26 +430,26 @@ void VulkanBufferAllocator::RegisterDescriptorSetLayout(uint32_t pipelineID, con
     }
 }
 
-uint64_t VulkanBufferAllocator::AllocateDescriptorSet(uint32_t pipelineID, uint32_t setIndex, const std::vector<DescriptorSetBinding>& bindings)
+DescriptorSetHandle VulkanBufferAllocator::AllocateDescriptorSet(uint32_t pipelineID, uint32_t setIndex, const std::vector<DescriptorSetBinding>& bindings)
 {
     VkDevice device = VulkanCore::Instance().GetDevice();
-    
-    
+
+
     uint64_t key = MakeKey(pipelineID, setIndex);
     auto iterator = DescriptorSetLayouts.find(key);
-    
+
     if (iterator == DescriptorSetLayouts.end())
         throw std::runtime_error("Descriptor set layout not registered for set " + std::to_string(pipelineID));
-    
+
     DescriptorSetLayoutInfo& layoutInfo = iterator->second;
-    
+
     // Allocate descriptor set
     VkDescriptorSetAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
     allocInfo.descriptorPool = layoutInfo.Pool;
     allocInfo.descriptorSetCount = 1;
     allocInfo.pSetLayouts = &layoutInfo.Layout;
-    
+
     if (layoutInfo.Pool == VK_NULL_HANDLE)
         throw std::runtime_error("Cannot allocate from empty descriptor set layout for pipeline " + std::to_string(pipelineID) + " set " + std::to_string(setIndex));
 
@@ -398,25 +457,25 @@ uint64_t VulkanBufferAllocator::AllocateDescriptorSet(uint32_t pipelineID, uint3
     VkResult result = vkAllocateDescriptorSets(device, &allocInfo, &descriptorSet);
     if (result != VK_SUCCESS)
         throw std::runtime_error("Failed to allocate descriptor set");
-    
+
     // Update descriptor set with bindings
     std::vector<VkWriteDescriptorSet> writes;
     std::vector<VkDescriptorImageInfo> imageInfos;
     std::vector<VkDescriptorBufferInfo> bufferInfos;
     std::vector<uint32_t> dynamicOffsets;
-    
+
     writes.reserve(layoutInfo.Bindings.size());
     imageInfos.reserve(layoutInfo.Bindings.size());
     bufferInfos.reserve(layoutInfo.Bindings.size());
-    
+
     for (const DescriptorBinding& layoutBinding : layoutInfo.Bindings)
     {
         auto bindingIt = std::find_if(bindings.begin(), bindings.end(),
             [&](const DescriptorSetBinding& b) { return b.Binding == layoutBinding.Slot; });
-        
+
         if (bindingIt == bindings.end())
             throw std::runtime_error("Missing resource for binding " + std::to_string(layoutBinding.Slot));
-        
+
         VkWriteDescriptorSet write{};
         write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         write.dstSet = descriptorSet;
@@ -427,45 +486,45 @@ uint64_t VulkanBufferAllocator::AllocateDescriptorSet(uint32_t pipelineID, uint3
         write.pImageInfo = nullptr;        // Initialize to null
         write.pBufferInfo = nullptr;       // Initialize to null
         write.pTexelBufferView = nullptr;  // Initialize to null
-        
+
         if (layoutBinding.Type == RHIStructures::DescriptorType::SampledImage)
         {
-            ImageAllocation imageAlloc = GetImageAllocation(bindingIt->ResourceID);
+            const ImageAllocation& imageAlloc = GetImageAllocation(bindingIt->Image);
             VulkanImageData* imageData = static_cast<VulkanImageData*>(imageAlloc.Image);
-            
+
             VkDescriptorImageInfo imageInfo{};
             imageInfo.imageView = imageData->ImageView;
             imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
             imageInfo.sampler = *VulkanCore::Instance().GetLinearSampler();
             imageInfos.push_back(imageInfo);
-            
+
             write.pImageInfo = &imageInfos.back();
         }
         else if (layoutBinding.Type == RHIStructures::DescriptorType::UniformBuffer ||
                  layoutBinding.Type == RHIStructures::DescriptorType::DynamicUniformBuffer)
         {
-            BufferAllocation bufferAlloc = GetBufferAllocation(bindingIt->ResourceID);
+            const BufferAllocation& bufferAlloc = GetBufferAllocation(bindingIt->Buffer);
             VulkanBufferData* bufferData = static_cast<VulkanBufferData*>(bufferAlloc.Buffer);
-            
+
             VkDescriptorBufferInfo bufferInfo{};
             bufferInfo.buffer = bufferData->Buffer;
             bufferInfo.offset = 0;
             bufferInfo.range = bufferAlloc.Size;
             bufferInfos.push_back(bufferInfo);
-            
+
             write.pBufferInfo = &bufferInfos.back();
-            
+
             if (layoutBinding.Type == RHIStructures::DescriptorType::DynamicUniformBuffer)
             {
                 dynamicOffsets.push_back(bindingIt->DynamicOffset);
             }
         }
-        
+
         writes.push_back(write);
     }
-    
+
     vkUpdateDescriptorSets(device, static_cast<uint32_t>(writes.size()), writes.data(), 0, nullptr);
-    
+
     // Create allocation
     DescriptorSetAllocation allocation;
     allocation.DescriptorAddress = reinterpret_cast<uint64_t>(descriptorSet);
@@ -473,35 +532,57 @@ uint64_t VulkanBufferAllocator::AllocateDescriptorSet(uint32_t pipelineID, uint3
     allocation.PlatformData = nullptr;
     allocation.DynamicOffsets = dynamicOffsets;
     allocation.DynamicDescriptorCount = static_cast<uint32_t>(dynamicOffsets.size());
-    
-    uint64_t id = CacheDescriptorSet(allocation);
-    return id;
+
+    return DescriptorSets.Claim(allocation);
 }
 
-void VulkanBufferAllocator::FreeDescriptorSet(uint64_t setID)
+void VulkanBufferAllocator::ReleaseDescriptorSet(DescriptorSetAllocation& allocation)
 {
     VkDevice device = VulkanCore::Instance().GetDevice();
-    auto& allocation = AllocatedDescriptorSets[setID];
-    
+
     auto it = DescriptorSetLayouts.find(allocation.SetKey);
     if (it != DescriptorSetLayouts.end())
     {
         VkDescriptorSet descriptorSet = reinterpret_cast<VkDescriptorSet>(allocation.DescriptorAddress);
         vkFreeDescriptorSets(device, it->second.Pool, 1, &descriptorSet);
     }
-    
-    AllocatedDescriptorSets.erase(setID);
 }
 
-void VulkanBufferAllocator::UpdateDescriptorSet(uint64_t setID, const std::vector<DescriptorSetBinding>& newBindings)
+void VulkanBufferAllocator::ReleaseBuffer(BufferAllocation& allocation)
+{
+    VkDevice device = VulkanCore::Instance().GetDevice();
+    VulkanBufferData* bufferData = static_cast<VulkanBufferData*>(allocation.Buffer);
+    if (!bufferData)
+        return;
+
+    vkDestroyBuffer(device, bufferData->Buffer, nullptr);
+    vkFreeMemory(device, bufferData->Memory, nullptr);
+    delete bufferData;
+    allocation.Buffer = nullptr;
+}
+
+void VulkanBufferAllocator::ReleaseImage(ImageAllocation& allocation)
+{
+    VkDevice device = VulkanCore::Instance().GetDevice();
+    VulkanImageData* imageData = static_cast<VulkanImageData*>(allocation.Image);
+    if (!imageData)
+        return;
+
+    vkDestroyImageView(device, imageData->ImageView, nullptr);
+    vkDestroyImage(device, imageData->ImageHandle, nullptr);
+    vkFreeMemory(device, imageData->Memory, nullptr);
+    delete imageData;
+    allocation.Image = nullptr;
+}
+
+void VulkanBufferAllocator::UpdateDescriptorSet(DescriptorSetHandle set, const std::vector<DescriptorSetBinding>& newBindings)
 {
     VkDevice device = VulkanCore::Instance().GetDevice();
 
-    auto it = AllocatedDescriptorSets.find(setID);
-    if (it == AllocatedDescriptorSets.end())
+    if (!DescriptorSets.IsLive(set))
         return;
 
-    DescriptorSetAllocation& allocation = it->second;
+    DescriptorSetAllocation& allocation = DescriptorSets.Get(set);
     auto layoutIt = DescriptorSetLayouts.find(allocation.SetKey);
     if (layoutIt == DescriptorSetLayouts.end())
         return;
@@ -524,7 +605,7 @@ void VulkanBufferAllocator::UpdateDescriptorSet(uint64_t setID, const std::vecto
         if (bindingIt == newBindings.end())
             continue;
 
-        ImageAllocation imageAlloc = GetImageAllocation(bindingIt->ResourceID);
+        const ImageAllocation& imageAlloc = GetImageAllocation(bindingIt->Image);
         VulkanImageData* imageData = static_cast<VulkanImageData*>(imageAlloc.Image);
 
         VkDescriptorImageInfo imageInfo{};
@@ -548,38 +629,32 @@ void VulkanBufferAllocator::UpdateDescriptorSet(uint64_t setID, const std::vecto
         vkUpdateDescriptorSets(device, static_cast<uint32_t>(writes.size()), writes.data(), 0, nullptr);
 }
 
-void VulkanBufferAllocator::EvictImage(uint64_t id)
+void VulkanBufferAllocator::EvictImage(ImageHandle image)
 {
-    auto it = AllocatedImages.find(id);
-    if (it == AllocatedImages.end())
+    if (!Images.IsLive(image))
         return;
-    VulkanImageData* imageData = static_cast<VulkanImageData*>(it->second.Image);
-    delete imageData;
-    AllocatedImages.erase(it);
+    delete static_cast<VulkanImageData*>(Images.Get(image).Image);
+    Images.Release(image);
 }
 
-void VulkanBufferAllocator::UpdateDescriptorSetDynamicOffsets(uint64_t setID, const std::vector<uint32_t>& offsets)
+void VulkanBufferAllocator::UpdateDescriptorSetDynamicOffsets(DescriptorSetHandle set, const std::vector<uint32_t>& offsets)
 {
-    auto it = AllocatedDescriptorSets.find(setID);
-    if (it == AllocatedDescriptorSets.end())
-        throw std::runtime_error("Invalid descriptor set ID");
-    
-    DescriptorSetAllocation& allocation = it->second;
-    
+    DescriptorSetAllocation& allocation = DescriptorSets.Get(set);
+
     if (offsets.size() != allocation.DynamicDescriptorCount)
         throw std::runtime_error("Dynamic offset count mismatch");
-    
+
     VkPhysicalDevice physicalDevice = VulkanCore::Instance().GetPhysicalDevice();
     VkPhysicalDeviceProperties deviceProperties;
     vkGetPhysicalDeviceProperties(physicalDevice, &deviceProperties);
-    
+
     uint32_t minAlignment = static_cast<uint32_t>(deviceProperties.limits.minUniformBufferOffsetAlignment);
-    
+
     for (uint32_t offset : offsets)
         if (offset % minAlignment != 0)
-            throw std::runtime_error("Dynamic offset " + std::to_string(offset) + 
+            throw std::runtime_error("Dynamic offset " + std::to_string(offset) +
                                     " not aligned to " + std::to_string(minAlignment) + " bytes");
-    
+
     // Update cached offsets
     allocation.DynamicOffsets = offsets;
 }
@@ -588,49 +663,31 @@ VkDescriptorSetLayout VulkanBufferAllocator::GetRegisteredDescriptorSetLayout(ui
 {
     uint64_t key = MakeKey(pipelineID, setIndex);
     auto iterator = DescriptorSetLayouts.find(key);
-    
+
     if (iterator == DescriptorSetLayouts.end())
         return VK_NULL_HANDLE;
-    
+
     return iterator->second.Layout;
 }
 
 VulkanBufferAllocator::~VulkanBufferAllocator()
 {
     VkDevice device = VulkanCore::Instance().GetDevice();
-    
+
     for (auto& [handle, allocation] : DescriptorSetLayouts)
     {
         vkDestroyDescriptorSetLayout(device, allocation.Layout, nullptr);
-    
+
         if (allocation.Pool != VK_NULL_HANDLE)  // ← ADD THIS CHECK
             vkDestroyDescriptorPool(device, allocation.Pool, nullptr);
     }
-    
-    for (auto& [handle, allocation] : AllocatedBuffers)
-    {
-        VulkanBufferData* bufferData = static_cast<VulkanBufferData*>(allocation.Buffer);
-        if (bufferData)
-        {
-            vkDestroyBuffer(device, bufferData->Buffer, nullptr);
-            vkFreeMemory(device, bufferData->Memory, nullptr);
-            delete bufferData;
-        }
-    }
-    AllocatedBuffers.clear();
-    
-    for (auto& [handle, allocation] : AllocatedImages)
-    {
-        VulkanImageData* imageData = static_cast<VulkanImageData*>(allocation.Image);
-        if (imageData)
-        {
-            vkDestroyImageView(device, imageData->ImageView, nullptr);
-            vkDestroyImage(device, imageData->ImageHandle, nullptr);
-            vkFreeMemory(device, imageData->Memory, nullptr);
-            delete imageData;
-        }
-    }
-    AllocatedImages.clear();
+
+    ReleaseAllPending();
+    Buffers.ForEachLive([this](BufferAllocation& allocation) { ReleaseBuffer(allocation); });
+    Images.ForEachLive([this](ImageAllocation& allocation) { ReleaseImage(allocation); });
+    Buffers.Clear();
+    Images.Clear();
+    Instance = nullptr;
 }
 
 void VulkanBufferAllocator::CopyBufferToImage(VkBuffer stagingBuffer, VkImage dstImage, uint32_t width, uint32_t height)
@@ -639,7 +696,7 @@ void VulkanBufferAllocator::CopyBufferToImage(VkBuffer stagingBuffer, VkImage ds
     VkCommandBuffer commandBuffer = VulkanCore::Instance().GetTransferCommandBuffer();
     VkQueue transferQueue = VulkanCore::Instance().GetGraphicsQueue();
     VkFence transferFence = VulkanCore::Instance().GetTransferFence();
-    
+
     VkResult fenceStatus = vkGetFenceStatus(device, transferFence);
     if (fenceStatus == VK_NOT_READY)
     {
@@ -651,16 +708,16 @@ void VulkanBufferAllocator::CopyBufferToImage(VkBuffer stagingBuffer, VkImage ds
     {
         throw std::runtime_error("vkGetFenceStatus returned an error in CopyBufferToImage().");
     }
-    
+
     vkResetFences(device, 1, &transferFence);
     vkResetCommandBuffer(commandBuffer, 0);
-    
+
     VkCommandBufferBeginInfo beginInfo = {};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 
     vkBeginCommandBuffer(commandBuffer, &beginInfo);
-    
+
     VkBufferImageCopy region = {};
     region.bufferOffset = 0;
     region.bufferRowLength = 0;
@@ -672,11 +729,11 @@ void VulkanBufferAllocator::CopyBufferToImage(VkBuffer stagingBuffer, VkImage ds
     region.imageOffset = {0, 0, 0};
     region.imageExtent = {width, height, 1};
 
-    vkCmdCopyBufferToImage(commandBuffer, stagingBuffer, dstImage, 
+    vkCmdCopyBufferToImage(commandBuffer, stagingBuffer, dstImage,
         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
 
     vkEndCommandBuffer(commandBuffer);
-    
+
     VkSubmitInfo submitInfo = {};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     submitInfo.commandBufferCount = 1;
@@ -711,11 +768,11 @@ void VulkanBufferAllocator::TransitionImageLayout(VkImage image, VkImageLayout o
     }
     else if (fenceStatus != VK_SUCCESS)
         throw std::runtime_error("vkGetFenceStatus returned an error in CopyBufferToImage().");
-    
-    
+
+
     vkResetFences(device, 1, &transferFence);
     vkResetCommandBuffer(commandBuffer, 0);
-    
+
     VkResult result = vkBeginCommandBuffer(commandBuffer, &beginInfo);
     if (result != VK_SUCCESS)
         throw std::runtime_error("Failed to begin recording transfer command buffer.");
@@ -735,7 +792,7 @@ void VulkanBufferAllocator::TransitionImageLayout(VkImage image, VkImageLayout o
 
     VkPipelineStageFlags sourceStage;
     VkPipelineStageFlags destinationStage;
-    
+
     if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)
     {
         imageMemoryBarrier.srcAccessMask = VK_ACCESS_NONE;
@@ -746,12 +803,12 @@ void VulkanBufferAllocator::TransitionImageLayout(VkImage image, VkImageLayout o
     {
         imageMemoryBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
         imageMemoryBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-        sourceStage = VK_PIPELINE_STAGE_TRANSFER_BIT; 
+        sourceStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
         destinationStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
     }
     else
         throw std::invalid_argument("Unsupported layout transition.");
-    
+
     vkCmdPipelineBarrier(
         commandBuffer,
         sourceStage, destinationStage,
@@ -760,11 +817,11 @@ void VulkanBufferAllocator::TransitionImageLayout(VkImage image, VkImageLayout o
         0, nullptr,
         1, &imageMemoryBarrier
         );
-    
+
     result = vkEndCommandBuffer(commandBuffer);
     if (result != VK_SUCCESS)
         throw std::runtime_error("Failed to end recording transfer command buffer.");
-    
+
     VkSubmitInfo submitInfo = {};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     submitInfo.commandBufferCount = 1;
@@ -805,13 +862,13 @@ VkImage VulkanBufferAllocator::CreateVulkanImage(ImageDesc imageDesc, VkDeviceMe
     VkResult result = vkCreateImage(device, &imageInfo, nullptr, &image);
     if (result != VK_SUCCESS)
         throw std::runtime_error("Failed to create image.");
-    
+
     VkMemoryRequirements memoryRequirements;
     vkGetImageMemoryRequirements(device, image, &memoryRequirements);
 
     VkPhysicalDeviceMemoryProperties memoryProperties;
     vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memoryProperties);
-    
+
     VkMemoryAllocateInfo allocInfo = {};
     allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     allocInfo.allocationSize = memoryRequirements.size;
@@ -820,11 +877,11 @@ VkImage VulkanBufferAllocator::CreateVulkanImage(ImageDesc imageDesc, VkDeviceMe
     result = vkAllocateMemory(device, &allocInfo, nullptr, imageMemory);
     if (result != VK_SUCCESS)
         throw std::runtime_error("Failed to allocate image memory.");
-    
+
     result = vkBindImageMemory(device, image, *imageMemory, 0);
     if (result != VK_SUCCESS)
         throw std::runtime_error("Failed to bind image memory.");
-    
+
     return image;
 }
 
@@ -834,14 +891,14 @@ VkImageView VulkanBufferAllocator::CreateVulkanImageView(VkImage image, ImageDes
     VkImageViewCreateInfo viewInfo = {};
     viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
     viewInfo.image = image;                                                 // Image to create view for
-    viewInfo.viewType = VulkanImageViewType(imageDesc);                  // Essentially, the number of dimensions in the image data 1D, 2D, 3D, 2D_ARRAY, etc. 
+    viewInfo.viewType = VulkanImageViewType(imageDesc);                  // Essentially, the number of dimensions in the image data 1D, 2D, 3D, 2D_ARRAY, etc.
     viewInfo.format = VulkanFormat(imageDesc.Format);                       // Colour data packing and colour space of the image
     viewInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;                  // Map RGBA data
     viewInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
     viewInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
     viewInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
-    
-    viewInfo.subresourceRange.aspectMask = VulkanAspects(imageDesc.Format); // Which aspect of image to view colour, stencil, etc. 
+
+    viewInfo.subresourceRange.aspectMask = VulkanAspects(imageDesc.Format); // Which aspect of image to view colour, stencil, etc.
     viewInfo.subresourceRange.baseMipLevel = 0;                             // Start mipmap level to view from
     viewInfo.subresourceRange.levelCount = imageDesc.MipLevels;             // Number of mipmap levels to view
     viewInfo.subresourceRange.baseArrayLayer = 0;                           // Start array level to view from
@@ -851,7 +908,7 @@ VkImageView VulkanBufferAllocator::CreateVulkanImageView(VkImage image, ImageDes
     VkResult result = vkCreateImageView(device, &viewInfo, nullptr, &imageView);
     if (result != VK_SUCCESS)
         throw std::runtime_error("Failed to create image view.");
-    
+
     return imageView;
 }
 
@@ -873,7 +930,7 @@ uint32_t VulkanBufferAllocator::FindMemoryType(uint32_t allowdTypes, VkMemoryPro
 // DirectX 12                                     //
 //================================================//
 
-uint64_t DirectX12BufferAllocator::CreateBuffer(BufferDesc bufferDesc)
+BufferHandle DirectX12BufferAllocator::CreateBuffer(const BufferDesc& bufferDesc)
 {
     ID3D12Device* device = D3DCore::Instance().GetDevice().Get();
     ID3D12GraphicsCommandList* cmdList = D3DCore::Instance().GetTransferCommandList().Get();
@@ -887,7 +944,7 @@ uint64_t DirectX12BufferAllocator::CreateBuffer(BufferDesc bufferDesc)
      // Create UPLOAD heap for CPU-writable buffers (dynamic uniforms)
      CD3DX12_HEAP_PROPERTIES uploadHeapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
      CD3DX12_RESOURCE_DESC bufferDescDX = CD3DX12_RESOURCE_DESC::Buffer((bufferDesc.Size + 255) & ~255);
-     
+
      device->CreateCommittedResource(
          &uploadHeapProperties,
          D3D12_HEAP_FLAG_NONE,
@@ -895,10 +952,10 @@ uint64_t DirectX12BufferAllocator::CreateBuffer(BufferDesc bufferDesc)
          D3D12_RESOURCE_STATE_GENERIC_READ,
          nullptr,
          IID_PPV_ARGS(buffer.GetAddressOf())) >> ERROR_HANDLER;
-     
+
      // Map persistently for dynamic updates
      buffer->Map(0, nullptr, &mappedAddress);
-     
+
      // Upload initial data if provided
      if (bufferDesc.InitialData != nullptr)
      {
@@ -910,10 +967,10 @@ uint64_t DirectX12BufferAllocator::CreateBuffer(BufferDesc bufferDesc)
      // Create DEFAULT heap for GPU-only buffers (your existing code)
      ComPtr<ID3D12Resource> defaultBuffer;
      ComPtr<ID3D12Resource> uploadBuffer;
-     
+
      CD3DX12_HEAP_PROPERTIES defaultHeapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
      CD3DX12_RESOURCE_DESC bufferDesc_dx12 = CD3DX12_RESOURCE_DESC::Buffer(bufferDesc.Size);
-     
+
      device->CreateCommittedResource(
          &defaultHeapProperties,
          D3D12_HEAP_FLAG_NONE,
@@ -924,7 +981,7 @@ uint64_t DirectX12BufferAllocator::CreateBuffer(BufferDesc bufferDesc)
 
      CD3DX12_HEAP_PROPERTIES uploadHeapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
      CD3DX12_RESOURCE_DESC uploadBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(bufferDesc.Size);
-     
+
      device->CreateCommittedResource(
          &uploadHeapProperties,
          D3D12_HEAP_FLAG_NONE,
@@ -932,9 +989,9 @@ uint64_t DirectX12BufferAllocator::CreateBuffer(BufferDesc bufferDesc)
          D3D12_RESOURCE_STATE_GENERIC_READ,
          nullptr,
          IID_PPV_ARGS(uploadBuffer.GetAddressOf())) >> ERROR_HANDLER;
-     
+
      D3DCore::Instance().DeferUploadBufferRelease(uploadBuffer);
-     
+
      if (bufferDesc.InitialData != nullptr)
      {
          void* stagingMappedData = nullptr;
@@ -949,10 +1006,10 @@ uint64_t DirectX12BufferAllocator::CreateBuffer(BufferDesc bufferDesc)
 
          D3DCore::Instance().GetTransferCommandAllocator()->Reset();
          cmdList->Reset(D3DCore::Instance().GetTransferCommandAllocator().Get(), nullptr);
-         
+
          CD3DX12_RESOURCE_BARRIER transition1 = CD3DX12_RESOURCE_BARRIER::Transition(
-             defaultBuffer.Get(), 
-             D3D12_RESOURCE_STATE_COMMON, 
+             defaultBuffer.Get(),
+             D3D12_RESOURCE_STATE_COMMON,
              D3D12_RESOURCE_STATE_COPY_DEST);
          cmdList->ResourceBarrier(1, &transition1);
 
@@ -960,17 +1017,17 @@ uint64_t DirectX12BufferAllocator::CreateBuffer(BufferDesc bufferDesc)
 
          CD3DX12_RESOURCE_BARRIER transition2 = CD3DX12_RESOURCE_BARRIER::Transition(
              defaultBuffer.Get(),
-             D3D12_RESOURCE_STATE_COPY_DEST, 
+             D3D12_RESOURCE_STATE_COPY_DEST,
              D3D12_RESOURCE_STATE_GENERIC_READ);
          cmdList->ResourceBarrier(1, &transition2);
          cmdList->Close();
-         
+
          ID3D12CommandQueue* commandQueue = D3DCore::Instance().GetCommandQueue().Get();
          ComPtr<ID3D12Fence> transferFence = D3DCore::Instance().GetTransferFence();
-         
+
          ID3D12CommandList* ppCommandLists[] = { cmdList };
          commandQueue->ExecuteCommandLists(1, ppCommandLists);
-         
+
          static UINT64 transferFenceValue = 0;
          transferFenceValue++;
          commandQueue->Signal(transferFence.Get(), transferFenceValue);
@@ -982,7 +1039,7 @@ uint64_t DirectX12BufferAllocator::CreateBuffer(BufferDesc bufferDesc)
              CloseHandle(eventHandle);
          }
      }
-     
+
      buffer = defaultBuffer;
     }
 
@@ -999,16 +1056,16 @@ uint64_t DirectX12BufferAllocator::CreateBuffer(BufferDesc bufferDesc)
     allocation.Usage = bufferDesc.Usage;
     allocation.IsMapped = (mappedAddress != nullptr);
 
-    return CacheBuffer(allocation);
+    return Buffers.Claim(allocation);
 }
 
-uint64_t DirectX12BufferAllocator::CreateImage(ImageDesc imageDesc)
+ImageHandle DirectX12BufferAllocator::CreateImage(const ImageDesc& imageDesc)
 {
     ID3D12Device* device = D3DCore::Instance().GetDevice().Get();
     ID3D12GraphicsCommandList* cmdList = D3DCore::Instance().GetTransferCommandList().Get();
     D3DCore::Instance().GetTransferCommandAllocator()->Reset();
     cmdList->Reset(D3DCore::Instance().GetTransferCommandAllocator().Get(), nullptr);
-    
+
     if (imageDesc.ArrayLayers != 1 || imageDesc.MipLevels != 1)
         throw std::runtime_error("DirectX12BufferAllocator::CreateImage currently supports only 1 layer and 1 mip (match Vulkan path later).");
 
@@ -1031,7 +1088,7 @@ uint64_t DirectX12BufferAllocator::CreateImage(ImageDesc imageDesc)
     textureDesc.Flags = DXImageUsage(imageDesc.Usage);
 
     auto defaultHeapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
-    
+
     device->CreateCommittedResource(
         &defaultHeapProperties,
         D3D12_HEAP_FLAG_NONE,
@@ -1039,7 +1096,7 @@ uint64_t DirectX12BufferAllocator::CreateImage(ImageDesc imageDesc)
         D3D12_RESOURCE_STATE_COPY_DEST,
         nullptr,
         IID_PPV_ARGS(imageResource.GetAddressOf())) >> ERROR_HANDLER;
-    
+
     ComPtr<ID3D12Resource> uploadBuffer;
 
     const UINT firstSubresource = 0;
@@ -1056,9 +1113,9 @@ uint64_t DirectX12BufferAllocator::CreateImage(ImageDesc imageDesc)
         D3D12_RESOURCE_STATE_GENERIC_READ,
         nullptr,
         IID_PPV_ARGS(uploadBuffer.GetAddressOf())) >> ERROR_HANDLER;
-    
+
     D3DCore::Instance().DeferUploadBufferRelease(uploadBuffer);
-    
+
     const uint32_t bytesPerPixel =
         (imageDesc.Format == Format::R8G8B8A8_UNORM || imageDesc.Format == Format::R8G8B8A8_UNORM_SRGB) ? 4u : 0u;
 
@@ -1080,7 +1137,7 @@ uint64_t DirectX12BufferAllocator::CreateImage(ImageDesc imageDesc)
         imageResource.Get(),
         D3D12_RESOURCE_STATE_COPY_DEST,
         D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-    
+
     cmdList->ResourceBarrier(1, &toShaderRead);
     cmdList->Close();
 
@@ -1100,7 +1157,7 @@ uint64_t DirectX12BufferAllocator::CreateImage(ImageDesc imageDesc)
         WaitForSingleObject(eventHandle, INFINITE);
         CloseHandle(eventHandle);
     }
-    
+
     D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
     srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
     srvDesc.Format = DXFormat(imageDesc.Format);
@@ -1109,10 +1166,10 @@ uint64_t DirectX12BufferAllocator::CreateImage(ImageDesc imageDesc)
     srvDesc.Texture2D.MipLevels = 1;
     srvDesc.Texture2D.PlaneSlice = 0;
     srvDesc.Texture2D.ResourceMinLODClamp = 0.0f;
-    
+
     DX12ImageData* imageData = new DX12ImageData();
     imageData->Image = imageResource;
-    
+
     ImageAllocation allocation;
     allocation.Desc = imageDesc;
     allocation.Image = imageData;
@@ -1123,37 +1180,59 @@ uint64_t DirectX12BufferAllocator::CreateImage(ImageDesc imageDesc)
 DirectX12BufferAllocator::DirectX12BufferAllocator()
 {
     ID3D12Device* device = D3DCore::Instance().GetDevice().Get();
-    
+
     ShaderResourceOffset = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
     RenderTargetOffset = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
     DepthStencilOffset = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
-    
+
     D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
     srvHeapDesc.NumDescriptors = MaxSRVs + MaxCBVs + MaxUAVs;
     srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
     srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
     srvHeapDesc.NodeMask = 0;
     device->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(ShaderResourceHeap.GetAddressOf())) >> ERROR_HANDLER;
-    
+
     D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc = {};
     rtvHeapDesc.NumDescriptors = MaxRTVs;
     rtvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
     rtvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
     rtvHeapDesc.NodeMask = 0;
     device->CreateDescriptorHeap(&rtvHeapDesc, IID_PPV_ARGS(RenderTargetHeap.GetAddressOf())) >> ERROR_HANDLER;
-    
+
     D3D12_DESCRIPTOR_HEAP_DESC dsvHeapDesc = {};
     dsvHeapDesc.NumDescriptors = MaxDSVs;
     dsvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
     dsvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
     dsvHeapDesc.NodeMask = 0;
     device->CreateDescriptorHeap(&dsvHeapDesc, IID_PPV_ARGS(DepthStencilHeap.GetAddressOf())) >> ERROR_HANDLER;
-    
+
 }
 
 DirectX12BufferAllocator::~DirectX12BufferAllocator()
 {
+    ReleaseAllPending();
+    Buffers.ForEachLive([this](BufferAllocation& allocation) { ReleaseBuffer(allocation); });
+    Images.ForEachLive([this](ImageAllocation& allocation) { ReleaseImage(allocation); });
+    DescriptorSets.ForEachLive([this](DescriptorSetAllocation& allocation) { ReleaseDescriptorSet(allocation); });
+    Instance = nullptr;
+}
 
+void DirectX12BufferAllocator::ReleaseBuffer(BufferAllocation& allocation)
+{
+    delete static_cast<DX12BufferData*>(allocation.Buffer);
+    allocation.Buffer = nullptr;
+}
+
+void DirectX12BufferAllocator::ReleaseImage(ImageAllocation& allocation)
+{
+    delete static_cast<DX12ImageData*>(allocation.Image);
+    allocation.Image = nullptr;
+}
+
+void DirectX12BufferAllocator::ReleaseDescriptorSet(DescriptorSetAllocation& allocation)
+{
+    delete static_cast<DescriptorTableData*>(allocation.PlatformData);
+    allocation.PlatformData = nullptr;
 }
 
 void DirectX12BufferAllocator::RegisterDescriptorSetLayout(uint32_t pipelineID, const ResourceLayout& layout, bool fillEmptySets)
@@ -1161,39 +1240,39 @@ void DirectX12BufferAllocator::RegisterDescriptorSetLayout(uint32_t pipelineID, 
     std::map<uint32_t, std::vector<DescriptorBinding>> bindingsBySet;
     for (const DescriptorBinding& binding : layout.Bindings)
         bindingsBySet[binding.Set].push_back(binding);
-    
+
     for (const auto& [setIndex, bindings] : bindingsBySet)
     {
         uint64_t key = MakeKey(pipelineID, setIndex);
-        
+
         if (DescriptorSetLayouts.find(key) != DescriptorSetLayouts.end())
             continue;
-        
+
         DescriptorSetLayoutInfo layoutInfo;
         layoutInfo.Bindings = bindings;
         DescriptorSetLayouts[key] = layoutInfo;
     }
 }
 
-uint64_t DirectX12BufferAllocator::AllocateDescriptorSet(uint32_t pipelineID, uint32_t setIndex, const std::vector<DescriptorSetBinding>& bindings)
+DescriptorSetHandle DirectX12BufferAllocator::AllocateDescriptorSet(uint32_t pipelineID, uint32_t setIndex, const std::vector<DescriptorSetBinding>& bindings)
 {
     ID3D12Device* device = D3DCore::Instance().GetDevice().Get();
-    
+
     uint64_t key = MakeKey(pipelineID, setIndex);
     auto iterator = DescriptorSetLayouts.find(key);
-    
+
     if (iterator == DescriptorSetLayouts.end())
         throw std::runtime_error("Descriptor set layout not registered");
-    
+
     DescriptorSetLayoutInfo& layoutInfo = iterator->second;
     DescriptorTableData* tableData = new DescriptorTableData();
-    
+
     // First pass: Pre-allocate all descriptors contiguously to reserve heap space
     std::vector<D3D12_CPU_DESCRIPTOR_HANDLE> allocatedHandles;
     std::vector<DescriptorType> descriptorTypes;
-    std::vector<uint64_t> resourceIDs;
+    std::vector<BufferHandle> boundBuffers;
     std::vector<bool> isDynamic;
-    
+
     for (const DescriptorBinding& layoutBinding : layoutInfo.Bindings)
     {
         DescriptorType dxType;
@@ -1224,35 +1303,34 @@ uint64_t DirectX12BufferAllocator::AllocateDescriptorSet(uint32_t pipelineID, ui
         {
             throw std::runtime_error("Unsupported descriptor type");
         }
-        
+
         allocatedHandles.push_back(dstHandle);
         descriptorTypes.push_back(dxType);
-        resourceIDs.push_back(0);  // Will be set in second pass
+        boundBuffers.push_back({});
         isDynamic.push_back(layoutBinding.Type == RHIStructures::DescriptorType::DynamicUniformBuffer);
     }
-    
+
     // Second pass: Create the actual descriptor views
     size_t descriptorIndex = 0;
     std::vector<uint32_t> dynamicOffsets;
-    
+
     for (const DescriptorBinding& layoutBinding : layoutInfo.Bindings)
     {
         auto bindingIterator = std::find_if(bindings.begin(), bindings.end(),
             [&](const DescriptorSetBinding& b) { return b.Binding == layoutBinding.Slot; });
-        
+
         if (bindingIterator == bindings.end())
             throw std::runtime_error("Missing resource for binding");
-        
+
         D3D12_CPU_DESCRIPTOR_HANDLE dstHandle = allocatedHandles[descriptorIndex];
-        
-        // Store the resource ID
-        resourceIDs[descriptorIndex] = bindingIterator->ResourceID;
-        
+
+        boundBuffers[descriptorIndex] = bindingIterator->Buffer;
+
         if (layoutBinding.Type == RHIStructures::DescriptorType::SampledImage)
         {
-            ImageAllocation imageAlloc = GetImageAllocation(bindingIterator->ResourceID);
+            const ImageAllocation& imageAlloc = GetImageAllocation(bindingIterator->Image);
             DX12ImageData* imageData = static_cast<DX12ImageData*>(imageAlloc.Image);
-            
+
             D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{};
             srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
             srvDesc.Format = DXFormat(imageAlloc.Desc.Format);
@@ -1260,38 +1338,38 @@ uint64_t DirectX12BufferAllocator::AllocateDescriptorSet(uint32_t pipelineID, ui
             srvDesc.Texture2D.MipLevels = 1;
             srvDesc.Texture2D.MostDetailedMip = 0;
             srvDesc.Texture2D.PlaneSlice = 0;
-            
+
             device->CreateShaderResourceView(imageData->Image.Get(), &srvDesc, dstHandle);
         }
         else if (layoutBinding.Type == RHIStructures::DescriptorType::UniformBuffer ||
                  layoutBinding.Type == RHIStructures::DescriptorType::DynamicUniformBuffer)
         {
-            BufferAllocation bufferAlloc = GetBufferAllocation(bindingIterator->ResourceID);
+            const BufferAllocation& bufferAlloc = GetBufferAllocation(bindingIterator->Buffer);
             DX12BufferData* bufferData = static_cast<DX12BufferData*>(bufferAlloc.Buffer);
-            
+
             D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc{};
             uint32_t offset = bindingIterator->DynamicOffset;
             cbvDesc.BufferLocation = bufferData->GPUAddress + offset;
             cbvDesc.SizeInBytes = static_cast<UINT>((bufferAlloc.Size + 255) & ~255);
-            
+
             device->CreateConstantBufferView(&cbvDesc, dstHandle);
-            
+
             // Track dynamic offsets for dynamic uniform buffers
             if (layoutBinding.Type == RHIStructures::DescriptorType::DynamicUniformBuffer)
             {
                 dynamicOffsets.push_back(bindingIterator->DynamicOffset);
             }
         }
-        
+
         descriptorIndex++;
     }
-    
+
     // Store all handles and types
     tableData->CpuHandles = allocatedHandles;
     tableData->DescriptorTypes = descriptorTypes;
-    tableData->ResourceIDs = resourceIDs;
+    tableData->Buffers = boundBuffers;
     tableData->IsDynamic = isDynamic;
-    
+
     // Calculate the GPU handle for the base of the table (first descriptor)
     if (!allocatedHandles.empty())
     {
@@ -1300,15 +1378,15 @@ uint64_t DirectX12BufferAllocator::AllocateDescriptorSet(uint32_t pipelineID, ui
         size_t offset = allocatedHandles[0].ptr - heapStart.ptr;
         tableData->BaseHandle.ptr = gpuStart.ptr + offset;
     }
-    
+
     DescriptorSetAllocation allocation;
     allocation.DescriptorAddress = tableData->BaseHandle.ptr;
     allocation.SetKey = MakeKey(pipelineID, setIndex);
     allocation.PlatformData = tableData;
     allocation.DynamicOffsets = dynamicOffsets;
     allocation.DynamicDescriptorCount = static_cast<uint32_t>(dynamicOffsets.size());
-    
-    return CacheDescriptorSet(allocation);
+
+    return DescriptorSets.Claim(allocation);
 }
 
 D3D12_CPU_DESCRIPTOR_HANDLE DirectX12BufferAllocator::AllocateDescriptor(DescriptorType type)
@@ -1332,29 +1410,26 @@ D3D12_CPU_DESCRIPTOR_HANDLE DirectX12BufferAllocator::AllocateDescriptor(Descrip
         index = NextDSVIndex++;
         break;
     }
-    
+
     return GetHandle(index, type);
 }
 
-void DirectX12BufferAllocator::EvictImage(uint64_t id)
+void DirectX12BufferAllocator::EvictImage(ImageHandle image)
 {
-    auto it = AllocatedImages.find(id);
-    if (it == AllocatedImages.end())
+    if (!Images.IsLive(image))
         return;
-    DX12ImageData* imageData = static_cast<DX12ImageData*>(it->second.Image);
-    delete imageData;
-    AllocatedImages.erase(it);
+    delete static_cast<DX12ImageData*>(Images.Get(image).Image);
+    Images.Release(image);
 }
 
-void DirectX12BufferAllocator::UpdateDescriptorSet(uint64_t setID, const std::vector<DescriptorSetBinding>& newBindings)
+void DirectX12BufferAllocator::UpdateDescriptorSet(DescriptorSetHandle set, const std::vector<DescriptorSetBinding>& newBindings)
 {
     ID3D12Device* device = D3DCore::Instance().GetDevice().Get();
 
-    auto it = AllocatedDescriptorSets.find(setID);
-    if (it == AllocatedDescriptorSets.end())
+    if (!DescriptorSets.IsLive(set))
         return;
 
-    DescriptorSetAllocation& allocation = it->second;
+    DescriptorSetAllocation& allocation = DescriptorSets.Get(set);
     DescriptorTableData* tableData = static_cast<DescriptorTableData*>(allocation.PlatformData);
     if (!tableData)
         return;
@@ -1375,7 +1450,7 @@ void DirectX12BufferAllocator::UpdateDescriptorSet(uint64_t setID, const std::ve
 
             if (bindingIt != newBindings.end())
             {
-                ImageAllocation imageAlloc = GetImageAllocation(bindingIt->ResourceID);
+                const ImageAllocation& imageAlloc = GetImageAllocation(bindingIt->Image);
                 DX12ImageData* imageData = static_cast<DX12ImageData*>(imageAlloc.Image);
 
                 D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{};
@@ -1387,45 +1462,31 @@ void DirectX12BufferAllocator::UpdateDescriptorSet(uint64_t setID, const std::ve
                 srvDesc.Texture2D.PlaneSlice = 0;
 
                 device->CreateShaderResourceView(imageData->Image.Get(), &srvDesc, tableData->CpuHandles[descriptorIndex]);
-                tableData->ResourceIDs[descriptorIndex] = bindingIt->ResourceID;
             }
         }
         descriptorIndex++;
     }
 }
 
-void DirectX12BufferAllocator::FreeDescriptorSet(uint64_t setID)
-{
-    auto& allocation = AllocatedDescriptorSets[setID];
-    DescriptorTableData* tableData = static_cast<DescriptorTableData*>(allocation.PlatformData);
-    
-    delete tableData;
-    AllocatedDescriptorSets.erase(setID);
-}
-
-void DirectX12BufferAllocator::UpdateDescriptorSetDynamicOffsets(uint64_t setID, const std::vector<uint32_t>& offsets)
+void DirectX12BufferAllocator::UpdateDescriptorSetDynamicOffsets(DescriptorSetHandle set, const std::vector<uint32_t>& offsets)
 {
     ID3D12Device* device = D3DCore::Instance().GetDevice().Get();
-    
-    auto it = AllocatedDescriptorSets.find(setID);
-    if (it == AllocatedDescriptorSets.end())
-        throw std::runtime_error("Invalid descriptor set ID");
-    
-    DescriptorSetAllocation& allocation = it->second;
+
+    DescriptorSetAllocation& allocation = DescriptorSets.Get(set);
     DescriptorTableData* tableData = static_cast<DescriptorTableData*>(allocation.PlatformData);
-    
+
     if (!tableData)
         throw std::runtime_error("Invalid descriptor table data");
-    
+
     // Validate alignment (DirectX12 requires 256-byte alignment for CBVs)
     constexpr uint32_t D3D12_CONSTANT_BUFFER_ALIGNMENT = 256;
     for (uint32_t offset : offsets)
     {
         if (offset % D3D12_CONSTANT_BUFFER_ALIGNMENT != 0)
-            throw std::runtime_error("Dynamic offset " + std::to_string(offset) + 
+            throw std::runtime_error("Dynamic offset " + std::to_string(offset) +
                                     " not aligned to 256 bytes");
     }
-    
+
     // Update CBVs with new offsets
     uint32_t offsetIndex = 0;
     for (size_t i = 0; i < tableData->IsDynamic.size(); ++i)
@@ -1434,25 +1495,25 @@ void DirectX12BufferAllocator::UpdateDescriptorSetDynamicOffsets(uint64_t setID,
         {
             if (offsetIndex >= offsets.size())
                 throw std::runtime_error("Not enough offsets provided");
-            
+
             // Get the buffer allocation
-            BufferAllocation bufferAlloc = GetBufferAllocation(tableData->ResourceIDs[i]);
+            const BufferAllocation& bufferAlloc = GetBufferAllocation(tableData->Buffers[i]);
             DX12BufferData* bufferData = static_cast<DX12BufferData*>(bufferAlloc.Buffer);
-            
+
             // Recreate the CBV with new offset
             D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc{};
             cbvDesc.BufferLocation = bufferData->GPUAddress + offsets[offsetIndex];
             cbvDesc.SizeInBytes = static_cast<UINT>((bufferAlloc.Size + 255) & ~255);
-            
+
             device->CreateConstantBufferView(&cbvDesc, tableData->CpuHandles[i]);
-            
+
             offsetIndex++;
         }
     }
-    
+
     if (offsetIndex != offsets.size())
         throw std::runtime_error("Offset count mismatch");
-    
+
     // Update cached offsets
     allocation.DynamicOffsets = offsets;
 }

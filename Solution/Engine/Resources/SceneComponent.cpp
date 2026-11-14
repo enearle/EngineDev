@@ -1,4 +1,4 @@
-﻿#include "SceneComponent.h"
+#include "SceneComponent.h"
 #include <algorithm>
 #include "AssetSerializer.h"
 #include "../Scene/SceneNode.h"
@@ -23,7 +23,7 @@ void SceneComponentBase::Deserialize(std::string& data, long& offset)
         AssetSerializer::ReadBytes(data, offset, &id, sizeof(AssetID));
         Fields[i].ID = id;
     }
-    
+
     // Advance past any extra serialized IDs we couldn't store.
     if (count > consume)
         offset += static_cast<long>((count - consume) * sizeof(AssetID));
@@ -32,22 +32,22 @@ void SceneComponentBase::Deserialize(std::string& data, long& offset)
 void MeshComponent::Deserialize(std::string& data, long& offset)
 {
     SceneComponentBase::Deserialize(data, offset);
-    
+
     // Load mesh if one is selected
     if (Fields[0].GetID().IsValid())
     {
         LoadedMesh = static_cast<MeshAsset*>(ResourceManager::GetAsset(Fields[0].GetID(), ResourceType::Mesh));
     }
-    
+
 }
 
 MeshAsset* MeshComponent::GetMeshAsset()
 {
     if (LoadedMesh) return LoadedMesh;
-    
+
     LoadedMesh = static_cast<MeshAsset*>(ResourceManager::GetAsset(Fields[0].GetID(), ResourceType::Mesh));
     if (!LoadedMesh) throw std::runtime_error("Mesh asset not found.");
-    
+
     return LoadedMesh;
 }
 
@@ -55,8 +55,8 @@ bool SceneComponentFactory::SceneComponentExists(SceneComponentType sceneCompone
 {
     if (owner == nullptr)
         return false;
-        
-    for (auto& component : owner->GetComponents())
+
+    for (SceneComponentBase* component : owner->GetComponents())
     {
         if (component->GetType() == sceneComponentType)
             return true;

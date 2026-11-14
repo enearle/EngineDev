@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 #include <map>
 
 #include "RHIStructures.h"
@@ -7,15 +7,15 @@
 using namespace RHIStructures;
 using Microsoft::WRL::ComPtr;
 
-class Pipeline
+class RHI_API Pipeline
 {
 public:
     std::vector<Pipeline*> PipelineVariants = {};
     DirectX::XMUINT2 ViewportSize = {0, 0};
     bool AttachmentsAreViewportDims = false;
-    
+
 protected:
-    std::vector<uint64_t> PipelineInputDescriptorSetIDs;
+    std::vector<DescriptorSetHandle> PipelineInputDescriptorSetIDs;
     std::vector<IOResource*> InputIOResources;
     IOResource* PipelineOutputResource = nullptr;
     std::vector<DirectX::XMFLOAT4> ClearColors;
@@ -25,7 +25,7 @@ protected:
     bool IsVariant = false;
     uint32_t ViewMask = 0;
     uint32_t ArrayLayerCount = 1;
-    
+
     // For recreating attachments
     std::vector<Format> RenderTargetFormats;
     std::vector<SamplerType> AttachmentSamplers;
@@ -37,12 +37,12 @@ protected:
     MultisampleState MultisampleStateInfo;
 
 public:
-    static RHI_API Pipeline* Create(const PipelineDesc& desc, std::vector<IOResource*>* inputIOResources = nullptr);
+    static Pipeline* Create(const PipelineDesc& desc, std::vector<IOResource*>* inputIOResources = nullptr);
     virtual ~Pipeline() = default;
     virtual void RefreshInputDescriptorSets() {}
-    std::vector<DirectX::XMFLOAT4> GetClearColors() const { return ClearColors; }
+    const std::vector<DirectX::XMFLOAT4>& GetClearColors() const { return ClearColors; }
     float GetDepthClearValue() const { return DepthClearValue; }
-    std::vector<uint64_t> GetInputDescriptorSetIDs() const { return PipelineInputDescriptorSetIDs; }
+    const std::vector<DescriptorSetHandle>& GetInputDescriptorSetIDs() const { return PipelineInputDescriptorSetIDs; }
     IOResource* GetOutputResource() const { return PipelineOutputResource; }
     uint32_t GetPushConstantCount() const { return PushConstantCount; }
     virtual size_t GetOwnedImageCount() const = 0;
@@ -61,23 +61,23 @@ public:
 class D3DPipeline : public Pipeline
 {
 public:
-    
+
     D3DPipeline(const PipelineDesc& desc, std::vector<IOResource*>* inputIOResources = nullptr);
     ~D3DPipeline() override = default;
-    
+
     ID3D12PipelineState* GetPipelineState() const { return PipelineState.Get(); }
     ID3D12RootSignature* GetRootSignature() const { return RootSignature.Get(); }
     D3D12_PRIMITIVE_TOPOLOGY GetTopology() const { return Topology; }
-    
+
     void* GetOwnedImage(uint32_t index) override { return OwnedColorResources[index].Get(); }
     size_t GetOwnedImageCount() const override { return OwnedColorResources.size(); }
     std::vector<ComPtr<ID3D12Resource>> GetOwnedColorResources() const { return OwnedColorResources; }
-    std::vector<D3D12_CPU_DESCRIPTOR_HANDLE> GetOwnedRTVs() const { return OwnedRTVs; }
+    const std::vector<D3D12_CPU_DESCRIPTOR_HANDLE>& GetOwnedRTVs() const { return OwnedRTVs; }
     ComPtr<ID3D12Resource> GetOwnedDepthResource() const { return OwnedDepthResource; }
     D3D12_CPU_DESCRIPTOR_HANDLE GetOwnedDSV() const { return OwnedDSV; }
     void* GetOwnedDepthImage() override { return OwnedDepthResource.Get(); }
-    void* GetOwnedImageView(uint32_t index) override 
-    { 
+    void* GetOwnedImageView(uint32_t index) override
+    {
         return reinterpret_cast<void*>(OwnedRTVs[index].ptr);
     }
     void* GetOwnedDepthImageView() override
@@ -93,33 +93,34 @@ private:
     std::vector<D3D12_CPU_DESCRIPTOR_HANDLE> OwnedRTVs;
     ComPtr<ID3D12Resource> OwnedDepthResource;
     D3D12_CPU_DESCRIPTOR_HANDLE OwnedDSV = {};
-    std::vector<uint64_t> OwnedColorResourceIDs;
-    uint64_t OwnedDepthImageResourceID = UINT64_MAX;
+    std::vector<ImageHandle> OwnedColorResourceIDs;
+    ImageHandle OwnedDepthImageResourceID = {};
 
     D3D12_PRIMITIVE_TOPOLOGY Topology;
     ComPtr<ID3D12RootSignature> RootSignature;
     ComPtr<ID3D12PipelineState> PipelineState;
 
     void RecreateAttachments(uint32_t width, uint32_t height) override;
-    
+
 
 };
 
 class VulkanPipeline : public Pipeline
 {
 public:
-    
+
     VulkanPipeline(const PipelineDesc& desc, std::vector<IOResource*>* inputIOResources = nullptr);
     ~VulkanPipeline() override;
     void RefreshInputDescriptorSets() override;
-    
+
     VkPipeline GetVulkanPipeline() const { return Pipeline; }
     VkPipelineLayout GetPipelineLayout() const { return PipelineLayout; }
-    
+    VkShaderStageFlags GetPushConstantStages() const { return PushConstantStages; }
+
     void* GetOwnedImage(uint32_t index) override { return OwnedImages[index]; }
     size_t GetOwnedImageCount() const override { return OwnedImages.size(); }
     std::vector<VkImage> GetOwnedImages() const { return OwnedImages; }
-    std::vector<VkImageView> GetOwnedVkImageViews() const { return OwnedImageViews; }
+    const std::vector<VkImageView>& GetOwnedVkImageViews() const { return OwnedImageViews; }
     std::vector<VkDeviceMemory> GetOwnedVkImageMemory() const { return OwnedImageMemory; }
     VkImage GetOwnedDepthImage() const { return OwnedDepthImage; }
     VkDeviceMemory GetOwnedDepthVkImageMemory() const { return OwnedDepthImageMemory; }
@@ -127,19 +128,20 @@ public:
     void* GetOwnedDepthImage() override { return OwnedDepthImage; }
     void* GetOwnedImageView(uint32_t index) override { return reinterpret_cast<void*>(OwnedImageViews[index]); }
     void* GetOwnedDepthImageView() override { return reinterpret_cast<void*>(OwnedDepthImageView); }
-    std::vector<VkAttachmentDescription> GetAttachmentDescriptions() const { return AttachmentDescriptions; }
+    const std::vector<VkAttachmentDescription>& GetAttachmentDescriptions() const { return AttachmentDescriptions; }
     VkAttachmentDescription GetDepthAttachmentDescription() const { return DepthAttachmentDescription; }
 
 private:
     std::vector<VkImage> OwnedImages;
     std::vector<VkImageView> OwnedImageViews;
     std::vector<VkDeviceMemory> OwnedImageMemory;
-    std::vector<uint64_t> OwnedColorResourceIDs;
+    std::vector<ImageHandle> OwnedColorResourceIDs;
     VkImage OwnedDepthImage = VK_NULL_HANDLE;
     VkDeviceMemory OwnedDepthImageMemory = VK_NULL_HANDLE;
     VkImageView OwnedDepthImageView = VK_NULL_HANDLE;
-    uint64_t OwnedDepthImageResourceID = UINT64_MAX;
-    
+    ImageHandle OwnedDepthImageResourceID = {};
+    VkShaderStageFlags PushConstantStages = 0;
+
     std::vector<VkAttachmentDescription> AttachmentDescriptions;
     VkAttachmentDescription DepthAttachmentDescription;
     std::vector<VkShaderModule> ShaderModules;
@@ -148,7 +150,7 @@ private:
     std::vector<VkDescriptorSetLayout> SetLayouts;
     VkPipelineCache PipelineCache = VK_NULL_HANDLE;
     VkRenderPass RenderPass = VK_NULL_HANDLE;
-    
+
     void RecreateAttachments(uint32_t width, uint32_t height) override;
     void CreateColorAttachments(uint32_t arrayLayers);
     void DestroyColorAttachments();

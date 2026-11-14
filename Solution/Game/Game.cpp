@@ -8,11 +8,11 @@
 #include "DerpMover.h"
 #include "Light.h"
 #include "Input/InputEventSystem.h"
-#include "NoesisUILayer.h"
+#include "UI/NoesisUILayer.h"
 #include "TempGameObject.h"
 #include "GameTime.h"
 #include "Uploader.h"
-#include "../RHI/Renderer.h"
+#include "Renderer.h"
 #include "Window.h"
 
 using namespace EngineConstants;
@@ -46,14 +46,14 @@ void GameInit()
    std::vector pipelineDescs = { ShadowVSMPipeline(), PBRGeometryPipeline(), DeferredLightingPipeline() };
    std::vector<std::vector<PipelineDescriptorData>> pipelineDescriptors = {
        {
-           {1, {{0, lightMatricesBufferID, 0}}},
-           {2, {{0, lightDataBufferID, 0}}}
+           {1, {DescriptorSetBinding::ForBuffer(0, lightMatricesBufferID)}},
+           {2, {DescriptorSetBinding::ForBuffer(0, lightDataBufferID)}}
        },
-       { {1, {{0, Camera::GetBufferID(), 0}}} },
+       { {1, {DescriptorSetBinding::ForBuffer(0, Camera::GetBufferID())}} },
        {
-           {1, {{0, Camera::GetBufferID(), 0}}},
-           {4, {{0, lightDataBufferID, 0}}},
-           {5, {{0, lightMatricesBufferID, 0}}}
+           {1, {DescriptorSetBinding::ForBuffer(0, Camera::GetBufferID())}},
+           {4, {DescriptorSetBinding::ForBuffer(0, lightDataBufferID)}},
+           {5, {DescriptorSetBinding::ForBuffer(0, lightMatricesBufferID)}}
        }
    };
    Renderer::CreatePipelines(pipelineDescs, pipelineDescriptors);
@@ -78,8 +78,6 @@ void GameRunFrame(float /*dt*/)
 
 void GameShutdown()
 {
-    // ResetPipelines must run before deleting TempGameObjects to clear dangling
-    // PushConstants pointers that reference TempGameObject::ModelDataArray memory
     Renderer::ResetPipelines();
 
     NoesisUILayer::Instance().NoesisShutdown();

@@ -1,8 +1,14 @@
-﻿#include "ForwardInterface.h"
+#include "ForwardInterface.h"
 
 #include "DirectX12/D3DCore.h"
 #include "Vulkan/VulkanCore.h"
 
+uint32_t ForwardInterface::GetFramesInFlight()
+{
+    return GRAPHICS_SETTINGS.APIToUse == Vulkan
+        ? VulkanCore::Instance().GetFramesInFlight()
+        : D3DCore::Instance().GetFramesInFlight();
+}
 
 VkSurfaceKHR ForwardInterface::GetVkSurface()
 {
@@ -24,29 +30,29 @@ VkPhysicalDevice ForwardInterface::GetVkPhysicalDevice()
     return VulkanCore::Instance().GetPhysicalDevice();
 }
 
+VkQueue ForwardInterface::GetVkGraphicsQueue()
+{
+    return VulkanCore::Instance().GetGraphicsQueue();
+}
+
 uint32_t ForwardInterface::GetVkQueueFamilyIndex()
 {
     return VulkanCore::Instance().GetQueueFamilyIndex();
 }
 
-VkRenderPass ForwardInterface::GetNoesisCompatibilityRenderPass()
+VkRenderPass ForwardInterface::GetVkOverlayRenderPass()
 {
-    return VulkanCore::Instance().GetNoesisRenderPass();
+    return VulkanCore::Instance().GetOverlayRenderPass();
 }
 
-VkCommandBuffer ForwardInterface::GetCommandBuffer()
+VkCommandBuffer ForwardInterface::GetVkCommandBuffer()
 {
     return VulkanCore::Instance().GetCommandBuffer();
 }
 
-PFN_vkGetInstanceProcAddr ForwardInterface::GetInstanceProcAddress()
+PFN_vkGetInstanceProcAddr ForwardInterface::GetVkInstanceProcAddress()
 {
     return vkGetInstanceProcAddr;
-}
-
-uint32_t ForwardInterface::GetVulkanFramesInFlight()
-{
-    return VulkanCore::Instance().GetFramesInFlight();
 }
 
 ID3D12Device* ForwardInterface::GetD3D12Device()
@@ -69,6 +75,11 @@ DXGI_FORMAT ForwardInterface::GetD3D12RenderTargetFormat()
     return D3DCore::Instance().GetRenderTargetFormat();
 }
 
+DXGI_FORMAT ForwardInterface::GetD3D12OverlayDepthStencilFormat()
+{
+    return DXGI_FORMAT_D24_UNORM_S8_UINT;
+}
+
 D3D12_CPU_DESCRIPTOR_HANDLE ForwardInterface::GetD3D12RenderTargetDescriptor()
 {
     return D3DCore::Instance().GetRenderTargetDescriptor();
@@ -82,9 +93,4 @@ DXGI_SAMPLE_DESC ForwardInterface::GetD3D12SampleDesc()
 ID3D12GraphicsCommandList* ForwardInterface::GetD3D12CommandList()
 {
     return D3DCore::Instance().GetCommandList().Get();
-}
-
-uint32_t ForwardInterface::GetD3D12FramesInFlight()
-{
-    return D3DCore::Instance().GetFramesInFlight();
 }

@@ -1,6 +1,5 @@
-﻿#include "SceneNode.h"
+#include "SceneNode.h"
 
-#include "../NoesisUILayer.h"
 #include "../Resources/AssetSerializer.h"
 
 using namespace DirectX;
@@ -18,8 +17,8 @@ void SceneNode::Init(std::string name, SceneNode* parent, XMMATRIX localMatrix)
     {
         RootNodes.push_back(this);
         ID = AssetID::Generate();
-    } 
-    
+    }
+
     LocalMatrix = localMatrix;
     Name = name;
 }
@@ -68,11 +67,11 @@ SceneNode::~SceneNode()
         }
         Parent = nullptr;
     }
-    
+
     // Now delete children
     std::vector<SceneNode*> childrenToDelete;
     childrenToDelete.swap(Children);
-    
+
     for(SceneNode* child : childrenToDelete)
     {
         if(child && child != this)
@@ -92,7 +91,7 @@ SceneComponentBase* SceneNode::AddComponent(SceneComponentType type)
 {
     if (SceneComponentFactory::SceneComponentExists(type, this))
         return nullptr;
-    
+
     SceneComponentBase* component = SceneComponentFactory::SceneComponentBuilder(type, this);
     Components.push_back(component);
     return component;
@@ -105,7 +104,7 @@ SceneComponentBase* SceneNode::GetComponent(SceneComponentType type) const
         if (component->GetType() == type)
             return component;
     }
-    
+
     return nullptr;
 }
 
@@ -115,7 +114,7 @@ void SceneNode::UploadToGPU()
     MeshAsset* meshAsset = meshComponent ? meshComponent->GetMeshAsset() : nullptr;
     if (meshAsset)
         meshAsset->UploadToGPU();
-    
+
     for (SceneNode* child : Children)
         child->UploadToGPU();
 }
@@ -126,7 +125,7 @@ void SceneNode::FreeGPUResources()
     MeshAsset* meshAsset = meshComponent ? meshComponent->GetMeshAsset() : nullptr;
     if (meshAsset)
         meshAsset->FreeGPUResources();
-    
+
     for (SceneNode* child : Children)
         child->FreeGPUResources();
 }
@@ -152,7 +151,7 @@ const AssetID& SceneNode::GetID() const
 void SceneNode::UpdateWorldMatrix()
 {
     if (!IsWorldMatrixDirty) return;
-    
+
     WorldMatrix = Parent ? Parent->GetWorldMatrix() * LocalMatrix : LocalMatrix;
     IsWorldMatrixDirty = false;
 }
@@ -272,20 +271,20 @@ void SceneNode::SetLocalMatrix(DirectX::XMMATRIX localMatrix)
 void SceneNode::RotateEulerLocalAxis(RotationAxis axis, float angle)
 {
     XMVECTOR axisVector;
-    
+
     switch(axis)
     {
-    case RotationAxis::X: 
-        axisVector = XMVector3Normalize(GetLocalMatrix().r[0]); 
+    case RotationAxis::X:
+        axisVector = XMVector3Normalize(GetLocalMatrix().r[0]);
         break;
-    case RotationAxis::Y: 
-        axisVector = XMVector3Normalize(GetLocalMatrix().r[1]); 
+    case RotationAxis::Y:
+        axisVector = XMVector3Normalize(GetLocalMatrix().r[1]);
         break;
-    case RotationAxis::Z: 
-        axisVector = XMVector3Normalize(GetLocalMatrix().r[2]); 
+    case RotationAxis::Z:
+        axisVector = XMVector3Normalize(GetLocalMatrix().r[2]);
         break;
     }
-    
+
     XMMATRIX rotation = XMMatrixRotationAxis(axisVector, angle);
     SetLocalMatrix(rotation * GetLocalMatrix());
 }

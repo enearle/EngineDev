@@ -1,6 +1,6 @@
-﻿#include "Camera.h"
+#include "Camera.h"
 Camera* Camera::ActiveCamera = nullptr;
 bool Camera::BufferInitialized = false;
 VPData Camera::ActiveVPData;
-uint64_t Camera::BufferID = 0;
+Uploader::BufferID Camera::BufferID = {};
 VPData* Camera::MappedDataAddr = nullptr;

@@ -1,11 +1,10 @@
-﻿#include "Pipeline.h"
+#include "Pipeline.h"
 
 #include <algorithm>
 #include <iostream>
 #include <stdexcept>
 #include "BufferAllocator.h"
 #include "RHIConstants.h"
-#include "../Renderer.h"
 #include "../GraphicsSettings.h"
 #include "../Window.h"
 #include "../DirectX12/D3D12Structs.h"
@@ -31,7 +30,7 @@ Pipeline* Pipeline::Create(const PipelineDesc& desc, std::vector<IOResource*>* i
         mainPipeline = new D3DPipeline(desc, inputIOResources);
     else
         throw std::runtime_error("Invalid graphics API selected.");
-    
+
     // Create variants if specified
     if (!desc.PipelineVariants.empty())
     {
@@ -40,50 +39,50 @@ Pipeline* Pipeline::Create(const PipelineDesc& desc, std::vector<IOResource*>* i
         for (size_t i = 0; i < desc.PipelineVariants.size(); i++)
         {
             PipelineDesc variantDesc = desc.PipelineVariants[i];
-            
+
             variantDesc.CreateOwnAttachments = false;
             variantDesc.CreateDepthImage = false;
-            
+
             variantDesc.AttachmentsAreViewportDims = desc.AttachmentsAreViewportDims;
             variantDesc.AttachmentWidth = desc.AttachmentWidth;
             variantDesc.AttachmentHeight = desc.AttachmentHeight;
-            
+
             if (variantDesc.RenderTargetFormats.empty())
                 variantDesc.RenderTargetFormats = desc.RenderTargetFormats;
             if (variantDesc.DepthStencilFormat == Format::Unknown)
                 variantDesc.DepthStencilFormat = desc.DepthStencilFormat;
-            
+
             if (variantDesc.BlendAttachmentStates.empty())
                 variantDesc.BlendAttachmentStates = desc.BlendAttachmentStates;
-            
+
             if (variantDesc.MultisampleState.SampleCount == 0)
                 variantDesc.MultisampleState = desc.MultisampleState;
-            
+
             if (variantDesc.Constants.empty())
                 variantDesc.Constants = desc.Constants;
-            
+
             if (variantDesc.DepthStencilState.DepthCompareOp == CompareOp::Never)
                 variantDesc.DepthStencilState = desc.DepthStencilState;
-            
+
             variantDesc.RasterizerState = desc.RasterizerState;
-            
+
             if (variantDesc.ResourceLayout.Bindings.empty())
                 variantDesc.ResourceLayout = desc.ResourceLayout;
-            
-            if (variantDesc.PrimitiveTopology == PrimitiveTopology::TriangleList && 
+
+            if (variantDesc.PrimitiveTopology == PrimitiveTopology::TriangleList &&
                 desc.PrimitiveTopology != PrimitiveTopology::TriangleList)
                 variantDesc.PrimitiveTopology = desc.PrimitiveTopology;
-            
+
             if (variantDesc.FragmentShader.ByteCode == nullptr)
                 variantDesc.FragmentShader = desc.FragmentShader;
-            
+
             if (variantDesc.AttachmentSamplers.empty())
                 variantDesc.AttachmentSamplers = desc.AttachmentSamplers;
-            
+
             if (variantDesc.AttachmentClearValues.empty())
                 variantDesc.AttachmentClearValues = desc.AttachmentClearValues;
-            
-            
+
+
             Pipeline* variant = nullptr;
 
             if (GRAPHICS_SETTINGS.APIToUse == Vulkan)
@@ -94,7 +93,7 @@ Pipeline* Pipeline::Create(const PipelineDesc& desc, std::vector<IOResource*>* i
             mainPipeline->PipelineVariants.push_back(variant);
         }
     }
-    
+
     return mainPipeline;
 }
 
@@ -106,7 +105,7 @@ D3DPipeline::D3DPipeline(const PipelineDesc& desc, std::vector<IOResource*>* inp
     IsVariant = desc.IsVariant;
     ViewMask = desc.ViewMask;
     ArrayLayerCount = desc.AttachmentArrayLayers;
-    
+
     // For recreating attachments
     RenderTargetFormats = desc.RenderTargetFormats;
     AttachmentSamplers = desc.AttachmentSamplers;
@@ -117,20 +116,20 @@ D3DPipeline::D3DPipeline(const PipelineDesc& desc, std::vector<IOResource*>* inp
     CreateDepthAttachment = desc.CreateDepthAttachment;
     MultisampleStateInfo = desc.MultisampleState;
     AttachmentsAreViewportDims = desc.AttachmentsAreViewportDims;
-    
-    Window* window = Renderer::GetWindow();
+
+    Window* window = D3DCore::Instance().GetWindow();
     uint32_t width = desc.AttachmentsAreViewportDims ? window->GetWidth() : desc.AttachmentWidth;
     uint32_t height = desc.AttachmentsAreViewportDims ? window->GetHeight() : desc.AttachmentHeight;
     ViewportSize = {width, height};
-    
+
     ComPtr<ID3D12Device> device = D3DCore::Instance().GetDevice();
     Topology = DXPrimitiveTopology(desc.PrimitiveTopology);
-    
+
     std::vector<ResourceLayout> resourceLayouts;
-    
+
     if (desc.UseOwnResourceLayout)
         resourceLayouts.push_back(desc.ResourceLayout);
-    
+
     if (inputIOResources && !desc.IsVariant)
         for (IOResource* ioResource : *inputIOResources)
             resourceLayouts.push_back(ioResource->Layout);
@@ -146,7 +145,7 @@ D3DPipeline::D3DPipeline(const PipelineDesc& desc, std::vector<IOResource*>* inp
         std::map<uint32_t, std::vector<DescriptorBinding>> bindingsBySet;
         for (const auto& binding : layout.Bindings)
             bindingsBySet[binding.Set].push_back(binding);
-    
+
         for (const auto& [setIdx, bindings] : bindingsBySet)
         {
             ResourceLayout splitLayout = layout;
@@ -155,26 +154,26 @@ D3DPipeline::D3DPipeline(const PipelineDesc& desc, std::vector<IOResource*>* inp
         }
     }
     resourceLayouts = splitLayouts;
-    
-    std::sort(resourceLayouts.begin(), resourceLayouts.end(), 
+
+    std::sort(resourceLayouts.begin(), resourceLayouts.end(),
     [](const ResourceLayout& a, const ResourceLayout& b) {
         uint32_t setA = a.Bindings.empty() ? 0 : a.Bindings[0].Set;
         uint32_t setB = b.Bindings.empty() ? 0 : b.Bindings[0].Set;
         return setA < setB;
     });
-    
+
     if (desc.IsVariant)
     {
         ResourceLayout variantLayout = desc.VariantResourceLayout;
-        
+
         for (auto& binding : variantLayout.Bindings)
             binding.Set = RHIConstants::VARIANT_DESCRIPTOR_SET_BASE;
-    
+
         resourceLayouts.push_back(variantLayout);
     }
-    
+
     RootSignature = D3DRootSignatureBuilder::BuildRootSignature(desc.PipelineID, resourceLayouts, desc.Constants, SetIndexToBuilderIndex);
-    
+
     if (inputIOResources && !desc.IsVariant)
     {
         for (uint32_t i = 0; i < inputIOResources->size(); i++)
@@ -182,7 +181,7 @@ D3DPipeline::D3DPipeline(const PipelineDesc& desc, std::vector<IOResource*>* inp
             IOResource* ioResource = inputIOResources->at(i);
             uint32_t setIndex = ioResource->Layout.Bindings.empty() ? 0 : ioResource->Layout.Bindings[0].Set;
 
-            uint64_t descriptorSetID = BufferAllocator::GetInstance()->AllocateDescriptorSet(
+            DescriptorSetHandle descriptorSetID = BufferAllocator::GetInstance()->AllocateDescriptorSet(
                 desc.PipelineID, setIndex, ioResource->Bindings);
             PipelineInputDescriptorSetIDs.push_back(descriptorSetID);
             InputIOResources.push_back(ioResource);
@@ -194,13 +193,13 @@ D3DPipeline::D3DPipeline(const PipelineDesc& desc, std::vector<IOResource*>* inp
     // in compute shaders and only use graphics pipelines for a purely rasterized process.
     D3D12_STREAM_OUTPUT_DESC streamOutputDesc = {};
     streamOutputDesc.NumEntries = 0;
-    
+
     D3D12_BLEND_DESC blendDesc = {};
     blendDesc.AlphaToCoverageEnable = desc.MultisampleState.SampleCount > 1 ? desc.MultisampleState.AlphaToCoverageEnable : FALSE;
     blendDesc.IndependentBlendEnable = desc.BlendAttachmentStates.size() > 1;
     if (desc.BlendAttachmentStates.size() > 8)
         throw std::runtime_error("Too many render targets (max 8 for D3D12)");
-    
+
     for (int i = 0; i < 8; i++)
     {
         blendDesc.RenderTarget[i] = {};
@@ -228,7 +227,7 @@ D3DPipeline::D3DPipeline(const PipelineDesc& desc, std::vector<IOResource*>* inp
         renderTargetBlendDesc.BlendOpAlpha = DXBlendOp(attachmentState.AlphaBlendOp);
         renderTargetBlendDesc.RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
     }
-    
+
     D3D12_RASTERIZER_DESC rasterizerDesc = {};
     rasterizerDesc.FillMode = DXFillMode(desc.RasterizerState.FillMode);
     rasterizerDesc.CullMode = DXCullMode(desc.RasterizerState.CullMode);
@@ -238,7 +237,7 @@ D3DPipeline::D3DPipeline(const PipelineDesc& desc, std::vector<IOResource*>* inp
     rasterizerDesc.DepthClipEnable = desc.RasterizerState.DepthClipEnable;
     rasterizerDesc.DepthBiasClamp = desc.RasterizerState.DepthBiasClamp;
     rasterizerDesc.MultisampleEnable = desc.MultisampleState.SampleCount > 1 ? TRUE : FALSE;
-    
+
     D3D12_DEPTH_STENCILOP_DESC frontFaceStencil = {};
     frontFaceStencil.StencilFailOp = DXStencilOp(desc.DepthStencilState.FrontStencil.FailOp);
     frontFaceStencil.StencilDepthFailOp = DXStencilOp(desc.DepthStencilState.FrontStencil.DepthFailOp);
@@ -250,7 +249,7 @@ D3DPipeline::D3DPipeline(const PipelineDesc& desc, std::vector<IOResource*>* inp
     backFaceStencil.StencilDepthFailOp = DXStencilOp(desc.DepthStencilState.BackStencil.DepthFailOp);
     backFaceStencil.StencilPassOp = DXStencilOp(desc.DepthStencilState.BackStencil.PassOp);
     backFaceStencil.StencilFunc = DXCompareOp(desc.DepthStencilState.BackStencil.CompareOp);
-    
+
     D3D12_DEPTH_STENCIL_DESC depthStencilDesc = {};
     depthStencilDesc.DepthEnable = desc.DepthStencilState.DepthTestEnable;
     depthStencilDesc.DepthWriteMask = desc.DepthStencilState.DepthWriteEnable
@@ -262,7 +261,7 @@ D3DPipeline::D3DPipeline(const PipelineDesc& desc, std::vector<IOResource*>* inp
     depthStencilDesc.StencilWriteMask = desc.DepthStencilState.StencilWriteMask;
     depthStencilDesc.FrontFace = frontFaceStencil;
     depthStencilDesc.BackFace = backFaceStencil;
-    
+
     D3D12_INPUT_LAYOUT_DESC inputLayoutDesc = {};
     std::vector<D3D12_INPUT_ELEMENT_DESC> inputElements;
     for (const auto& attr : desc.VertexAttributes)
@@ -275,7 +274,7 @@ D3DPipeline::D3DPipeline(const PipelineDesc& desc, std::vector<IOResource*>* inp
         element.InputSlot = attr.Binding;
         element.AlignedByteOffset = attr.Offset;
         element.InputSlotClass = D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA;
-    
+
         // Check if this binding is instanced
         for (const auto& binding : desc.VertexBindings)
         {
@@ -286,10 +285,10 @@ D3DPipeline::D3DPipeline(const PipelineDesc& desc, std::vector<IOResource*>* inp
                 break;
             }
         }
-    
+
         inputElements.push_back(element);
     }
-    
+
     if (!inputElements.empty())
     {
         inputLayoutDesc.pInputElementDescs = inputElements.data();
@@ -300,7 +299,7 @@ D3DPipeline::D3DPipeline(const PipelineDesc& desc, std::vector<IOResource*>* inp
         inputLayoutDesc.pInputElementDescs = nullptr;
         inputLayoutDesc.NumElements = 0;
     }
-    
+
     DXGI_SAMPLE_DESC sampleDesc = {};
     if (desc.MultisampleState.SampleCount > 1)
     {
@@ -315,7 +314,7 @@ D3DPipeline::D3DPipeline(const PipelineDesc& desc, std::vector<IOResource*>* inp
         sampleDesc.Count = 1;
         sampleDesc.Quality = 0;
     }
-    
+
     D3D12_GRAPHICS_PIPELINE_STATE_DESC pipelineStateDesc = {};
     pipelineStateDesc.pRootSignature = RootSignature.Get();
     pipelineStateDesc.VS = DXShaderBytecode(desc.VertexShader);
@@ -332,7 +331,7 @@ D3DPipeline::D3DPipeline(const PipelineDesc& desc, std::vector<IOResource*>* inp
     pipelineStateDesc.IBStripCutValue = D3D12_INDEX_BUFFER_STRIP_CUT_VALUE_DISABLED; // Splits up geometry in a single draw call (rarely useful and can be done by other explicit means)
     pipelineStateDesc.PrimitiveTopologyType = DXPrimitiveTopologyType(desc.PrimitiveTopology);
     pipelineStateDesc.NumRenderTargets = static_cast<UINT>(desc.RenderTargetFormats.size());
-    
+
     // Initialize RTVFormats array to UNKNOWN first
     for (int i = 0; i < 8; i++)
         pipelineStateDesc.RTVFormats[i] = DXGI_FORMAT_UNKNOWN;
@@ -340,7 +339,7 @@ D3DPipeline::D3DPipeline(const PipelineDesc& desc, std::vector<IOResource*>* inp
     // Then fill in the actual formats
     for (size_t i = 0; i < desc.RenderTargetFormats.size() && i < 8; i++)
         pipelineStateDesc.RTVFormats[i] = DXFormat(desc.RenderTargetFormats[i]);
-    
+
 
     pipelineStateDesc.DSVFormat = DXFormat(desc.DepthStencilFormat);
     pipelineStateDesc.SampleDesc = sampleDesc;
@@ -353,15 +352,15 @@ D3DPipeline::D3DPipeline(const PipelineDesc& desc, std::vector<IOResource*>* inp
     }
     else
         pipelineStateDesc.CachedPSO = {};
-    
+
     D3D12_PIPELINE_STATE_FLAGS flags = D3D12_PIPELINE_STATE_FLAG_NONE;
     pipelineStateDesc.Flags = flags;
 
     device->CreateGraphicsPipelineState(&pipelineStateDesc, IID_PPV_ARGS(&PipelineState)) >> ERROR_HANDLER;
-    
+
     BufferAllocator* alloc = BufferAllocator::GetInstance();
     DirectX12BufferAllocator* dxAlloc = static_cast<DirectX12BufferAllocator*>(alloc);
-    
+
     // Create depth image
     DescriptorSetBinding depthBindingData{};
     if (desc.CreateDepthImage)
@@ -377,43 +376,48 @@ D3DPipeline::D3DPipeline(const PipelineDesc& desc, std::vector<IOResource*>* inp
         depthResourceDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
         depthResourceDesc.SampleDesc.Count = 1;
         depthResourceDesc.SampleDesc.Quality = 0;
-    
+
+        D3D12_CLEAR_VALUE depthClear = {};
+        depthClear.Format = DXFormat(desc.DepthStencilFormat);
+        depthClear.DepthStencil.Depth = DepthClearValue;
+
         D3D12_HEAP_PROPERTIES heapProps = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
-        device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &depthResourceDesc, 
-            D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&OwnedDepthResource)) >> ERROR_HANDLER;
-    
+        device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &depthResourceDesc,
+            D3D12_RESOURCE_STATE_COMMON, &depthClear, IID_PPV_ARGS(&OwnedDepthResource)) >> ERROR_HANDLER;
+        OwnedDepthResource->SetName(L"Pipeline depth attachment");
+
         D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc = {};
         dsvDesc.Format = DXFormat(desc.DepthStencilFormat);
         dsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
         dsvDesc.Flags = D3D12_DSV_FLAG_NONE;
         dsvDesc.Texture2D.MipSlice = 0;
-          
+
         OwnedDSV = dxAlloc->AllocateDescriptor(DirectX12BufferAllocator::DescriptorType::DSV);
         device->CreateDepthStencilView(OwnedDepthResource.Get(), &dsvDesc, OwnedDSV);
-    
+
         // Cache depth image for next pipeline
         DX12ImageData* depthImageData = new DX12ImageData();
         depthImageData->Image = OwnedDepthResource;
-    
+
         ImageAllocation depthAllocation;
         depthAllocation.Image = depthImageData;
         depthAllocation.Desc.Format = desc.DepthStencilFormat;
         depthAllocation.Desc.Width = ViewportSize.x;
         depthAllocation.Desc.Height = ViewportSize.y;
-    
+
         depthBindingData.Binding = static_cast<uint32_t>(desc.RenderTargetFormats.size());
-        depthBindingData.ResourceID = alloc->CacheImage(depthAllocation);
-        OwnedDepthImageResourceID = depthBindingData.ResourceID;
+        depthBindingData.Image = alloc->CacheImage(depthAllocation);
+        OwnedDepthImageResourceID = depthBindingData.Image;
     }
 
     if (!desc.CreateOwnAttachments) return;
     PipelineOutputResource = new IOResource();
-    
+
     OwnedRTVs.resize(desc.RenderTargetFormats.size());
     OwnedColorResources.resize(desc.RenderTargetFormats.size());
-    
+
     PipelineOutputResource->Layout.VisibleStages.SetFragment(true);
-    
+
     for (size_t i = 0; i < desc.RenderTargetFormats.size(); i++)
     {
         DXGI_SAMPLE_DESC sampleDesc = {};
@@ -430,7 +434,7 @@ D3DPipeline::D3DPipeline(const PipelineDesc& desc, std::vector<IOResource*>* inp
             sampleDesc.Count = 1;
             sampleDesc.Quality = 0;
         }
-        
+
         D3D12_RESOURCE_DESC resourceDesc = {};
         resourceDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
         resourceDesc.Alignment = 0;
@@ -441,26 +445,32 @@ D3DPipeline::D3DPipeline(const PipelineDesc& desc, std::vector<IOResource*>* inp
         resourceDesc.Format = DXFormat(desc.RenderTargetFormats[i]);
         resourceDesc.SampleDesc = sampleDesc;
         resourceDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
-        
+
+        D3D12_CLEAR_VALUE colourClear = {};
+        colourClear.Format = resourceDesc.Format;
+        if (i < ClearColors.size())
+            memcpy(colourClear.Color, &ClearColors[i], sizeof(colourClear.Color));
+
         D3D12_HEAP_PROPERTIES heapProps = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
-        device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &resourceDesc, 
-            D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&OwnedColorResources[i])) >> ERROR_HANDLER;
+        device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &resourceDesc,
+            D3D12_RESOURCE_STATE_COMMON, &colourClear, IID_PPV_ARGS(&OwnedColorResources[i])) >> ERROR_HANDLER;
+        OwnedColorResources[i]->SetName(L"Pipeline colour attachment");
 
         D3D12_RENDER_TARGET_VIEW_DESC rtvDesc = {};
         rtvDesc.Format = DXFormat(desc.RenderTargetFormats[i]);
         rtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
         rtvDesc.Texture2D.MipSlice = 0;
-        
+
         OwnedRTVs[i] = dxAlloc->AllocateDescriptor(DirectX12BufferAllocator::DescriptorType::RTV);
         device->CreateRenderTargetView(OwnedColorResources[i].Get(), &rtvDesc, OwnedRTVs[i]);
-    
+
         DescriptorBinding binding{};
         binding.Type = DescriptorType::SampledImage;
         binding.Count = 1;
         binding.Set = desc.OutputDescriptorSetIndex;
         binding.Slot = static_cast<uint32_t>(i);
         PipelineOutputResource->Layout.Bindings.push_back(binding);
-        
+
         D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
         srvDesc.Format = DXFormat(desc.RenderTargetFormats[i]);
         srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
@@ -489,11 +499,11 @@ D3DPipeline::D3DPipeline(const PipelineDesc& desc, std::vector<IOResource*>* inp
         imageAllocation.Desc.Format = desc.RenderTargetFormats[i];
         imageAllocation.Desc.Width = ViewportSize.x;
         imageAllocation.Desc.Height = ViewportSize.y;
-    
+
         DescriptorSetBinding bindingData{};
         bindingData.Binding = binding.Slot;
-        bindingData.ResourceID = alloc->CacheImage(imageAllocation);
-        OwnedColorResourceIDs.push_back(bindingData.ResourceID);
+        bindingData.Image = alloc->CacheImage(imageAllocation);
+        OwnedColorResourceIDs.push_back(bindingData.Image);
         PipelineOutputResource->Bindings.push_back(bindingData);
     }
 
@@ -527,7 +537,7 @@ void D3DPipeline::RecreateAttachments(uint32_t width, uint32_t height)
     BufferAllocator* alloc = BufferAllocator::GetInstance();
 
     // Evict stale resource IDs before releasing resources
-    for (uint64_t id : OwnedColorResourceIDs)
+    for (ImageHandle id : OwnedColorResourceIDs)
         alloc->EvictImage(id);
     OwnedColorResourceIDs.clear();
     if (PipelineOutputResource)
@@ -536,10 +546,10 @@ void D3DPipeline::RecreateAttachments(uint32_t width, uint32_t height)
     // Recreate depth image
     if (CreateDepthImage && OwnedDepthResource)
     {
-        if (OwnedDepthImageResourceID != UINT64_MAX)
+        if (OwnedDepthImageResourceID.IsValid())
         {
             alloc->EvictImage(OwnedDepthImageResourceID);
-            OwnedDepthImageResourceID = UINT64_MAX;
+            OwnedDepthImageResourceID = {};
         }
 
         OwnedDepthResource.Reset();
@@ -555,9 +565,14 @@ void D3DPipeline::RecreateAttachments(uint32_t width, uint32_t height)
         depthResourceDesc.SampleDesc.Count = 1;
         depthResourceDesc.SampleDesc.Quality = 0;
 
+        D3D12_CLEAR_VALUE depthClear = {};
+        depthClear.Format = DXFormat(DepthStencilFormat);
+        depthClear.DepthStencil.Depth = DepthClearValue;
+
         D3D12_HEAP_PROPERTIES heapProps = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
         device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &depthResourceDesc,
-            D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&OwnedDepthResource)) >> ERROR_HANDLER;
+            D3D12_RESOURCE_STATE_COMMON, &depthClear, IID_PPV_ARGS(&OwnedDepthResource)) >> ERROR_HANDLER;
+        OwnedDepthResource->SetName(L"Pipeline depth attachment");
 
         D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc = {};
         dsvDesc.Format = DXFormat(DepthStencilFormat);
@@ -578,7 +593,7 @@ void D3DPipeline::RecreateAttachments(uint32_t width, uint32_t height)
         {
             DescriptorSetBinding depthBinding{};
             depthBinding.Binding = static_cast<uint32_t>(RenderTargetFormats.size());
-            depthBinding.ResourceID = OwnedDepthImageResourceID;
+            depthBinding.Image = OwnedDepthImageResourceID;
             PipelineOutputResource->Bindings.push_back(depthBinding);
         }
     }
@@ -601,9 +616,15 @@ void D3DPipeline::RecreateAttachments(uint32_t width, uint32_t height)
             : 0;
         resourceDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
 
+        D3D12_CLEAR_VALUE colourClear = {};
+        colourClear.Format = resourceDesc.Format;
+        if (i < ClearColors.size())
+            memcpy(colourClear.Color, &ClearColors[i], sizeof(colourClear.Color));
+
         D3D12_HEAP_PROPERTIES heapProps = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
         device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &resourceDesc,
-            D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&OwnedColorResources[i])) >> ERROR_HANDLER;
+            D3D12_RESOURCE_STATE_COMMON, &colourClear, IID_PPV_ARGS(&OwnedColorResources[i])) >> ERROR_HANDLER;
+        OwnedColorResources[i]->SetName(L"Pipeline colour attachment");
 
         D3D12_RENDER_TARGET_VIEW_DESC rtvDesc = {};
         rtvDesc.Format = DXFormat(RenderTargetFormats[i]);
@@ -620,8 +641,8 @@ void D3DPipeline::RecreateAttachments(uint32_t width, uint32_t height)
 
         DescriptorSetBinding bindingData{};
         bindingData.Binding = static_cast<uint32_t>(i);
-        bindingData.ResourceID = alloc->CacheImage(imageAllocation);
-        OwnedColorResourceIDs.push_back(bindingData.ResourceID);
+        bindingData.Image = alloc->CacheImage(imageAllocation);
+        OwnedColorResourceIDs.push_back(bindingData.Image);
         if (PipelineOutputResource)
             PipelineOutputResource->Bindings.push_back(bindingData);
     }
@@ -639,7 +660,7 @@ VulkanPipeline::VulkanPipeline(const PipelineDesc& desc, std::vector<IOResource*
     IsVariant = desc.IsVariant;
     ViewMask = desc.ViewMask;
     ArrayLayerCount = desc.AttachmentArrayLayers;
-    
+
     // For recreating attachments
     RenderTargetFormats = desc.RenderTargetFormats;
     AttachmentSamplers = desc.AttachmentSamplers;
@@ -650,12 +671,15 @@ VulkanPipeline::VulkanPipeline(const PipelineDesc& desc, std::vector<IOResource*
     CreateDepthAttachment = desc.CreateDepthAttachment;
     MultisampleStateInfo = desc.MultisampleState;
     AttachmentsAreViewportDims = desc.AttachmentsAreViewportDims;
-    
-    Window* window = Renderer::GetWindow();
+
+    Window* window = VulkanCore::Instance().GetWindow();
     uint32_t width = desc.AttachmentsAreViewportDims ? window->GetWidth() : desc.AttachmentWidth;
     uint32_t height = desc.AttachmentsAreViewportDims ? window->GetHeight() : desc.AttachmentHeight;
     ViewportSize = {width, height};
-    
+
+    for (const PipelineConstant& constant : desc.Constants)
+        PushConstantStages |= VulkanShaderStageFlags(constant.VisibleStages);
+
     // Cache shader modules for cleanup
     // All shaders will allways be loaded. This is meh, but for my engine probably fine.
     std::vector<VkPipelineShaderStageCreateInfo> shaderStages;
@@ -721,10 +745,10 @@ VulkanPipeline::VulkanPipeline(const PipelineDesc& desc, std::vector<IOResource*
         VkVertexInputBindingDescription bindingDesc{};
         bindingDesc.binding = binding.Binding;
         bindingDesc.stride = binding.Stride;
-        bindingDesc.inputRate = binding.Instanced 
-            ? VK_VERTEX_INPUT_RATE_INSTANCE 
+        bindingDesc.inputRate = binding.Instanced
+            ? VK_VERTEX_INPUT_RATE_INSTANCE
             : VK_VERTEX_INPUT_RATE_VERTEX;
-    
+
         bindingDescriptions.push_back(bindingDesc);
     }
 
@@ -736,7 +760,7 @@ VulkanPipeline::VulkanPipeline(const PipelineDesc& desc, std::vector<IOResource*
         attributeDesc.location = attr.Location;
         attributeDesc.format = VulkanFormat(attr.Format);
         attributeDesc.offset = attr.Offset;
-    
+
         attributeDescriptions.push_back(attributeDesc);
     }
 
@@ -791,7 +815,7 @@ VulkanPipeline::VulkanPipeline(const PipelineDesc& desc, std::vector<IOResource*
         blendAttachment.alphaBlendOp = VulkanBlendOp(attachmentState.AlphaBlendOp);
         blendAttachment.blendEnable = attachmentState.BlendEnable;
         blendAttachment.colorBlendOp = VulkanBlendOp(attachmentState.ColorBlendOp);
-        blendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | 
+        blendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
                               VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
         blendAttachment.srcColorBlendFactor = VulkanBlendFactor(attachmentState.SrcColorBlendFactor);
         blendAttachment.dstColorBlendFactor = VulkanBlendFactor(attachmentState.DestColorBlendFactor);
@@ -825,7 +849,7 @@ VulkanPipeline::VulkanPipeline(const PipelineDesc& desc, std::vector<IOResource*
     dynamicState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
     dynamicState.dynamicStateCount = 2;
     dynamicState.pDynamicStates = dynamicStates;
-    
+
     VkPipelineCacheCreateInfo cacheInfo{};
     cacheInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
     if (desc.CachedPipelineData && desc.CachedPipelineDataSize > 0)
@@ -833,12 +857,12 @@ VulkanPipeline::VulkanPipeline(const PipelineDesc& desc, std::vector<IOResource*
         cacheInfo.initialDataSize = desc.CachedPipelineDataSize;
         cacheInfo.pInitialData = desc.CachedPipelineData;
     }
-    
+
     std::vector<ResourceLayout> resourceLayouts;
-    
+
     if (desc.UseOwnResourceLayout)
         resourceLayouts.push_back(desc.ResourceLayout);
-    
+
     if (inputIOResources && !desc.IsVariant)
         for (IOResource* ioResource : *inputIOResources)
             resourceLayouts.push_back(ioResource->Layout);
@@ -857,7 +881,7 @@ VulkanPipeline::VulkanPipeline(const PipelineDesc& desc, std::vector<IOResource*
     }
 
     PipelineLayout = VulkanPipelineLayoutBuilder::BuildPipelineLayout(desc.PipelineID, resourceLayouts, SetLayouts, desc.Constants, SetIndexToBuilderIndex);
-    
+
     if (inputIOResources && !desc.IsVariant)
     {
         for (uint32_t i = 0; i < inputIOResources->size(); i++)
@@ -865,26 +889,26 @@ VulkanPipeline::VulkanPipeline(const PipelineDesc& desc, std::vector<IOResource*
             IOResource* ioResource = inputIOResources->at(i);
             uint32_t setIndex = ioResource->Layout.Bindings.empty() ? 0 : ioResource->Layout.Bindings[0].Set;
 
-            uint64_t descriptorSetID = BufferAllocator::GetInstance()->AllocateDescriptorSet(
+            DescriptorSetHandle descriptorSetID = BufferAllocator::GetInstance()->AllocateDescriptorSet(
                 desc.PipelineID, setIndex, ioResource->Bindings);
             PipelineInputDescriptorSetIDs.push_back(descriptorSetID);
             InputIOResources.push_back(ioResource);
         }
     }
-    
+
     std::vector<VkFormat> colorFormats;
     for (const auto& format : desc.RenderTargetFormats)
         colorFormats.push_back(VulkanFormat(format));
-    
+
     VkPipelineRenderingCreateInfo pipelineRenderingCreateInfo{};
     pipelineRenderingCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO_KHR;
     pipelineRenderingCreateInfo.viewMask = desc.ViewMask;
     pipelineRenderingCreateInfo.colorAttachmentCount = static_cast<uint32_t>(desc.RenderTargetFormats.size());
     pipelineRenderingCreateInfo.pColorAttachmentFormats = colorFormats.empty() ? nullptr : colorFormats.data();
     pipelineRenderingCreateInfo.depthAttachmentFormat = VulkanFormat(desc.DepthStencilFormat);
-    pipelineRenderingCreateInfo.stencilAttachmentFormat = VK_FORMAT_UNDEFINED; 
+    pipelineRenderingCreateInfo.stencilAttachmentFormat = VK_FORMAT_UNDEFINED;
     pipelineRenderingCreateInfo.pNext = nullptr;
-    
+
     VkGraphicsPipelineCreateInfo pipelineCreateInfo{};
     pipelineCreateInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
     pipelineCreateInfo.pDynamicState = &dynamicState;
@@ -902,14 +926,14 @@ VulkanPipeline::VulkanPipeline(const PipelineDesc& desc, std::vector<IOResource*
     pipelineCreateInfo.renderPass = VK_NULL_HANDLE;
     pipelineCreateInfo.layout = PipelineLayout;
     pipelineCreateInfo.pNext = &pipelineRenderingCreateInfo;
-    
+
     VkPipelineCacheCreateInfo cacheCreateInfo{};
     cacheCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
     cacheCreateInfo.initialDataSize = 0;
     cacheCreateInfo.pInitialData = nullptr;
     cacheCreateInfo.flags = 0;
     cacheCreateInfo.pNext = nullptr;
-    
+
     if (desc.CachedPipelineData && desc.CachedPipelineDataSize > 0)
     {
         cacheCreateInfo.initialDataSize = desc.CachedPipelineDataSize;
@@ -922,22 +946,22 @@ VulkanPipeline::VulkanPipeline(const PipelineDesc& desc, std::vector<IOResource*
         nullptr,
         &PipelineCache
     );
-    
+
     if (cacheResult != VK_SUCCESS)
         throw std::runtime_error("Failed to create pipeline cache!");
 
     VkResult result = vkCreateGraphicsPipelines(VulkanCore::Instance().GetDevice(), PipelineCache, 1, &pipelineCreateInfo, nullptr, &Pipeline);
     if (result != VK_SUCCESS)
         throw std::runtime_error("Failed to create Vulkan graphics pipeline!");
-    
+
     // Create attachment descriptions for dynamic rendering
     for (size_t i = 0; i < desc.RenderTargetFormats.size(); ++i)
     {
         VkAttachmentDescription attachment{};
         attachment.format = VulkanFormat(desc.RenderTargetFormats[i]);
         attachment.samples = VK_SAMPLE_COUNT_1_BIT;
-        attachment.loadOp = (i < desc.ColorLoadOps.size() && desc.ColorLoadOps[i] == AttachmentLoadOp::Clear) 
-                           ? VK_ATTACHMENT_LOAD_OP_CLEAR 
+        attachment.loadOp = (i < desc.ColorLoadOps.size() && desc.ColorLoadOps[i] == AttachmentLoadOp::Clear)
+                           ? VK_ATTACHMENT_LOAD_OP_CLEAR
                            : (i < desc.ColorLoadOps.size() && desc.ColorLoadOps[i] == AttachmentLoadOp::Load)
                            ? VK_ATTACHMENT_LOAD_OP_LOAD
                            : VK_ATTACHMENT_LOAD_OP_DONT_CARE;
@@ -948,10 +972,10 @@ VulkanPipeline::VulkanPipeline(const PipelineDesc& desc, std::vector<IOResource*
         attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
         attachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
         attachment.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-        
+
         AttachmentDescriptions.push_back(attachment);
     }
-    
+
     // Depth attachment (if present)
     DepthAttachmentDescription = {};
     DepthAttachmentDescription.format = VK_FORMAT_UNDEFINED;
@@ -962,8 +986,8 @@ VulkanPipeline::VulkanPipeline(const PipelineDesc& desc, std::vector<IOResource*
         VkAttachmentDescription depthAttachment{};
         depthAttachment.format = VulkanFormat(desc.DepthStencilFormat);
         depthAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
-        depthAttachment.loadOp = desc.DepthLoadOp == AttachmentLoadOp::Clear 
-                                ? VK_ATTACHMENT_LOAD_OP_CLEAR 
+        depthAttachment.loadOp = desc.DepthLoadOp == AttachmentLoadOp::Clear
+                                ? VK_ATTACHMENT_LOAD_OP_CLEAR
                                 : desc.DepthLoadOp == AttachmentLoadOp::Load
                                 ? VK_ATTACHMENT_LOAD_OP_LOAD
                                 : VK_ATTACHMENT_LOAD_OP_DONT_CARE;
@@ -974,10 +998,10 @@ VulkanPipeline::VulkanPipeline(const PipelineDesc& desc, std::vector<IOResource*
         depthAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
         depthAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
         depthAttachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-        
+
         DepthAttachmentDescription = depthAttachment;
     }
-    
+
     // Depth buffer (if needed)
     DescriptorSetBinding depthBindingData{};
     if (desc.CreateDepthImage)
@@ -1000,10 +1024,10 @@ VulkanPipeline::VulkanPipeline(const PipelineDesc& desc, std::vector<IOResource*
         result = vkCreateImage(VulkanCore::Instance().GetDevice(), &depthImageInfo, nullptr, &OwnedDepthImage);
         if (result != VK_SUCCESS)
             throw std::runtime_error("Failed to create Vulkan image for pipeline depth buffer!");
-        
+
         VkMemoryRequirements memReqs;
         vkGetImageMemoryRequirements(VulkanCore::Instance().GetDevice(), OwnedDepthImage, &memReqs);
-        
+
         VkMemoryAllocateInfo allocInfo{};
         allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
         allocInfo.allocationSize = memReqs.size;
@@ -1014,11 +1038,11 @@ VulkanPipeline::VulkanPipeline(const PipelineDesc& desc, std::vector<IOResource*
         result = vkAllocateMemory(VulkanCore::Instance().GetDevice(), &allocInfo, nullptr, &OwnedDepthImageMemory);
         if (result != VK_SUCCESS)
             throw std::runtime_error("Failed to allocate Vulkan image memory for pipeline depth buffer!");
-        
+
         result = vkBindImageMemory(VulkanCore::Instance().GetDevice(), OwnedDepthImage, OwnedDepthImageMemory, 0);
         if (result != VK_SUCCESS)
             throw std::runtime_error("Failed to bind Vulkan image memory for pipeline depth buffer!");
-        
+
         VkImageViewCreateInfo imageViewInfo{};
         imageViewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
         imageViewInfo.image = OwnedDepthImage;
@@ -1035,38 +1059,38 @@ VulkanPipeline::VulkanPipeline(const PipelineDesc& desc, std::vector<IOResource*
         result = vkCreateImageView(VulkanCore::Instance().GetDevice(), &imageViewInfo, nullptr, &OwnedDepthImageView);
         if (result != VK_SUCCESS)
             throw std::runtime_error("Failed to create Vulkan image view for pipeline depth buffer!");
-        
+
         VulkanImageData* vulkanImageData = new VulkanImageData();
         vulkanImageData->ImageView = OwnedDepthImageView;
         vulkanImageData->ImageHandle = OwnedDepthImage;
         vulkanImageData->Memory = OwnedDepthImageMemory;
-        
+
         DescriptorBinding binding{};
         binding.Type = DescriptorType::SampledImage;
         binding.Count = 1;
         binding.Set = desc.OutputDescriptorSetIndex;
         binding.Slot = static_cast<uint32_t>(OwnedImageViews.size());
         binding.Sampler = SamplerType::Linear;
-        
+
         ImageAllocation allocation;
         allocation.Image = vulkanImageData;
         depthBindingData.Binding = binding.Slot;
-        depthBindingData.ResourceID = BufferAllocator::GetInstance()->CacheImage(allocation);
-        OwnedDepthImageResourceID = depthBindingData.ResourceID;
+        depthBindingData.Image = BufferAllocator::GetInstance()->CacheImage(allocation);
+        OwnedDepthImageResourceID = depthBindingData.Image;
     }
 
     // Create pipeline local attachment images
     // For multipass rendering
     if (!desc.CreateOwnAttachments) return;
-    
+
     PipelineOutputResource = new IOResource();
-    
+
     OwnedImages.resize(desc.RenderTargetFormats.size());
     OwnedImageViews.resize(desc.RenderTargetFormats.size());
     OwnedImageMemory.resize(desc.RenderTargetFormats.size());
-    
+
     PipelineOutputResource->Layout.VisibleStages.SetFragment(true);
-    
+
     for (size_t i = 0; i < desc.RenderTargetFormats.size(); ++i)
     {
         VkImageCreateInfo imageInfo{};
@@ -1087,7 +1111,7 @@ VulkanPipeline::VulkanPipeline(const PipelineDesc& desc, std::vector<IOResource*
         result = vkCreateImage(VulkanCore::Instance().GetDevice(), &imageInfo, nullptr, &OwnedImages[i]);
         if (result != VK_SUCCESS)
             throw std::runtime_error("Failed to create Vulkan image for pipeline render target!");
-        
+
         VkMemoryRequirements memReqs;
         vkGetImageMemoryRequirements(VulkanCore::Instance().GetDevice(), OwnedImages[i], &memReqs);
 
@@ -1101,11 +1125,11 @@ VulkanPipeline::VulkanPipeline(const PipelineDesc& desc, std::vector<IOResource*
         result = vkAllocateMemory(VulkanCore::Instance().GetDevice(), &allocInfo, nullptr, &OwnedImageMemory[i]);
         if (result != VK_SUCCESS)
             throw std::runtime_error("Failed to allocate Vulkan image memory for pipeline render target!");
-        
+
         result = vkBindImageMemory(VulkanCore::Instance().GetDevice(), OwnedImages[i], OwnedImageMemory[i], 0);
         if (result != VK_SUCCESS)
             throw std::runtime_error("Failed to bind Vulkan image memory for pipeline render target!");
-        
+
         VkImageViewCreateInfo imageViewInfo{};
         imageViewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
         imageViewInfo.image = OwnedImages[i];
@@ -1120,12 +1144,12 @@ VulkanPipeline::VulkanPipeline(const PipelineDesc& desc, std::vector<IOResource*
         result = vkCreateImageView(VulkanCore::Instance().GetDevice(), &imageViewInfo, nullptr, &OwnedImageViews[i]);
         if (result != VK_SUCCESS)
             throw std::runtime_error("Failed to create Vulkan image view for pipeline render target!");
-        
+
         VulkanImageData* vulkanImageData = new VulkanImageData();
         vulkanImageData->ImageView = OwnedImageViews[i];
         vulkanImageData->ImageHandle = OwnedImages[i];
         vulkanImageData->Memory = OwnedImageMemory[i];
-        
+
         DescriptorBinding binding{};
         binding.Type = DescriptorType::SampledImage;
         binding.Count = 1;
@@ -1133,14 +1157,14 @@ VulkanPipeline::VulkanPipeline(const PipelineDesc& desc, std::vector<IOResource*
         binding.Slot = static_cast<uint32_t>(i);
         binding.Sampler = desc.AttachmentSamplers[i];
         PipelineOutputResource->Layout.Bindings.push_back(binding);
-        
+
         ImageAllocation allocation;
         allocation.Image = vulkanImageData;
-        
+
         DescriptorSetBinding bindingData{};
         bindingData.Binding = binding.Slot;
-        bindingData.ResourceID = BufferAllocator::GetInstance()->CacheImage(allocation);
-        OwnedColorResourceIDs.push_back(bindingData.ResourceID);
+        bindingData.Image = BufferAllocator::GetInstance()->CacheImage(allocation);
+        OwnedColorResourceIDs.push_back(bindingData.Image);
         PipelineOutputResource->Bindings.push_back(bindingData);
     }
 
@@ -1152,10 +1176,10 @@ VulkanPipeline::VulkanPipeline(const PipelineDesc& desc, std::vector<IOResource*
 
 void VulkanPipeline::DestroyDepthImage()
 {
-    if (OwnedDepthImageResourceID != UINT64_MAX)
+    if (OwnedDepthImageResourceID.IsValid())
     {
         BufferAllocator::GetInstance()->EvictImage(OwnedDepthImageResourceID);
-        OwnedDepthImageResourceID = UINT64_MAX;
+        OwnedDepthImageResourceID = {};
     }
 
     VkDevice device = VulkanCore::Instance().GetDevice();
@@ -1264,10 +1288,10 @@ VulkanPipeline::~VulkanPipeline()
 
     if (Pipeline != VK_NULL_HANDLE)
         vkDestroyPipeline(device, Pipeline, nullptr);
-        
+
     if (PipelineCache != VK_NULL_HANDLE)
         vkDestroyPipelineCache(device, PipelineCache, nullptr);
-        
+
     if (PipelineLayout != VK_NULL_HANDLE)
         vkDestroyPipelineLayout(device, PipelineLayout, nullptr);
 
@@ -1298,7 +1322,7 @@ void VulkanPipeline::RecreateAttachments(uint32_t width, uint32_t height)
 void VulkanPipeline::DestroyColorAttachments()
 {
     VulkanBufferAllocator* allocator = static_cast<VulkanBufferAllocator*>(BufferAllocator::GetInstance());
-    for (uint64_t id : OwnedColorResourceIDs)
+    for (ImageHandle id : OwnedColorResourceIDs)
         allocator->EvictImage(id);
     OwnedColorResourceIDs.clear();
 
@@ -1310,26 +1334,26 @@ void VulkanPipeline::DestroyColorAttachments()
         if (view != VK_NULL_HANDLE)
             vkDestroyImageView(device, view, nullptr);
     }
-    
+
     // Destroy old images
     for (VkImage image : OwnedImages)
     {
         if (image != VK_NULL_HANDLE)
             vkDestroyImage(device, image, nullptr);
     }
-    
+
     // Free old memory
     for (VkDeviceMemory memory : OwnedImageMemory)
     {
         if (memory != VK_NULL_HANDLE)
             vkFreeMemory(device, memory, nullptr);
     }
-    
+
     // Clear the vectors
     OwnedImageViews.clear();
     OwnedImages.clear();
     OwnedImageMemory.clear();
-    
+
     // Clear bindings from output resource
     if (PipelineOutputResource)
     {
@@ -1341,16 +1365,16 @@ void VulkanPipeline::DestroyColorAttachments()
 void VulkanPipeline::CreateColorAttachments(uint32_t arrayLayers)
 {
     VkResult result;
-    
+
     if (!PipelineOutputResource)
         PipelineOutputResource = new IOResource();
-    
+
     OwnedImages.resize(RenderTargetFormats.size());
     OwnedImageViews.resize(RenderTargetFormats.size());
     OwnedImageMemory.resize(RenderTargetFormats.size());
-    
+
     PipelineOutputResource->Layout.VisibleStages.SetFragment(true);
-    
+
     for (size_t i = 0; i < RenderTargetFormats.size(); ++i)
     {
         VkImageCreateInfo imageInfo{};
@@ -1371,7 +1395,7 @@ void VulkanPipeline::CreateColorAttachments(uint32_t arrayLayers)
         result = vkCreateImage(VulkanCore::Instance().GetDevice(), &imageInfo, nullptr, &OwnedImages[i]);
         if (result != VK_SUCCESS)
             throw std::runtime_error("Failed to create Vulkan image for pipeline render target!");
-        
+
         VkMemoryRequirements memReqs;
         vkGetImageMemoryRequirements(VulkanCore::Instance().GetDevice(), OwnedImages[i], &memReqs);
 
@@ -1385,11 +1409,11 @@ void VulkanPipeline::CreateColorAttachments(uint32_t arrayLayers)
         result = vkAllocateMemory(VulkanCore::Instance().GetDevice(), &allocInfo, nullptr, &OwnedImageMemory[i]);
         if (result != VK_SUCCESS)
             throw std::runtime_error("Failed to allocate Vulkan image memory for pipeline render target!");
-        
+
         result = vkBindImageMemory(VulkanCore::Instance().GetDevice(), OwnedImages[i], OwnedImageMemory[i], 0);
         if (result != VK_SUCCESS)
             throw std::runtime_error("Failed to bind Vulkan image memory for pipeline render target!");
-        
+
         VkImageViewCreateInfo imageViewInfo{};
         imageViewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
         imageViewInfo.image = OwnedImages[i];
@@ -1404,12 +1428,12 @@ void VulkanPipeline::CreateColorAttachments(uint32_t arrayLayers)
         result = vkCreateImageView(VulkanCore::Instance().GetDevice(), &imageViewInfo, nullptr, &OwnedImageViews[i]);
         if (result != VK_SUCCESS)
             throw std::runtime_error("Failed to create Vulkan image view for pipeline render target!");
-        
+
         VulkanImageData* vulkanImageData = new VulkanImageData();
         vulkanImageData->ImageView = OwnedImageViews[i];
         vulkanImageData->ImageHandle = OwnedImages[i];
         vulkanImageData->Memory = OwnedImageMemory[i];
-        
+
         DescriptorBinding binding{};
         binding.Type = DescriptorType::SampledImage;
         binding.Count = 1;
@@ -1417,14 +1441,14 @@ void VulkanPipeline::CreateColorAttachments(uint32_t arrayLayers)
         binding.Slot = static_cast<uint32_t>(i);
         binding.Sampler = AttachmentSamplers[i];
         PipelineOutputResource->Layout.Bindings.push_back(binding);
-        
+
         ImageAllocation allocation;
         allocation.Image = vulkanImageData;
-        
+
         DescriptorSetBinding bindingData{};
         bindingData.Binding = binding.Slot;
-        bindingData.ResourceID = BufferAllocator::GetInstance()->CacheImage(allocation);
-        OwnedColorResourceIDs.push_back(bindingData.ResourceID);
+        bindingData.Image = BufferAllocator::GetInstance()->CacheImage(allocation);
+        OwnedColorResourceIDs.push_back(bindingData.Image);
         PipelineOutputResource->Bindings.push_back(bindingData);
     }
 }

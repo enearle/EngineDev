@@ -1,4 +1,4 @@
-﻿#include "MeshAsset.h"
+#include "MeshAsset.h"
 #include <filesystem>
 #include "../AssetSerializer.h"
 #include "RHI/RHIStructures.h"
@@ -50,8 +50,6 @@ void MeshAsset::Serialize(std::string& data)
             for (uint32_t j = 0; j < boneCount; ++j) XMStoreFloat4x4(&bO[j], boneOffsets[j]);
             AssetSerializer::WriteBytes(data, bO.data(), boneCount * sizeof(DirectX::XMFLOAT4X4));
         }
-        
-        Meshes[i].WipeCachedData();
     }
 }
 
@@ -133,5 +131,6 @@ void MeshAsset::UploadToGPU()
 
 void MeshAsset::FreeGPUResources()
 {
-    // D7: Uploader has no public release API yet. Stubbed.
+    for (Mesh& mesh : Meshes)
+        mesh.FreeGPUResources();
 }
