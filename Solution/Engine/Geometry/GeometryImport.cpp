@@ -32,7 +32,8 @@ SceneNode* GeometryImport::LoadNode(aiNode* node, const aiScene* scene, const XM
     }
 
     std::string nodeName = node->mName.length ? std::string(node->mName.C_Str()) : name;
-    SceneNode* newSceneNode = new SceneNode(nodeName, newTransform, parent); // ctor adds to parent->Children
+    XMMATRIX localTransform = parent ? XMMatrixTranspose(XMMATRIX(&node->mTransformation.a1)) : newTransform;
+    SceneNode* newSceneNode = new SceneNode(nodeName, localTransform, parent); // ctor adds to parent->Children
 
     if (!meshes.empty())
     {

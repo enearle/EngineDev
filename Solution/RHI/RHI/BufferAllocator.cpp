@@ -1,14 +1,15 @@
 #include "BufferAllocator.h"
 
+#include <algorithm>
 #include <iostream>
 #include <map>
+#include <string>
 
 #include "../GraphicsSettings.h"
 #include "../DirectX12/D3DCore.h"
 #include "../Vulkan/VulkanCore.h"
 #include "../Windows/Win32ErrorHandler.h"
 #include "../DirectX12/D3D12Structs.h"
-#include "../Data/BitPool.h"
 
 
 using namespace Win32ErrorHandler;
@@ -46,18 +47,31 @@ void BufferAllocator::FreeDescriptorSet(DescriptorSetHandle set)
     DescriptorSets.Release(set);
 }
 
+void BufferAllocator::RetireDescriptorSetLayouts(uint32_t layoutID)
+{
+    PendingRelease pending;
+    pending.FrameNumber = FrameNumber;
+    pending.Kind = PendingKind::DescriptorSetLayouts;
+    pending.LayoutID = layoutID;
+    PendingReleases.push_back(pending);
+}
+
 void BufferAllocator::ReleasePending(PendingRelease& pending)
 {
     switch (pending.Kind)
     {
-    case PendingKind::Buffer:        ReleaseBuffer(pending.Buffer); break;
-    case PendingKind::Image:         ReleaseImage(pending.Image); break;
-    case PendingKind::DescriptorSet: ReleaseDescriptorSet(pending.DescriptorSet); break;
+    case PendingKind::Buffer:               ReleaseBuffer(pending.Buffer); break;
+    case PendingKind::Image:                ReleaseImage(pending.Image); break;
+    case PendingKind::DescriptorSet:        ReleaseDescriptorSet(pending.DescriptorSet); break;
+    case PendingKind::DescriptorSetLayouts: ReleaseDescriptorSetLayouts(pending.LayoutID); break;
     }
 }
 
 void BufferAllocator::BeginFrame(uint64_t frameNumber, uint32_t framesInFlight)
 {
+    if (FrameRing.IsValid() && framesInFlight != FramesInFlight)
+        throw std::runtime_error("Frames in flight changed after the frame ring was created.");
+
     FrameNumber = frameNumber;
     FramesInFlight = framesInFlight;
 
@@ -66,6 +80,10 @@ void BufferAllocator::BeginFrame(uint64_t frameNumber, uint32_t framesInFlight)
         ReleasePending(PendingReleases.front());
         PendingReleases.pop_front();
     }
+
+    uint64_t slot = FrameNumber % FramesInFlight;
+    FrameRingCursor = slot * FrameRingBytesPerFrame;
+    FrameRingEnd = FrameRingCursor + FrameRingBytesPerFrame;
 }
 
 void BufferAllocator::ReleaseAllPending()
@@ -73,6 +91,43 @@ void BufferAllocator::ReleaseAllPending()
     for (PendingRelease& pending : PendingReleases)
         ReleasePending(pending);
     PendingReleases.clear();
+}
+
+void BufferAllocator::CreateFrameRing(uint64_t bytesPerFrame)
+{
+    if (FrameRing.IsValid())
+        return;
+
+    bytesPerFrame = (bytesPerFrame + UniformAlignment - 1) / UniformAlignment * UniformAlignment;
+
+    BufferDesc desc = {};
+    desc.Size = bytesPerFrame * FramesInFlight;
+    desc.Usage.Access = MemoryAccess(1);
+    desc.Usage.Type = BufferType::FrameData;
+    FrameRing = CreateBuffer(desc);
+
+    const BufferAllocation& allocation = Buffers.Get(FrameRing);
+    if (!allocation.IsMapped || !allocation.Address)
+        throw std::runtime_error("The frame ring buffer is not mapped.");
+
+    FrameRingAddress = static_cast<uint8_t*>(allocation.Address);
+    FrameRingBytesPerFrame = bytesPerFrame;
+    FrameRingCursor = 0;
+    FrameRingEnd = bytesPerFrame;
+}
+
+FrameAllocation BufferAllocator::AllocateFrameData(uint64_t size, uint64_t alignment)
+{
+    if (!FrameRing.IsValid())
+        throw std::runtime_error("AllocateFrameData called before CreateFrameRing.");
+
+    uint64_t offset = (FrameRingCursor + alignment - 1) / alignment * alignment;
+    if (offset + size > FrameRingEnd)
+        throw std::runtime_error("Frame ring overflow: " + std::to_string(size) + " bytes requested, "
+            + std::to_string(FrameRingEnd - FrameRingCursor) + " left of " + std::to_string(FrameRingBytesPerFrame));
+
+    FrameRingCursor = offset + size;
+    return FrameAllocation{ FrameRing, offset, FrameRingAddress + offset };
 }
 
 BufferAllocator* BufferAllocator::GetInstance()
@@ -95,7 +150,379 @@ BufferAllocator* BufferAllocator::GetInstance()
 
 VulkanBufferAllocator::VulkanBufferAllocator()
 {
+}
 
+VulkanBufferAllocator::~VulkanBufferAllocator()
+{
+    VkDevice device = VulkanCore::Instance().GetDevice();
+
+    ReleaseAllPending();
+    DescriptorSets.Clear();
+    Buffers.ForEachLive([this](BufferAllocation& allocation) { ReleaseBuffer(allocation); });
+    Images.ForEachLive([this](ImageAllocation& allocation) { ReleaseImage(allocation); });
+    Buffers.Clear();
+    Images.Clear();
+
+    for (auto& [key, info] : DescriptorSetLayouts)
+    {
+        vkDestroyDescriptorSetLayout(device, info.Layout, nullptr);
+        if (info.Pool != VK_NULL_HANDLE)
+            vkDestroyDescriptorPool(device, info.Pool, nullptr);
+    }
+    DescriptorSetLayouts.clear();
+    Instance = nullptr;
+}
+
+ImageHandle VulkanBufferAllocator::CreateImage(const ImageDesc& imageDesc)
+{
+    VkDevice device = VulkanCore::Instance().GetDevice();
+
+    VulkanImageData* vulkanImageData = new VulkanImageData();
+    vulkanImageData->ImageHandle = CreateVulkanImage(imageDesc, &vulkanImageData->Memory);
+
+    if (imageDesc.InitialData)
+    {
+        VkBufferCreateInfo stagingBufferInfo = {};
+        stagingBufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        stagingBufferInfo.size = imageDesc.Size;
+        stagingBufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+        stagingBufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+        VkBuffer stagingBuffer;
+        if (vkCreateBuffer(device, &stagingBufferInfo, nullptr, &stagingBuffer) != VK_SUCCESS)
+            throw std::runtime_error("Failed to create image staging buffer.");
+
+        VkMemoryRequirements stagingMemoryReqs;
+        vkGetBufferMemoryRequirements(device, stagingBuffer, &stagingMemoryReqs);
+
+        VkMemoryAllocateInfo stagingAllocInfo = {};
+        stagingAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        stagingAllocInfo.allocationSize = stagingMemoryReqs.size;
+        stagingAllocInfo.memoryTypeIndex = FindMemoryType(stagingMemoryReqs.memoryTypeBits,
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
+        VkDeviceMemory stagingMemory;
+        if (vkAllocateMemory(device, &stagingAllocInfo, nullptr, &stagingMemory) != VK_SUCCESS)
+            throw std::runtime_error("Failed to allocate image staging buffer memory.");
+        vkBindBufferMemory(device, stagingBuffer, stagingMemory, 0);
+
+        void* mappedData;
+        vkMapMemory(device, stagingMemory, 0, imageDesc.Size, 0, &mappedData);
+        memcpy(mappedData, imageDesc.InitialData, imageDesc.Size);
+        vkUnmapMemory(device, stagingMemory);
+
+        TransitionImageLayout(vulkanImageData->ImageHandle, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+        CopyBufferToImage(stagingBuffer, vulkanImageData->ImageHandle, imageDesc.Width, imageDesc.Height);
+        TransitionImageLayout(vulkanImageData->ImageHandle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+        vkDestroyBuffer(device, stagingBuffer, nullptr);
+        vkFreeMemory(device, stagingMemory, nullptr);
+    }
+
+    vulkanImageData->ImageView = CreateVulkanImageView(vulkanImageData->ImageHandle, imageDesc);
+
+    ImageAllocation allocation;
+    allocation.Image = vulkanImageData;
+    allocation.Desc = imageDesc;
+    allocation.Desc.InitialData = nullptr;
+    return Images.Claim(allocation);
+}
+
+VkImage VulkanBufferAllocator::CreateVulkanImage(const ImageDesc& imageDesc, VkDeviceMemory* imageMemory)
+{
+    VkDevice device = VulkanCore::Instance().GetDevice();
+
+    ImageUsage usage = imageDesc.Usage;
+    if (imageDesc.InitialData)
+        usage.TransferDestination = true;
+
+    VkImageCreateInfo imageInfo = {};
+    imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+    imageInfo.imageType = VK_IMAGE_TYPE_2D;
+    imageInfo.extent = { imageDesc.Width, imageDesc.Height, 1 };
+    imageInfo.mipLevels = (std::max)(imageDesc.MipLevels, 1u);
+    imageInfo.arrayLayers = (std::max)(imageDesc.ArrayLayers, 1u);
+    imageInfo.format = VulkanFormat(imageDesc.Format);
+    imageInfo.tiling = imageDesc.TilingLinear ? VK_IMAGE_TILING_LINEAR : VK_IMAGE_TILING_OPTIMAL;
+    imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    imageInfo.usage = VulkanImageUsage(usage);
+    imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+    imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+    VkImage image;
+    if (vkCreateImage(device, &imageInfo, nullptr, &image) != VK_SUCCESS)
+        throw std::runtime_error("Failed to create image.");
+
+    VkMemoryRequirements memoryRequirements;
+    vkGetImageMemoryRequirements(device, image, &memoryRequirements);
+
+    VkMemoryAllocateInfo allocInfo = {};
+    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    allocInfo.allocationSize = memoryRequirements.size;
+    allocInfo.memoryTypeIndex = FindMemoryType(memoryRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+    if (vkAllocateMemory(device, &allocInfo, nullptr, imageMemory) != VK_SUCCESS)
+        throw std::runtime_error("Failed to allocate image memory.");
+    if (vkBindImageMemory(device, image, *imageMemory, 0) != VK_SUCCESS)
+        throw std::runtime_error("Failed to bind image memory.");
+
+    return image;
+}
+
+VkImageView VulkanBufferAllocator::CreateVulkanImageView(VkImage image, const ImageDesc& imageDesc)
+{
+    VkImageViewCreateInfo viewInfo = {};
+    viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+    viewInfo.image = image;
+    viewInfo.viewType = VulkanImageViewType(imageDesc);
+    viewInfo.format = VulkanFormat(imageDesc.Format);
+    viewInfo.subresourceRange.aspectMask = IsDepthFormat(imageDesc.Format) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
+    viewInfo.subresourceRange.baseMipLevel = 0;
+    viewInfo.subresourceRange.levelCount = (std::max)(imageDesc.MipLevels, 1u);
+    viewInfo.subresourceRange.baseArrayLayer = 0;
+    viewInfo.subresourceRange.layerCount = (std::max)(imageDesc.ArrayLayers, 1u);
+
+    VkImageView imageView = VK_NULL_HANDLE;
+    if (vkCreateImageView(VulkanCore::Instance().GetDevice(), &viewInfo, nullptr, &imageView) != VK_SUCCESS)
+        throw std::runtime_error("Failed to create image view.");
+    return imageView;
+}
+
+void VulkanBufferAllocator::RegisterDescriptorSetLayout(uint32_t layoutID, const ResourceLayout& layout, uint32_t maxSetIndex)
+{
+    VkDevice device = VulkanCore::Instance().GetDevice();
+
+    std::map<uint32_t, std::vector<DescriptorBinding>> bindingsBySet;
+    for (const DescriptorBinding& binding : layout.Bindings)
+    {
+        if (binding.Set == 0)
+            throw std::runtime_error("Descriptor set 0 is reserved for the global samplers.");
+        bindingsBySet[binding.Set].push_back(binding);
+    }
+
+    for (uint32_t setIndex = 1; setIndex <= maxSetIndex; setIndex++)
+    {
+        uint64_t key = MakeKey(layoutID, setIndex);
+        if (DescriptorSetLayouts.contains(key))
+            continue;
+
+        DescriptorSetLayoutInfo info;
+        std::vector<VkDescriptorSetLayoutBinding> vkBindings;
+        std::vector<VkDescriptorPoolSize> poolSizes;
+
+        auto found = bindingsBySet.find(setIndex);
+        if (found != bindingsBySet.end())
+        {
+            info.Bindings = found->second;
+            std::sort(info.Bindings.begin(), info.Bindings.end(),
+                [](const DescriptorBinding& a, const DescriptorBinding& b) { return a.Slot < b.Slot; });
+
+            for (const DescriptorBinding& binding : info.Bindings)
+            {
+                VkDescriptorSetLayoutBinding vkBinding{};
+                vkBinding.binding = binding.Slot;
+                vkBinding.descriptorType = VulkanDescriptorType(binding.Type);
+                vkBinding.descriptorCount = (std::max)(binding.Count, 1u);
+                vkBinding.stageFlags = VulkanShaderStageFlags(layout.VisibleStages);
+                if (binding.Type == DescriptorType::SampledImage)
+                    vkBinding.pImmutableSamplers = binding.Sampler == SamplerType::Nearest
+                        ? VulkanCore::Instance().GetNearestSampler()
+                        : VulkanCore::Instance().GetLinearSampler();
+                vkBindings.push_back(vkBinding);
+                poolSizes.push_back({ vkBinding.descriptorType, vkBinding.descriptorCount * DescriptorSetsPerPool });
+            }
+        }
+
+        VkDescriptorSetLayoutCreateInfo layoutInfo{};
+        layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        layoutInfo.bindingCount = static_cast<uint32_t>(vkBindings.size());
+        layoutInfo.pBindings = vkBindings.empty() ? nullptr : vkBindings.data();
+        if (vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &info.Layout) != VK_SUCCESS)
+            throw std::runtime_error("Failed to create descriptor set layout");
+
+        if (!poolSizes.empty())
+        {
+            VkDescriptorPoolCreateInfo poolInfo{};
+            poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+            poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
+            poolInfo.pPoolSizes = poolSizes.data();
+            poolInfo.maxSets = DescriptorSetsPerPool;
+            poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+            if (vkCreateDescriptorPool(device, &poolInfo, nullptr, &info.Pool) != VK_SUCCESS)
+                throw std::runtime_error("Failed to create descriptor pool");
+        }
+
+        DescriptorSetLayouts[key] = info;
+    }
+}
+
+VkDescriptorSetLayout VulkanBufferAllocator::GetRegisteredDescriptorSetLayout(uint32_t layoutID, uint32_t setIndex)
+{
+    auto found = DescriptorSetLayouts.find(MakeKey(layoutID, setIndex));
+    return found == DescriptorSetLayouts.end() ? VK_NULL_HANDLE : found->second.Layout;
+}
+
+void VulkanBufferAllocator::WriteDescriptors(VkDescriptorSet descriptorSet, const std::vector<DescriptorBinding>& layoutBindings,
+                                             const std::vector<DescriptorSetBinding>& bindings, bool requireEveryBinding)
+{
+    std::vector<VkWriteDescriptorSet> writes;
+    std::vector<VkDescriptorImageInfo> imageInfos;
+    std::vector<VkDescriptorBufferInfo> bufferInfos;
+    writes.reserve(layoutBindings.size());
+    imageInfos.reserve(layoutBindings.size());
+    bufferInfos.reserve(layoutBindings.size());
+
+    for (const DescriptorBinding& layoutBinding : layoutBindings)
+    {
+        auto bindingIt = std::find_if(bindings.begin(), bindings.end(),
+            [&](const DescriptorSetBinding& b) { return b.Binding == layoutBinding.Slot; });
+
+        if (bindingIt == bindings.end())
+        {
+            if (requireEveryBinding)
+                throw std::runtime_error("Missing resource for binding " + std::to_string(layoutBinding.Slot));
+            continue;
+        }
+
+        VkWriteDescriptorSet write{};
+        write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        write.dstSet = descriptorSet;
+        write.dstBinding = layoutBinding.Slot;
+        write.descriptorCount = 1;
+        write.descriptorType = VulkanDescriptorType(layoutBinding.Type);
+
+        if (layoutBinding.Type == DescriptorType::SampledImage || layoutBinding.Type == DescriptorType::StorageImage)
+        {
+            const VulkanImageData* imageData = static_cast<VulkanImageData*>(GetImageAllocation(bindingIt->Image).Image);
+
+            VkDescriptorImageInfo imageInfo{};
+            imageInfo.imageView = imageData->ImageView;
+            imageInfo.imageLayout = layoutBinding.Type == DescriptorType::StorageImage
+                ? VK_IMAGE_LAYOUT_GENERAL : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            imageInfos.push_back(imageInfo);
+            write.pImageInfo = &imageInfos.back();
+        }
+        else
+        {
+            const BufferAllocation& bufferAllocation = GetBufferAllocation(bindingIt->Buffer);
+
+            VkDescriptorBufferInfo bufferInfo{};
+            bufferInfo.buffer = static_cast<VulkanBufferData*>(bufferAllocation.Buffer)->Buffer;
+            bufferInfo.offset = 0;
+            bufferInfo.range = layoutBinding.Type == DescriptorType::DynamicUniformBuffer ? layoutBinding.Size : VK_WHOLE_SIZE;
+            if (layoutBinding.Type == DescriptorType::DynamicUniformBuffer && layoutBinding.Size == 0)
+                throw std::runtime_error("A dynamic uniform buffer binding needs a Size.");
+            bufferInfos.push_back(bufferInfo);
+            write.pBufferInfo = &bufferInfos.back();
+        }
+
+        writes.push_back(write);
+    }
+
+    if (!writes.empty())
+        vkUpdateDescriptorSets(VulkanCore::Instance().GetDevice(), static_cast<uint32_t>(writes.size()), writes.data(), 0, nullptr);
+}
+
+DescriptorSetHandle VulkanBufferAllocator::AllocateDescriptorSet(uint32_t layoutID, uint32_t setIndex, const std::vector<DescriptorSetBinding>& bindings)
+{
+    auto found = DescriptorSetLayouts.find(MakeKey(layoutID, setIndex));
+    if (found == DescriptorSetLayouts.end() || found->second.Pool == VK_NULL_HANDLE)
+        throw std::runtime_error("No descriptor set layout with bindings for layout " + std::to_string(layoutID) + " set " + std::to_string(setIndex));
+
+    DescriptorSetLayoutInfo& layoutInfo = found->second;
+
+    VkDescriptorSetAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    allocInfo.descriptorPool = layoutInfo.Pool;
+    allocInfo.descriptorSetCount = 1;
+    allocInfo.pSetLayouts = &layoutInfo.Layout;
+
+    VkDescriptorSet descriptorSet;
+    if (vkAllocateDescriptorSets(VulkanCore::Instance().GetDevice(), &allocInfo, &descriptorSet) != VK_SUCCESS)
+        throw std::runtime_error("Failed to allocate descriptor set");
+
+    WriteDescriptors(descriptorSet, layoutInfo.Bindings, bindings, true);
+
+    DescriptorSetAllocation allocation;
+    allocation.DescriptorAddress = reinterpret_cast<uint64_t>(descriptorSet);
+    allocation.SetKey = MakeKey(layoutID, setIndex);
+    return DescriptorSets.Claim(allocation);
+}
+
+void VulkanBufferAllocator::UpdateDescriptorSet(DescriptorSetHandle set, const std::vector<DescriptorSetBinding>& newBindings)
+{
+    if (!DescriptorSets.IsLive(set))
+        return;
+
+    const DescriptorSetAllocation& allocation = DescriptorSets.Get(set);
+    auto found = DescriptorSetLayouts.find(allocation.SetKey);
+    if (found == DescriptorSetLayouts.end())
+        return;
+
+    WriteDescriptors(reinterpret_cast<VkDescriptorSet>(allocation.DescriptorAddress), found->second.Bindings, newBindings, false);
+}
+
+void VulkanBufferAllocator::ReleaseDescriptorSet(DescriptorSetAllocation& allocation)
+{
+    auto found = DescriptorSetLayouts.find(allocation.SetKey);
+    if (found == DescriptorSetLayouts.end() || found->second.Pool == VK_NULL_HANDLE)
+        return;
+
+    VkDescriptorSet descriptorSet = reinterpret_cast<VkDescriptorSet>(allocation.DescriptorAddress);
+    vkFreeDescriptorSets(VulkanCore::Instance().GetDevice(), found->second.Pool, 1, &descriptorSet);
+}
+
+void VulkanBufferAllocator::ReleaseDescriptorSetLayouts(uint32_t layoutID)
+{
+    VkDevice device = VulkanCore::Instance().GetDevice();
+    for (auto it = DescriptorSetLayouts.begin(); it != DescriptorSetLayouts.end();)
+    {
+        if ((it->first >> 32) != layoutID)
+        {
+            ++it;
+            continue;
+        }
+
+        vkDestroyDescriptorSetLayout(device, it->second.Layout, nullptr);
+        if (it->second.Pool != VK_NULL_HANDLE)
+            vkDestroyDescriptorPool(device, it->second.Pool, nullptr);
+        it = DescriptorSetLayouts.erase(it);
+    }
+}
+
+void VulkanBufferAllocator::ReleaseBuffer(BufferAllocation& allocation)
+{
+    VkDevice device = VulkanCore::Instance().GetDevice();
+    VulkanBufferData* bufferData = static_cast<VulkanBufferData*>(allocation.Buffer);
+    if (!bufferData)
+        return;
+
+    vkDestroyBuffer(device, bufferData->Buffer, nullptr);
+    vkFreeMemory(device, bufferData->Memory, nullptr);
+    delete bufferData;
+    allocation.Buffer = nullptr;
+}
+
+void VulkanBufferAllocator::ReleaseImage(ImageAllocation& allocation)
+{
+    VkDevice device = VulkanCore::Instance().GetDevice();
+    VulkanImageData* imageData = static_cast<VulkanImageData*>(allocation.Image);
+    if (!imageData)
+        return;
+
+    vkDestroyImageView(device, imageData->ImageView, nullptr);
+    vkDestroyImage(device, imageData->ImageHandle, nullptr);
+    vkFreeMemory(device, imageData->Memory, nullptr);
+    delete imageData;
+    allocation.Image = nullptr;
+}
+
+void VulkanBufferAllocator::EvictImage(ImageHandle image)
+{
+    if (!Images.IsLive(image))
+        return;
+    delete static_cast<VulkanImageData*>(Images.Get(image).Image);
+    Images.Release(image);
 }
 
 BufferHandle VulkanBufferAllocator::CreateBuffer(const BufferDesc& bufferDesc)
@@ -265,431 +692,6 @@ void VulkanBufferAllocator::CopyToDeviceLocalBuffer(VkBuffer dstBuffer, const vo
     vkFreeMemory(device, stagingMemory, nullptr);
 }
 
-ImageHandle VulkanBufferAllocator::CreateImage(const ImageDesc& imageDesc)
-{
-    VkDevice device = VulkanCore::Instance().GetDevice();
-    VkPhysicalDevice physicalDevice = VulkanCore::Instance().GetPhysicalDevice();
-
-    VkBufferCreateInfo stagingBufferInfo = {};
-    stagingBufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    stagingBufferInfo.size = imageDesc.Size;
-    stagingBufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-    stagingBufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-    VkBuffer stagingBuffer;
-    VkResult result = vkCreateBuffer(device, &stagingBufferInfo, nullptr, &stagingBuffer);
-    if (result != VK_SUCCESS)
-        throw std::runtime_error("Failed to create image staging buffer.");
-
-    VkMemoryRequirements stagingMemoryReqs;
-    vkGetBufferMemoryRequirements(device, stagingBuffer, &stagingMemoryReqs);
-
-    VkPhysicalDeviceMemoryProperties memoryProperties;
-    vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memoryProperties);
-    VkMemoryPropertyFlags stagingFlags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-
-    VkMemoryAllocateInfo stagingAllocInfo = {};
-    stagingAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    stagingAllocInfo.allocationSize = stagingMemoryReqs.size;
-    stagingAllocInfo.memoryTypeIndex = FindMemoryType(stagingMemoryReqs.memoryTypeBits, stagingFlags);
-
-    VkDeviceMemory stagingMemory;
-    result = vkAllocateMemory(device, &stagingAllocInfo, nullptr, &stagingMemory);
-    if (result != VK_SUCCESS)
-        throw std::runtime_error("Failed to allocate image staging buffer memory.");
-
-    vkBindBufferMemory(device, stagingBuffer, stagingMemory, 0);
-
-    void* mappedData;
-    vkMapMemory(device, stagingMemory, 0, imageDesc.Size, 0, &mappedData);
-    memcpy(mappedData, imageDesc.InitialData, imageDesc.Size);
-    vkUnmapMemory(device, stagingMemory);
-
-    VulkanImageData* vulkanImageData = new VulkanImageData();
-    vulkanImageData->ImageHandle = CreateVulkanImage(imageDesc, &vulkanImageData->Memory);
-
-    TransitionImageLayout(vulkanImageData->ImageHandle, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-
-    CopyBufferToImage(stagingBuffer, vulkanImageData->ImageHandle, imageDesc.Width, imageDesc.Height);
-
-    TransitionImageLayout(vulkanImageData->ImageHandle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-
-    vulkanImageData->ImageView = CreateVulkanImageView(vulkanImageData->ImageHandle, imageDesc);
-
-    vkDestroyBuffer(device, stagingBuffer, nullptr);
-    vkFreeMemory(device, stagingMemory, nullptr);
-
-    ImageAllocation allocation;
-    allocation.Image = vulkanImageData;
-    allocation.Desc = imageDesc;
-    allocation.Descriptor = 0;
-    allocation.DescriptorType = 0;
-
-
-    return CacheImage(allocation);
-}
-
-void VulkanBufferAllocator::RegisterDescriptorSetLayout(uint32_t pipelineID, const ResourceLayout& layout, bool fillEmptySets)
-{
-    VkDevice device = VulkanCore::Instance().GetDevice();
-
-    // Group bindings by set
-    std::map<uint32_t, std::vector<DescriptorBinding>> bindingsBySet;
-    for (const DescriptorBinding& binding : layout.Bindings)
-        bindingsBySet[binding.Set].push_back(binding);
-
-    // Create descriptor set layout and pool for each set
-    for (const auto& [setIndex, bindings] : bindingsBySet)
-    {
-        uint64_t key = MakeKey(pipelineID, setIndex);
-
-        // Skip if already registered
-        if (DescriptorSetLayouts.find(key) != DescriptorSetLayouts.end())
-            continue;
-
-        // Create VkDescriptorSetLayoutBinding array
-        std::vector<VkDescriptorSetLayoutBinding> vkBindings;
-        std::vector<VkDescriptorPoolSize> poolSizes;
-
-        for (const DescriptorBinding& binding : bindings)
-        {
-            VkDescriptorSetLayoutBinding vkBinding{};
-            vkBinding.binding = binding.Slot;
-            vkBinding.descriptorType = VulkanDescriptorType(binding.Type);
-            vkBinding.descriptorCount = binding.Count > 0 ? binding.Count : 1;
-            vkBinding.stageFlags = VulkanShaderStageFlags(layout.VisibleStages);
-            vkBinding.pImmutableSamplers = VulkanCore::Instance().GetLinearSampler();
-            vkBindings.push_back(vkBinding);
-
-            // Add to pool sizes
-            VkDescriptorPoolSize poolSize{};
-            poolSize.type = vkBinding.descriptorType;
-            poolSize.descriptorCount = vkBinding.descriptorCount * 256; // 256 sets max
-            poolSizes.push_back(poolSize);
-        }
-
-        // Create descriptor set layout
-        VkDescriptorSetLayoutCreateInfo layoutInfo{};
-        layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        layoutInfo.bindingCount = static_cast<uint32_t>(vkBindings.size());
-        layoutInfo.pBindings = vkBindings.data();
-
-        VkDescriptorSetLayout descriptorSetLayout;
-        VkResult result = vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &descriptorSetLayout);
-        if (result != VK_SUCCESS)
-            throw std::runtime_error("Failed to create descriptor set layout");
-
-        // Create descriptor pool
-        VkDescriptorPoolCreateInfo poolInfo{};
-        poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-        poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
-        poolInfo.pPoolSizes = poolSizes.data();
-        poolInfo.maxSets = 256;
-        poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
-
-        VkDescriptorPool descriptorPool;
-        result = vkCreateDescriptorPool(device, &poolInfo, nullptr, &descriptorPool);
-        if (result != VK_SUCCESS)
-            throw std::runtime_error("Failed to create descriptor pool");
-
-        // Store layout info
-        DescriptorSetLayoutInfo layoutInfoStore;
-        layoutInfoStore.Layout = descriptorSetLayout;
-        layoutInfoStore.Pool = descriptorPool;
-        layoutInfoStore.Bindings = bindings;
-        DescriptorSetLayouts[key] = layoutInfoStore;
-    }
-
-    // After creating all layouts with bindings, fill gaps with empty layouts
-    if (!bindingsBySet.empty() && fillEmptySets)
-    {
-        uint32_t maxSetNumber = bindingsBySet.rbegin()->first;
-
-        for (uint32_t setIndex = 0; setIndex <= maxSetNumber; setIndex++)
-        {
-            uint64_t key = MakeKey(pipelineID, setIndex);
-
-            if (DescriptorSetLayouts.find(key) != DescriptorSetLayouts.end())
-                continue;
-
-            VkDescriptorSetLayoutCreateInfo layoutInfo{};
-            layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-            layoutInfo.bindingCount = 0;
-            layoutInfo.pBindings = nullptr;
-
-            VkDescriptorSetLayout descriptorSetLayout;
-            VkResult result = vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &descriptorSetLayout);
-            if (result != VK_SUCCESS)
-                throw std::runtime_error("Failed to create empty descriptor set layout");
-
-            DescriptorSetLayoutInfo layoutInfoStore;
-            layoutInfoStore.Layout = descriptorSetLayout;
-            layoutInfoStore.Pool = VK_NULL_HANDLE; // No pool for empty layouts
-            DescriptorSetLayouts[key] = layoutInfoStore;
-        }
-    }
-}
-
-DescriptorSetHandle VulkanBufferAllocator::AllocateDescriptorSet(uint32_t pipelineID, uint32_t setIndex, const std::vector<DescriptorSetBinding>& bindings)
-{
-    VkDevice device = VulkanCore::Instance().GetDevice();
-
-
-    uint64_t key = MakeKey(pipelineID, setIndex);
-    auto iterator = DescriptorSetLayouts.find(key);
-
-    if (iterator == DescriptorSetLayouts.end())
-        throw std::runtime_error("Descriptor set layout not registered for set " + std::to_string(pipelineID));
-
-    DescriptorSetLayoutInfo& layoutInfo = iterator->second;
-
-    // Allocate descriptor set
-    VkDescriptorSetAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-    allocInfo.descriptorPool = layoutInfo.Pool;
-    allocInfo.descriptorSetCount = 1;
-    allocInfo.pSetLayouts = &layoutInfo.Layout;
-
-    if (layoutInfo.Pool == VK_NULL_HANDLE)
-        throw std::runtime_error("Cannot allocate from empty descriptor set layout for pipeline " + std::to_string(pipelineID) + " set " + std::to_string(setIndex));
-
-    VkDescriptorSet descriptorSet;
-    VkResult result = vkAllocateDescriptorSets(device, &allocInfo, &descriptorSet);
-    if (result != VK_SUCCESS)
-        throw std::runtime_error("Failed to allocate descriptor set");
-
-    // Update descriptor set with bindings
-    std::vector<VkWriteDescriptorSet> writes;
-    std::vector<VkDescriptorImageInfo> imageInfos;
-    std::vector<VkDescriptorBufferInfo> bufferInfos;
-    std::vector<uint32_t> dynamicOffsets;
-
-    writes.reserve(layoutInfo.Bindings.size());
-    imageInfos.reserve(layoutInfo.Bindings.size());
-    bufferInfos.reserve(layoutInfo.Bindings.size());
-
-    for (const DescriptorBinding& layoutBinding : layoutInfo.Bindings)
-    {
-        auto bindingIt = std::find_if(bindings.begin(), bindings.end(),
-            [&](const DescriptorSetBinding& b) { return b.Binding == layoutBinding.Slot; });
-
-        if (bindingIt == bindings.end())
-            throw std::runtime_error("Missing resource for binding " + std::to_string(layoutBinding.Slot));
-
-        VkWriteDescriptorSet write{};
-        write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        write.dstSet = descriptorSet;
-        write.dstBinding = layoutBinding.Slot;
-        write.dstArrayElement = 0;
-        write.descriptorCount = 1;
-        write.descriptorType = VulkanDescriptorType(layoutBinding.Type);
-        write.pImageInfo = nullptr;        // Initialize to null
-        write.pBufferInfo = nullptr;       // Initialize to null
-        write.pTexelBufferView = nullptr;  // Initialize to null
-
-        if (layoutBinding.Type == RHIStructures::DescriptorType::SampledImage)
-        {
-            const ImageAllocation& imageAlloc = GetImageAllocation(bindingIt->Image);
-            VulkanImageData* imageData = static_cast<VulkanImageData*>(imageAlloc.Image);
-
-            VkDescriptorImageInfo imageInfo{};
-            imageInfo.imageView = imageData->ImageView;
-            imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-            imageInfo.sampler = *VulkanCore::Instance().GetLinearSampler();
-            imageInfos.push_back(imageInfo);
-
-            write.pImageInfo = &imageInfos.back();
-        }
-        else if (layoutBinding.Type == RHIStructures::DescriptorType::UniformBuffer ||
-                 layoutBinding.Type == RHIStructures::DescriptorType::DynamicUniformBuffer)
-        {
-            const BufferAllocation& bufferAlloc = GetBufferAllocation(bindingIt->Buffer);
-            VulkanBufferData* bufferData = static_cast<VulkanBufferData*>(bufferAlloc.Buffer);
-
-            VkDescriptorBufferInfo bufferInfo{};
-            bufferInfo.buffer = bufferData->Buffer;
-            bufferInfo.offset = 0;
-            bufferInfo.range = bufferAlloc.Size;
-            bufferInfos.push_back(bufferInfo);
-
-            write.pBufferInfo = &bufferInfos.back();
-
-            if (layoutBinding.Type == RHIStructures::DescriptorType::DynamicUniformBuffer)
-            {
-                dynamicOffsets.push_back(bindingIt->DynamicOffset);
-            }
-        }
-
-        writes.push_back(write);
-    }
-
-    vkUpdateDescriptorSets(device, static_cast<uint32_t>(writes.size()), writes.data(), 0, nullptr);
-
-    // Create allocation
-    DescriptorSetAllocation allocation;
-    allocation.DescriptorAddress = reinterpret_cast<uint64_t>(descriptorSet);
-    allocation.SetKey = MakeKey(pipelineID, setIndex);
-    allocation.PlatformData = nullptr;
-    allocation.DynamicOffsets = dynamicOffsets;
-    allocation.DynamicDescriptorCount = static_cast<uint32_t>(dynamicOffsets.size());
-
-    return DescriptorSets.Claim(allocation);
-}
-
-void VulkanBufferAllocator::ReleaseDescriptorSet(DescriptorSetAllocation& allocation)
-{
-    VkDevice device = VulkanCore::Instance().GetDevice();
-
-    auto it = DescriptorSetLayouts.find(allocation.SetKey);
-    if (it != DescriptorSetLayouts.end())
-    {
-        VkDescriptorSet descriptorSet = reinterpret_cast<VkDescriptorSet>(allocation.DescriptorAddress);
-        vkFreeDescriptorSets(device, it->second.Pool, 1, &descriptorSet);
-    }
-}
-
-void VulkanBufferAllocator::ReleaseBuffer(BufferAllocation& allocation)
-{
-    VkDevice device = VulkanCore::Instance().GetDevice();
-    VulkanBufferData* bufferData = static_cast<VulkanBufferData*>(allocation.Buffer);
-    if (!bufferData)
-        return;
-
-    vkDestroyBuffer(device, bufferData->Buffer, nullptr);
-    vkFreeMemory(device, bufferData->Memory, nullptr);
-    delete bufferData;
-    allocation.Buffer = nullptr;
-}
-
-void VulkanBufferAllocator::ReleaseImage(ImageAllocation& allocation)
-{
-    VkDevice device = VulkanCore::Instance().GetDevice();
-    VulkanImageData* imageData = static_cast<VulkanImageData*>(allocation.Image);
-    if (!imageData)
-        return;
-
-    vkDestroyImageView(device, imageData->ImageView, nullptr);
-    vkDestroyImage(device, imageData->ImageHandle, nullptr);
-    vkFreeMemory(device, imageData->Memory, nullptr);
-    delete imageData;
-    allocation.Image = nullptr;
-}
-
-void VulkanBufferAllocator::UpdateDescriptorSet(DescriptorSetHandle set, const std::vector<DescriptorSetBinding>& newBindings)
-{
-    VkDevice device = VulkanCore::Instance().GetDevice();
-
-    if (!DescriptorSets.IsLive(set))
-        return;
-
-    DescriptorSetAllocation& allocation = DescriptorSets.Get(set);
-    auto layoutIt = DescriptorSetLayouts.find(allocation.SetKey);
-    if (layoutIt == DescriptorSetLayouts.end())
-        return;
-
-    DescriptorSetLayoutInfo& layoutInfo = layoutIt->second;
-    VkDescriptorSet descriptorSet = reinterpret_cast<VkDescriptorSet>(allocation.DescriptorAddress);
-
-    std::vector<VkWriteDescriptorSet> writes;
-    std::vector<VkDescriptorImageInfo> imageInfos;
-    imageInfos.reserve(layoutInfo.Bindings.size());
-
-    for (const DescriptorBinding& layoutBinding : layoutInfo.Bindings)
-    {
-        if (layoutBinding.Type != RHIStructures::DescriptorType::SampledImage)
-            continue;
-
-        auto bindingIt = std::find_if(newBindings.begin(), newBindings.end(),
-            [&](const DescriptorSetBinding& b) { return b.Binding == layoutBinding.Slot; });
-
-        if (bindingIt == newBindings.end())
-            continue;
-
-        const ImageAllocation& imageAlloc = GetImageAllocation(bindingIt->Image);
-        VulkanImageData* imageData = static_cast<VulkanImageData*>(imageAlloc.Image);
-
-        VkDescriptorImageInfo imageInfo{};
-        imageInfo.imageView = imageData->ImageView;
-        imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-        imageInfo.sampler = *VulkanCore::Instance().GetLinearSampler();
-        imageInfos.push_back(imageInfo);
-
-        VkWriteDescriptorSet write{};
-        write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        write.dstSet = descriptorSet;
-        write.dstBinding = layoutBinding.Slot;
-        write.dstArrayElement = 0;
-        write.descriptorCount = 1;
-        write.descriptorType = VulkanDescriptorType(layoutBinding.Type);
-        write.pImageInfo = &imageInfos.back();
-        writes.push_back(write);
-    }
-
-    if (!writes.empty())
-        vkUpdateDescriptorSets(device, static_cast<uint32_t>(writes.size()), writes.data(), 0, nullptr);
-}
-
-void VulkanBufferAllocator::EvictImage(ImageHandle image)
-{
-    if (!Images.IsLive(image))
-        return;
-    delete static_cast<VulkanImageData*>(Images.Get(image).Image);
-    Images.Release(image);
-}
-
-void VulkanBufferAllocator::UpdateDescriptorSetDynamicOffsets(DescriptorSetHandle set, const std::vector<uint32_t>& offsets)
-{
-    DescriptorSetAllocation& allocation = DescriptorSets.Get(set);
-
-    if (offsets.size() != allocation.DynamicDescriptorCount)
-        throw std::runtime_error("Dynamic offset count mismatch");
-
-    VkPhysicalDevice physicalDevice = VulkanCore::Instance().GetPhysicalDevice();
-    VkPhysicalDeviceProperties deviceProperties;
-    vkGetPhysicalDeviceProperties(physicalDevice, &deviceProperties);
-
-    uint32_t minAlignment = static_cast<uint32_t>(deviceProperties.limits.minUniformBufferOffsetAlignment);
-
-    for (uint32_t offset : offsets)
-        if (offset % minAlignment != 0)
-            throw std::runtime_error("Dynamic offset " + std::to_string(offset) +
-                                    " not aligned to " + std::to_string(minAlignment) + " bytes");
-
-    // Update cached offsets
-    allocation.DynamicOffsets = offsets;
-}
-
-VkDescriptorSetLayout VulkanBufferAllocator::GetRegisteredDescriptorSetLayout(uint32_t pipelineID, uint32_t setIndex)
-{
-    uint64_t key = MakeKey(pipelineID, setIndex);
-    auto iterator = DescriptorSetLayouts.find(key);
-
-    if (iterator == DescriptorSetLayouts.end())
-        return VK_NULL_HANDLE;
-
-    return iterator->second.Layout;
-}
-
-VulkanBufferAllocator::~VulkanBufferAllocator()
-{
-    VkDevice device = VulkanCore::Instance().GetDevice();
-
-    for (auto& [handle, allocation] : DescriptorSetLayouts)
-    {
-        vkDestroyDescriptorSetLayout(device, allocation.Layout, nullptr);
-
-        if (allocation.Pool != VK_NULL_HANDLE)  // ← ADD THIS CHECK
-            vkDestroyDescriptorPool(device, allocation.Pool, nullptr);
-    }
-
-    ReleaseAllPending();
-    Buffers.ForEachLive([this](BufferAllocation& allocation) { ReleaseBuffer(allocation); });
-    Images.ForEachLive([this](ImageAllocation& allocation) { ReleaseImage(allocation); });
-    Buffers.Clear();
-    Images.Clear();
-    Instance = nullptr;
-}
-
 void VulkanBufferAllocator::CopyBufferToImage(VkBuffer stagingBuffer, VkImage dstImage, uint32_t width, uint32_t height)
 {
     VkDevice device = VulkanCore::Instance().GetDevice();
@@ -836,82 +838,6 @@ void VulkanBufferAllocator::TransitionImageLayout(VkImage image, VkImageLayout o
         throw std::runtime_error("vkWaitForFences failed after submit in CopyBufferToImage().");
 }
 
-VkImage VulkanBufferAllocator::CreateVulkanImage(ImageDesc imageDesc, VkDeviceMemory* imageMemory)
-{
-    VkDevice device = VulkanCore::Instance().GetDevice();
-    VkPhysicalDevice physicalDevice = VulkanCore::Instance().GetPhysicalDevice();
-    VkMemoryPropertyFlags memoryFlags = VulkanMemoryType(imageDesc.Access);
-    // Create image
-    VkImageCreateInfo imageInfo = {};
-    imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-    imageInfo.imageType = VK_IMAGE_TYPE_2D;                 // Image dimension type (1d, 2d, 3d)
-    imageInfo.extent.width = imageDesc.Width;               // Width of image
-    imageInfo.extent.height = imageDesc.Height;             // Height of image
-    imageInfo.extent.depth = 1;                             // Depth (if 3d)
-    imageInfo.mipLevels = 1;                                // Number of mipmap levels
-    imageInfo.arrayLayers = 1;                              // Number of indices in the image array
-    imageInfo.format = VulkanFormat(imageDesc.Format);      // Image format structure of data and colour space
-                                                            // Tiling of the image (linear, optimal) how image data is arranged in memory for optimal reading
-    imageInfo.tiling = imageDesc.TilingLinear ? VK_IMAGE_TILING_LINEAR : VK_IMAGE_TILING_OPTIMAL;
-    imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;    // Layout of image data on creation
-    imageInfo.usage = VulkanImageUsage(imageDesc.Usage); // Image usage flags
-    imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;              // Number of samples for multisampling
-    imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;      // Whether image can be shared between queues
-
-    VkImage image;
-    VkResult result = vkCreateImage(device, &imageInfo, nullptr, &image);
-    if (result != VK_SUCCESS)
-        throw std::runtime_error("Failed to create image.");
-
-    VkMemoryRequirements memoryRequirements;
-    vkGetImageMemoryRequirements(device, image, &memoryRequirements);
-
-    VkPhysicalDeviceMemoryProperties memoryProperties;
-    vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memoryProperties);
-
-    VkMemoryAllocateInfo allocInfo = {};
-    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    allocInfo.allocationSize = memoryRequirements.size;
-    allocInfo.memoryTypeIndex = FindMemoryType(memoryRequirements.memoryTypeBits, memoryFlags);
-
-    result = vkAllocateMemory(device, &allocInfo, nullptr, imageMemory);
-    if (result != VK_SUCCESS)
-        throw std::runtime_error("Failed to allocate image memory.");
-
-    result = vkBindImageMemory(device, image, *imageMemory, 0);
-    if (result != VK_SUCCESS)
-        throw std::runtime_error("Failed to bind image memory.");
-
-    return image;
-}
-
-VkImageView VulkanBufferAllocator::CreateVulkanImageView(VkImage image, ImageDesc imageDesc)
-{
-    VkDevice device = VulkanCore::Instance().GetDevice();
-    VkImageViewCreateInfo viewInfo = {};
-    viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-    viewInfo.image = image;                                                 // Image to create view for
-    viewInfo.viewType = VulkanImageViewType(imageDesc);                  // Essentially, the number of dimensions in the image data 1D, 2D, 3D, 2D_ARRAY, etc.
-    viewInfo.format = VulkanFormat(imageDesc.Format);                       // Colour data packing and colour space of the image
-    viewInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;                  // Map RGBA data
-    viewInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
-    viewInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
-    viewInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
-
-    viewInfo.subresourceRange.aspectMask = VulkanAspects(imageDesc.Format); // Which aspect of image to view colour, stencil, etc.
-    viewInfo.subresourceRange.baseMipLevel = 0;                             // Start mipmap level to view from
-    viewInfo.subresourceRange.levelCount = imageDesc.MipLevels;             // Number of mipmap levels to view
-    viewInfo.subresourceRange.baseArrayLayer = 0;                           // Start array level to view from
-    viewInfo.subresourceRange.layerCount = imageDesc.ArrayLayers;           // Number of array levels to view
-
-    VkImageView imageView = VK_NULL_HANDLE;
-    VkResult result = vkCreateImageView(device, &viewInfo, nullptr, &imageView);
-    if (result != VK_SUCCESS)
-        throw std::runtime_error("Failed to create image view.");
-
-    return imageView;
-}
-
 uint32_t VulkanBufferAllocator::FindMemoryType(uint32_t allowdTypes, VkMemoryPropertyFlags flags)
 {
     // Get properties of physical device memory
@@ -925,10 +851,6 @@ uint32_t VulkanBufferAllocator::FindMemoryType(uint32_t allowdTypes, VkMemoryPro
 
     throw std::runtime_error("Failed to find suitable memory type for mesh vertex buffer.");
 }
-
-//================================================//
-// DirectX 12                                     //
-//================================================//
 
 BufferHandle DirectX12BufferAllocator::CreateBuffer(const BufferDesc& bufferDesc)
 {
@@ -1059,153 +981,108 @@ BufferHandle DirectX12BufferAllocator::CreateBuffer(const BufferDesc& bufferDesc
     return Buffers.Claim(allocation);
 }
 
-ImageHandle DirectX12BufferAllocator::CreateImage(const ImageDesc& imageDesc)
+//================================================//
+// DirectX 12                                     //
+//================================================//
+
+void DescriptorRangeAllocator::Reset(uint32_t capacity)
 {
-    ID3D12Device* device = D3DCore::Instance().GetDevice().Get();
-    ID3D12GraphicsCommandList* cmdList = D3DCore::Instance().GetTransferCommandList().Get();
-    D3DCore::Instance().GetTransferCommandAllocator()->Reset();
-    cmdList->Reset(D3DCore::Instance().GetTransferCommandAllocator().Get(), nullptr);
+    FreeRanges.clear();
+    FreeRanges.push_back({ 0, capacity });
+}
 
-    if (imageDesc.ArrayLayers != 1 || imageDesc.MipLevels != 1)
-        throw std::runtime_error("DirectX12BufferAllocator::CreateImage currently supports only 1 layer and 1 mip (match Vulkan path later).");
-
-    if (imageDesc.InitialData == nullptr || imageDesc.Size == 0)
-        throw std::runtime_error("DirectX12BufferAllocator::CreateImage requires InitialData + Size (like Vulkan staging upload).");
-
-    ComPtr<ID3D12Resource> imageResource;
-
-    D3D12_RESOURCE_DESC textureDesc = {};
-    textureDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
-    textureDesc.Alignment = 0;
-    textureDesc.Width = imageDesc.Width;
-    textureDesc.Height = imageDesc.Height;
-    textureDesc.DepthOrArraySize = static_cast<UINT16>(imageDesc.ArrayLayers);
-    textureDesc.MipLevels = static_cast<UINT16>(imageDesc.MipLevels);
-    textureDesc.Format = DXFormat(imageDesc.Format);
-    textureDesc.SampleDesc.Count = 1;
-    textureDesc.SampleDesc.Quality = 0;
-    textureDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
-    textureDesc.Flags = DXImageUsage(imageDesc.Usage);
-
-    auto defaultHeapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
-
-    device->CreateCommittedResource(
-        &defaultHeapProperties,
-        D3D12_HEAP_FLAG_NONE,
-        &textureDesc,
-        D3D12_RESOURCE_STATE_COPY_DEST,
-        nullptr,
-        IID_PPV_ARGS(imageResource.GetAddressOf())) >> ERROR_HANDLER;
-
-    ComPtr<ID3D12Resource> uploadBuffer;
-
-    const UINT firstSubresource = 0;
-    const UINT numSubresources = 1;
-    const UINT64 uploadBufferSize = GetRequiredIntermediateSize(imageResource.Get(), firstSubresource, numSubresources);
-
-    auto uploadHeapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
-    auto uploadDesc = CD3DX12_RESOURCE_DESC::Buffer(uploadBufferSize);
-
-    device->CreateCommittedResource(
-        &uploadHeapProperties,
-        D3D12_HEAP_FLAG_NONE,
-        &uploadDesc,
-        D3D12_RESOURCE_STATE_GENERIC_READ,
-        nullptr,
-        IID_PPV_ARGS(uploadBuffer.GetAddressOf())) >> ERROR_HANDLER;
-
-    D3DCore::Instance().DeferUploadBufferRelease(uploadBuffer);
-
-    const uint32_t bytesPerPixel =
-        (imageDesc.Format == Format::R8G8B8A8_UNORM || imageDesc.Format == Format::R8G8B8A8_UNORM_SRGB) ? 4u : 0u;
-
-    if (bytesPerPixel == 0)
-        throw std::runtime_error("CreateImage upload currently only implemented for R8G8B8A8(_SRGB). Add proper bpp/rowPitch handling for other formats.");
-
-    const UINT64 expectedSize = static_cast<UINT64>(imageDesc.Width) * static_cast<UINT64>(imageDesc.Height) * bytesPerPixel;
-    if (imageDesc.Size < expectedSize)
-        throw std::runtime_error("ImageDesc::Size is smaller than expected for the provided Width/Height/Format.");
-
-    D3D12_SUBRESOURCE_DATA subresource = {};
-    subresource.pData = imageDesc.InitialData;
-    subresource.RowPitch = static_cast<LONG_PTR>(imageDesc.Width) * bytesPerPixel;
-    subresource.SlicePitch = subresource.RowPitch * imageDesc.Height;
-
-    UpdateSubresources(cmdList, imageResource.Get(), uploadBuffer.Get(), 0, firstSubresource, numSubresources, &subresource);
-
-    CD3DX12_RESOURCE_BARRIER toShaderRead = CD3DX12_RESOURCE_BARRIER::Transition(
-        imageResource.Get(),
-        D3D12_RESOURCE_STATE_COPY_DEST,
-        D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-
-    cmdList->ResourceBarrier(1, &toShaderRead);
-    cmdList->Close();
-
-    ID3D12CommandQueue* commandQueue = D3DCore::Instance().GetCommandQueue().Get();
-    ComPtr<ID3D12Fence> transferFence = D3DCore::Instance().GetTransferFence();
-
-    ID3D12CommandList* ppCommandLists[] = { cmdList };
-    commandQueue->ExecuteCommandLists(1, ppCommandLists);
-
-    UINT64 transferFenceValue = transferFence->GetCompletedValue() + 1;
-    //transferFenceValue++;
-    commandQueue->Signal(transferFence.Get(), transferFenceValue);
-    if (transferFence->GetCompletedValue() < transferFenceValue)
+uint32_t DescriptorRangeAllocator::Claim(uint32_t count)
+{
+    for (size_t i = 0; i < FreeRanges.size(); i++)
     {
-        HANDLE eventHandle = CreateEventEx(nullptr, nullptr, 0, EVENT_ALL_ACCESS);
-        transferFence->SetEventOnCompletion(transferFenceValue, eventHandle);
-        WaitForSingleObject(eventHandle, INFINITE);
-        CloseHandle(eventHandle);
+        Range& range = FreeRanges[i];
+        if (range.Count < count)
+            continue;
+
+        uint32_t start = range.Start;
+        range.Start += count;
+        range.Count -= count;
+        if (range.Count == 0)
+            FreeRanges.erase(FreeRanges.begin() + i);
+        return start;
+    }
+    throw std::runtime_error("Descriptor heap is full: no free range of " + std::to_string(count));
+}
+
+void DescriptorRangeAllocator::Release(uint32_t start, uint32_t count)
+{
+    std::vector<Range>::iterator next = std::lower_bound(FreeRanges.begin(), FreeRanges.end(), start,
+        [](const Range& range, uint32_t value) { return range.Start < value; });
+    next = FreeRanges.insert(next, { start, count });
+
+    std::vector<Range>::iterator following = next + 1;
+    if (following != FreeRanges.end() && next->Start + next->Count == following->Start)
+    {
+        next->Count += following->Count;
+        FreeRanges.erase(following);
     }
 
-    D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-    srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-    srvDesc.Format = DXFormat(imageDesc.Format);
-    srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-    srvDesc.Texture2D.MostDetailedMip = 0;
-    srvDesc.Texture2D.MipLevels = 1;
-    srvDesc.Texture2D.PlaneSlice = 0;
-    srvDesc.Texture2D.ResourceMinLODClamp = 0.0f;
+    if (next != FreeRanges.begin())
+    {
+        std::vector<Range>::iterator previous = next - 1;
+        if (previous->Start + previous->Count == next->Start)
+        {
+            previous->Count += next->Count;
+            FreeRanges.erase(next);
+        }
+    }
+}
 
-    DX12ImageData* imageData = new DX12ImageData();
-    imageData->Image = imageResource;
+static DXGI_FORMAT TypelessDepthFormat(Format format)
+{
+    switch (format)
+    {
+    case Format::D16_UNORM:             return DXGI_FORMAT_R16_TYPELESS;
+    case Format::D24_UNORM_S8_UINT:     return DXGI_FORMAT_R24G8_TYPELESS;
+    case Format::D32_FLOAT:             return DXGI_FORMAT_R32_TYPELESS;
+    case Format::D32_FLOAT_S8X24_UINT:  return DXGI_FORMAT_R32G8X24_TYPELESS;
+    default:                            return DXFormat(format);
+    }
+}
 
-    ImageAllocation allocation;
-    allocation.Desc = imageDesc;
-    allocation.Image = imageData;
-
-    return CacheImage(allocation);
+static DXGI_FORMAT SampledDepthFormat(Format format)
+{
+    switch (format)
+    {
+    case Format::D16_UNORM:             return DXGI_FORMAT_R16_UNORM;
+    case Format::D24_UNORM_S8_UINT:     return DXGI_FORMAT_R24_UNORM_X8_TYPELESS;
+    case Format::D32_FLOAT:             return DXGI_FORMAT_R32_FLOAT;
+    case Format::D32_FLOAT_S8X24_UINT:  return DXGI_FORMAT_R32_FLOAT_X8X24_TYPELESS;
+    default:                            return DXFormat(format);
+    }
 }
 
 DirectX12BufferAllocator::DirectX12BufferAllocator()
 {
     ID3D12Device* device = D3DCore::Instance().GetDevice().Get();
-
-    ShaderResourceOffset = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-    RenderTargetOffset = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
-    DepthStencilOffset = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
+    ShaderResourceIncrement = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    RenderTargetIncrement = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+    DepthStencilIncrement = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
 
     D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
-    srvHeapDesc.NumDescriptors = MaxSRVs + MaxCBVs + MaxUAVs;
+    srvHeapDesc.NumDescriptors = MaxShaderResourceDescriptors;
     srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
     srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-    srvHeapDesc.NodeMask = 0;
     device->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(ShaderResourceHeap.GetAddressOf())) >> ERROR_HANDLER;
 
     D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc = {};
-    rtvHeapDesc.NumDescriptors = MaxRTVs;
+    rtvHeapDesc.NumDescriptors = MaxRenderTargetDescriptors;
     rtvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
-    rtvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
-    rtvHeapDesc.NodeMask = 0;
     device->CreateDescriptorHeap(&rtvHeapDesc, IID_PPV_ARGS(RenderTargetHeap.GetAddressOf())) >> ERROR_HANDLER;
 
     D3D12_DESCRIPTOR_HEAP_DESC dsvHeapDesc = {};
-    dsvHeapDesc.NumDescriptors = MaxDSVs;
+    dsvHeapDesc.NumDescriptors = MaxDepthStencilDescriptors;
     dsvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
-    dsvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
-    dsvHeapDesc.NodeMask = 0;
     device->CreateDescriptorHeap(&dsvHeapDesc, IID_PPV_ARGS(DepthStencilHeap.GetAddressOf())) >> ERROR_HANDLER;
 
+    ShaderResourceSlots.Reset(MaxShaderResourceDescriptors);
+    RenderTargetSlots.Reset(MaxRenderTargetDescriptors);
+    DepthStencilSlots.Reset(MaxDepthStencilDescriptors);
 }
 
 DirectX12BufferAllocator::~DirectX12BufferAllocator()
@@ -1217,6 +1094,152 @@ DirectX12BufferAllocator::~DirectX12BufferAllocator()
     Instance = nullptr;
 }
 
+D3D12_CPU_DESCRIPTOR_HANDLE DirectX12BufferAllocator::ShaderResourceCPU(uint32_t index) const
+{
+    D3D12_CPU_DESCRIPTOR_HANDLE handle = ShaderResourceHeap->GetCPUDescriptorHandleForHeapStart();
+    handle.ptr += static_cast<SIZE_T>(index) * ShaderResourceIncrement;
+    return handle;
+}
+
+void DirectX12BufferAllocator::SubmitTransferAndWait(ID3D12GraphicsCommandList* commandList)
+{
+    commandList->Close();
+
+    ID3D12CommandQueue* commandQueue = D3DCore::Instance().GetCommandQueue().Get();
+    ComPtr<ID3D12Fence> transferFence = D3DCore::Instance().GetTransferFence();
+    ID3D12CommandList* commandLists[] = { commandList };
+    commandQueue->ExecuteCommandLists(1, commandLists);
+
+    UINT64 fenceValue = transferFence->GetCompletedValue() + 1;
+    commandQueue->Signal(transferFence.Get(), fenceValue);
+    if (transferFence->GetCompletedValue() < fenceValue)
+    {
+        HANDLE eventHandle = CreateEventEx(nullptr, nullptr, 0, EVENT_ALL_ACCESS);
+        transferFence->SetEventOnCompletion(fenceValue, eventHandle);
+        WaitForSingleObject(eventHandle, INFINITE);
+        CloseHandle(eventHandle);
+    }
+}
+
+ImageHandle DirectX12BufferAllocator::CreateImage(const ImageDesc& imageDesc)
+{
+    ID3D12Device* device = D3DCore::Instance().GetDevice().Get();
+    bool isDepth = IsDepthFormat(imageDesc.Format);
+    uint32_t arrayLayers = (std::max)(imageDesc.ArrayLayers, 1u);
+
+    D3D12_RESOURCE_DESC textureDesc = {};
+    textureDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+    textureDesc.Width = imageDesc.Width;
+    textureDesc.Height = imageDesc.Height;
+    textureDesc.DepthOrArraySize = static_cast<UINT16>(arrayLayers);
+    textureDesc.MipLevels = static_cast<UINT16>((std::max)(imageDesc.MipLevels, 1u));
+    textureDesc.Format = isDepth && imageDesc.Usage.Sampled ? TypelessDepthFormat(imageDesc.Format) : DXFormat(imageDesc.Format);
+    textureDesc.SampleDesc.Count = 1;
+    textureDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+    textureDesc.Flags = DXImageUsage(imageDesc.Usage);
+
+    D3D12_CLEAR_VALUE clearValue = {};
+    D3D12_CLEAR_VALUE* optimizedClear = nullptr;
+    if (imageDesc.Usage.RenderTarget)
+    {
+        clearValue.Format = DXFormat(imageDesc.Format);
+        memcpy(clearValue.Color, &imageDesc.ClearColour, sizeof(clearValue.Color));
+        optimizedClear = &clearValue;
+    }
+    else if (imageDesc.Usage.DepthStencil)
+    {
+        clearValue.Format = DXFormat(imageDesc.Format);
+        clearValue.DepthStencil.Depth = imageDesc.ClearDepth;
+        optimizedClear = &clearValue;
+    }
+
+    D3D12_RESOURCE_STATES initialState = imageDesc.InitialData ? D3D12_RESOURCE_STATE_COPY_DEST : D3D12_RESOURCE_STATE_COMMON;
+    CD3DX12_HEAP_PROPERTIES defaultHeapProperties(D3D12_HEAP_TYPE_DEFAULT);
+
+    ComPtr<ID3D12Resource> imageResource;
+    device->CreateCommittedResource(&defaultHeapProperties, D3D12_HEAP_FLAG_NONE, &textureDesc,
+        initialState, optimizedClear, IID_PPV_ARGS(imageResource.GetAddressOf())) >> ERROR_HANDLER;
+
+    if (imageDesc.InitialData)
+    {
+        if (arrayLayers != 1 || textureDesc.MipLevels != 1)
+            throw std::runtime_error("Image upload supports one layer and one mip.");
+
+        ID3D12GraphicsCommandList* cmdList = D3DCore::Instance().GetTransferCommandList().Get();
+        D3DCore::Instance().GetTransferCommandAllocator()->Reset();
+        cmdList->Reset(D3DCore::Instance().GetTransferCommandAllocator().Get(), nullptr);
+
+        const UINT64 uploadBufferSize = GetRequiredIntermediateSize(imageResource.Get(), 0, 1);
+        CD3DX12_HEAP_PROPERTIES uploadHeapProperties(D3D12_HEAP_TYPE_UPLOAD);
+        CD3DX12_RESOURCE_DESC uploadDesc = CD3DX12_RESOURCE_DESC::Buffer(uploadBufferSize);
+
+        ComPtr<ID3D12Resource> uploadBuffer;
+        device->CreateCommittedResource(&uploadHeapProperties, D3D12_HEAP_FLAG_NONE, &uploadDesc,
+            D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(uploadBuffer.GetAddressOf())) >> ERROR_HANDLER;
+        D3DCore::Instance().DeferUploadBufferRelease(uploadBuffer);
+
+        const uint64_t bytesPerPixel = FormatSize(imageDesc.Format);
+        if (imageDesc.Size < static_cast<uint64_t>(imageDesc.Width) * imageDesc.Height * bytesPerPixel)
+            throw std::runtime_error("ImageDesc::Size is smaller than Width * Height * the format size.");
+
+        D3D12_SUBRESOURCE_DATA subresource = {};
+        subresource.pData = imageDesc.InitialData;
+        subresource.RowPitch = static_cast<LONG_PTR>(imageDesc.Width * bytesPerPixel);
+        subresource.SlicePitch = subresource.RowPitch * imageDesc.Height;
+        UpdateSubresources(cmdList, imageResource.Get(), uploadBuffer.Get(), 0, 0, 1, &subresource);
+
+        CD3DX12_RESOURCE_BARRIER toShaderRead = CD3DX12_RESOURCE_BARRIER::Transition(imageResource.Get(),
+            D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        cmdList->ResourceBarrier(1, &toShaderRead);
+        SubmitTransferAndWait(cmdList);
+    }
+
+    DX12ImageData* imageData = new DX12ImageData();
+    imageData->Image = imageResource;
+
+    if (imageDesc.Usage.RenderTarget)
+    {
+        D3D12_RENDER_TARGET_VIEW_DESC rtvDesc = {};
+        rtvDesc.Format = DXFormat(imageDesc.Format);
+        if (arrayLayers > 1)
+        {
+            rtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2DARRAY;
+            rtvDesc.Texture2DArray.ArraySize = arrayLayers;
+        }
+        else
+            rtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
+
+        imageData->RenderTargetSlot = RenderTargetSlots.Claim(1);
+        imageData->RenderTargetView = RenderTargetHeap->GetCPUDescriptorHandleForHeapStart();
+        imageData->RenderTargetView.ptr += static_cast<SIZE_T>(imageData->RenderTargetSlot) * RenderTargetIncrement;
+        device->CreateRenderTargetView(imageResource.Get(), &rtvDesc, imageData->RenderTargetView);
+    }
+
+    if (imageDesc.Usage.DepthStencil)
+    {
+        D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc = {};
+        dsvDesc.Format = DXFormat(imageDesc.Format);
+        if (arrayLayers > 1)
+        {
+            dsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2DARRAY;
+            dsvDesc.Texture2DArray.ArraySize = arrayLayers;
+        }
+        else
+            dsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
+
+        imageData->DepthStencilSlot = DepthStencilSlots.Claim(1);
+        imageData->DepthStencilView = DepthStencilHeap->GetCPUDescriptorHandleForHeapStart();
+        imageData->DepthStencilView.ptr += static_cast<SIZE_T>(imageData->DepthStencilSlot) * DepthStencilIncrement;
+        device->CreateDepthStencilView(imageResource.Get(), &dsvDesc, imageData->DepthStencilView);
+    }
+
+    ImageAllocation allocation;
+    allocation.Desc = imageDesc;
+    allocation.Desc.InitialData = nullptr;
+    allocation.Image = imageData;
+    return Images.Claim(allocation);
+}
+
 void DirectX12BufferAllocator::ReleaseBuffer(BufferAllocation& allocation)
 {
     delete static_cast<DX12BufferData*>(allocation.Buffer);
@@ -1225,193 +1248,16 @@ void DirectX12BufferAllocator::ReleaseBuffer(BufferAllocation& allocation)
 
 void DirectX12BufferAllocator::ReleaseImage(ImageAllocation& allocation)
 {
-    delete static_cast<DX12ImageData*>(allocation.Image);
+    DX12ImageData* imageData = static_cast<DX12ImageData*>(allocation.Image);
+    if (!imageData)
+        return;
+
+    if (imageData->RenderTargetSlot != UINT32_MAX)
+        RenderTargetSlots.Release(imageData->RenderTargetSlot, 1);
+    if (imageData->DepthStencilSlot != UINT32_MAX)
+        DepthStencilSlots.Release(imageData->DepthStencilSlot, 1);
+    delete imageData;
     allocation.Image = nullptr;
-}
-
-void DirectX12BufferAllocator::ReleaseDescriptorSet(DescriptorSetAllocation& allocation)
-{
-    delete static_cast<DescriptorTableData*>(allocation.PlatformData);
-    allocation.PlatformData = nullptr;
-}
-
-void DirectX12BufferAllocator::RegisterDescriptorSetLayout(uint32_t pipelineID, const ResourceLayout& layout, bool fillEmptySets)
-{
-    std::map<uint32_t, std::vector<DescriptorBinding>> bindingsBySet;
-    for (const DescriptorBinding& binding : layout.Bindings)
-        bindingsBySet[binding.Set].push_back(binding);
-
-    for (const auto& [setIndex, bindings] : bindingsBySet)
-    {
-        uint64_t key = MakeKey(pipelineID, setIndex);
-
-        if (DescriptorSetLayouts.find(key) != DescriptorSetLayouts.end())
-            continue;
-
-        DescriptorSetLayoutInfo layoutInfo;
-        layoutInfo.Bindings = bindings;
-        DescriptorSetLayouts[key] = layoutInfo;
-    }
-}
-
-DescriptorSetHandle DirectX12BufferAllocator::AllocateDescriptorSet(uint32_t pipelineID, uint32_t setIndex, const std::vector<DescriptorSetBinding>& bindings)
-{
-    ID3D12Device* device = D3DCore::Instance().GetDevice().Get();
-
-    uint64_t key = MakeKey(pipelineID, setIndex);
-    auto iterator = DescriptorSetLayouts.find(key);
-
-    if (iterator == DescriptorSetLayouts.end())
-        throw std::runtime_error("Descriptor set layout not registered");
-
-    DescriptorSetLayoutInfo& layoutInfo = iterator->second;
-    DescriptorTableData* tableData = new DescriptorTableData();
-
-    // First pass: Pre-allocate all descriptors contiguously to reserve heap space
-    std::vector<D3D12_CPU_DESCRIPTOR_HANDLE> allocatedHandles;
-    std::vector<DescriptorType> descriptorTypes;
-    std::vector<BufferHandle> boundBuffers;
-    std::vector<bool> isDynamic;
-
-    for (const DescriptorBinding& layoutBinding : layoutInfo.Bindings)
-    {
-        DescriptorType dxType;
-        D3D12_CPU_DESCRIPTOR_HANDLE dstHandle;
-
-        if (layoutBinding.Type == RHIStructures::DescriptorType::SampledImage)
-        {
-            dxType = SRV;
-            dstHandle = AllocateDescriptor(SRV);
-        }
-        else if (layoutBinding.Type == RHIStructures::DescriptorType::UniformBuffer ||
-                 layoutBinding.Type == RHIStructures::DescriptorType::DynamicUniformBuffer)
-        {
-            dxType = CBV;
-            dstHandle = AllocateDescriptor(CBV);
-        }
-        else if (layoutBinding.Type == RHIStructures::DescriptorType::StorageBuffer)
-        {
-            dxType = SRV;
-            dstHandle = AllocateDescriptor(SRV);
-        }
-        else if (layoutBinding.Type == RHIStructures::DescriptorType::StorageImage)
-        {
-            dxType = UAV;
-            dstHandle = AllocateDescriptor(UAV);
-        }
-        else
-        {
-            throw std::runtime_error("Unsupported descriptor type");
-        }
-
-        allocatedHandles.push_back(dstHandle);
-        descriptorTypes.push_back(dxType);
-        boundBuffers.push_back({});
-        isDynamic.push_back(layoutBinding.Type == RHIStructures::DescriptorType::DynamicUniformBuffer);
-    }
-
-    // Second pass: Create the actual descriptor views
-    size_t descriptorIndex = 0;
-    std::vector<uint32_t> dynamicOffsets;
-
-    for (const DescriptorBinding& layoutBinding : layoutInfo.Bindings)
-    {
-        auto bindingIterator = std::find_if(bindings.begin(), bindings.end(),
-            [&](const DescriptorSetBinding& b) { return b.Binding == layoutBinding.Slot; });
-
-        if (bindingIterator == bindings.end())
-            throw std::runtime_error("Missing resource for binding");
-
-        D3D12_CPU_DESCRIPTOR_HANDLE dstHandle = allocatedHandles[descriptorIndex];
-
-        boundBuffers[descriptorIndex] = bindingIterator->Buffer;
-
-        if (layoutBinding.Type == RHIStructures::DescriptorType::SampledImage)
-        {
-            const ImageAllocation& imageAlloc = GetImageAllocation(bindingIterator->Image);
-            DX12ImageData* imageData = static_cast<DX12ImageData*>(imageAlloc.Image);
-
-            D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{};
-            srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-            srvDesc.Format = DXFormat(imageAlloc.Desc.Format);
-            srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-            srvDesc.Texture2D.MipLevels = 1;
-            srvDesc.Texture2D.MostDetailedMip = 0;
-            srvDesc.Texture2D.PlaneSlice = 0;
-
-            device->CreateShaderResourceView(imageData->Image.Get(), &srvDesc, dstHandle);
-        }
-        else if (layoutBinding.Type == RHIStructures::DescriptorType::UniformBuffer ||
-                 layoutBinding.Type == RHIStructures::DescriptorType::DynamicUniformBuffer)
-        {
-            const BufferAllocation& bufferAlloc = GetBufferAllocation(bindingIterator->Buffer);
-            DX12BufferData* bufferData = static_cast<DX12BufferData*>(bufferAlloc.Buffer);
-
-            D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc{};
-            uint32_t offset = bindingIterator->DynamicOffset;
-            cbvDesc.BufferLocation = bufferData->GPUAddress + offset;
-            cbvDesc.SizeInBytes = static_cast<UINT>((bufferAlloc.Size + 255) & ~255);
-
-            device->CreateConstantBufferView(&cbvDesc, dstHandle);
-
-            // Track dynamic offsets for dynamic uniform buffers
-            if (layoutBinding.Type == RHIStructures::DescriptorType::DynamicUniformBuffer)
-            {
-                dynamicOffsets.push_back(bindingIterator->DynamicOffset);
-            }
-        }
-
-        descriptorIndex++;
-    }
-
-    // Store all handles and types
-    tableData->CpuHandles = allocatedHandles;
-    tableData->DescriptorTypes = descriptorTypes;
-    tableData->Buffers = boundBuffers;
-    tableData->IsDynamic = isDynamic;
-
-    // Calculate the GPU handle for the base of the table (first descriptor)
-    if (!allocatedHandles.empty())
-    {
-        D3D12_CPU_DESCRIPTOR_HANDLE heapStart = ShaderResourceHeap->GetCPUDescriptorHandleForHeapStart();
-        D3D12_GPU_DESCRIPTOR_HANDLE gpuStart = ShaderResourceHeap->GetGPUDescriptorHandleForHeapStart();
-        size_t offset = allocatedHandles[0].ptr - heapStart.ptr;
-        tableData->BaseHandle.ptr = gpuStart.ptr + offset;
-    }
-
-    DescriptorSetAllocation allocation;
-    allocation.DescriptorAddress = tableData->BaseHandle.ptr;
-    allocation.SetKey = MakeKey(pipelineID, setIndex);
-    allocation.PlatformData = tableData;
-    allocation.DynamicOffsets = dynamicOffsets;
-    allocation.DynamicDescriptorCount = static_cast<uint32_t>(dynamicOffsets.size());
-
-    return DescriptorSets.Claim(allocation);
-}
-
-D3D12_CPU_DESCRIPTOR_HANDLE DirectX12BufferAllocator::AllocateDescriptor(DescriptorType type)
-{
-    size_t index = 0;
-    switch (type)
-    {
-    case SRV:
-        index = NextSRVIndex++;
-        break;
-    case CBV:
-        index = NextCBVIndex++;
-        break;
-    case UAV:
-        index = NextUAVIndex++;
-        break;
-    case RTV:
-        index = NextRTVIndex++;
-        break;
-    case DSV:
-        index = NextDSVIndex++;
-        break;
-    }
-
-    return GetHandle(index, type);
 }
 
 void DirectX12BufferAllocator::EvictImage(ImageHandle image)
@@ -1422,127 +1268,192 @@ void DirectX12BufferAllocator::EvictImage(ImageHandle image)
     Images.Release(image);
 }
 
-void DirectX12BufferAllocator::UpdateDescriptorSet(DescriptorSetHandle set, const std::vector<DescriptorSetBinding>& newBindings)
+DirectX12BufferAllocator::SetLayoutInfo DirectX12BufferAllocator::BuildSetLayoutInfo(std::vector<DescriptorBinding> bindings)
+{
+    std::sort(bindings.begin(), bindings.end(),
+        [](const DescriptorBinding& a, const DescriptorBinding& b) { return a.Slot < b.Slot; });
+
+    SetLayoutInfo info;
+    info.Bindings = bindings;
+    for (const DescriptorBinding& binding : info.Bindings)
+        if (binding.Type == DescriptorType::DynamicUniformBuffer)
+        {
+            info.TableOffsets.push_back(UINT32_MAX);
+            info.DynamicCount++;
+        }
+        else
+        {
+            info.TableOffsets.push_back(info.TableSize);
+            info.TableSize += (std::max)(binding.Count, 1u);
+        }
+    return info;
+}
+
+void DirectX12BufferAllocator::RegisterDescriptorSetLayout(uint32_t layoutID, const ResourceLayout& layout, uint32_t maxSetIndex)
+{
+    std::map<uint32_t, std::vector<DescriptorBinding>> bindingsBySet;
+    for (const DescriptorBinding& binding : layout.Bindings)
+        bindingsBySet[binding.Set].push_back(binding);
+
+    for (const auto& [setIndex, bindings] : bindingsBySet)
+    {
+        uint64_t key = MakeKey(layoutID, setIndex);
+        if (!DescriptorSetLayouts.contains(key))
+            DescriptorSetLayouts[key] = BuildSetLayoutInfo(bindings);
+    }
+}
+
+void DirectX12BufferAllocator::ReleaseDescriptorSetLayouts(uint32_t layoutID)
+{
+    std::erase_if(DescriptorSetLayouts, [layoutID](const auto& entry) { return (entry.first >> 32) == layoutID; });
+}
+
+void DirectX12BufferAllocator::WriteDescriptor(const DescriptorBinding& layoutBinding, const DescriptorSetBinding& binding,
+                                               D3D12_CPU_DESCRIPTOR_HANDLE destination)
 {
     ID3D12Device* device = D3DCore::Instance().GetDevice().Get();
 
+    switch (layoutBinding.Type)
+    {
+    case DescriptorType::SampledImage:
+    {
+        const ImageAllocation& imageAllocation = GetImageAllocation(binding.Image);
+        const ImageDesc& desc = imageAllocation.Desc;
+
+        D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{};
+        srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        srvDesc.Format = IsDepthFormat(desc.Format) ? SampledDepthFormat(desc.Format) : DXFormat(desc.Format);
+        if (desc.ArrayLayers > 1)
+        {
+            srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2DARRAY;
+            srvDesc.Texture2DArray.MipLevels = (std::max)(desc.MipLevels, 1u);
+            srvDesc.Texture2DArray.ArraySize = desc.ArrayLayers;
+        }
+        else
+        {
+            srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+            srvDesc.Texture2D.MipLevels = (std::max)(desc.MipLevels, 1u);
+        }
+        device->CreateShaderResourceView(static_cast<DX12ImageData*>(imageAllocation.Image)->Image.Get(), &srvDesc, destination);
+        break;
+    }
+    case DescriptorType::StorageBuffer:
+    {
+        if (layoutBinding.Stride == 0)
+            throw std::runtime_error("A storage buffer binding needs a Stride.");
+
+        const BufferAllocation& bufferAllocation = GetBufferAllocation(binding.Buffer);
+        D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{};
+        srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        srvDesc.Format = DXGI_FORMAT_UNKNOWN;
+        srvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+        srvDesc.Buffer.FirstElement = 0;
+        srvDesc.Buffer.NumElements = static_cast<UINT>(bufferAllocation.Size / layoutBinding.Stride);
+        srvDesc.Buffer.StructureByteStride = layoutBinding.Stride;
+        device->CreateShaderResourceView(DXBuffer(bufferAllocation)->Buffer.Get(), &srvDesc, destination);
+        break;
+    }
+    case DescriptorType::UniformBuffer:
+    {
+        const BufferAllocation& bufferAllocation = GetBufferAllocation(binding.Buffer);
+        D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc{};
+        cbvDesc.BufferLocation = DXBuffer(bufferAllocation)->GPUAddress;
+        cbvDesc.SizeInBytes = static_cast<UINT>((bufferAllocation.Size + 255) & ~255ull);
+        device->CreateConstantBufferView(&cbvDesc, destination);
+        break;
+    }
+    case DescriptorType::StorageImage:
+    {
+        const ImageAllocation& imageAllocation = GetImageAllocation(binding.Image);
+        D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc{};
+        uavDesc.Format = DXFormat(imageAllocation.Desc.Format);
+        uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
+        device->CreateUnorderedAccessView(static_cast<DX12ImageData*>(imageAllocation.Image)->Image.Get(), nullptr, &uavDesc, destination);
+        break;
+    }
+    default:
+        throw std::runtime_error("Descriptor type does not live in a descriptor table.");
+    }
+}
+
+DescriptorSetHandle DirectX12BufferAllocator::AllocateDescriptorSet(uint32_t layoutID, uint32_t setIndex, const std::vector<DescriptorSetBinding>& bindings)
+{
+    auto found = DescriptorSetLayouts.find(MakeKey(layoutID, setIndex));
+    if (found == DescriptorSetLayouts.end())
+        throw std::runtime_error("No descriptor set layout for layout " + std::to_string(layoutID) + " set " + std::to_string(setIndex));
+
+    const SetLayoutInfo& info = found->second;
+    DescriptorTableData* tableData = new DescriptorTableData();
+    tableData->RangeCount = info.TableSize;
+    if (info.TableSize > 0)
+    {
+        tableData->RangeStart = ShaderResourceSlots.Claim(info.TableSize);
+        tableData->BaseHandle = ShaderResourceHeap->GetGPUDescriptorHandleForHeapStart();
+        tableData->BaseHandle.ptr += static_cast<UINT64>(tableData->RangeStart) * ShaderResourceIncrement;
+    }
+
+    for (size_t i = 0; i < info.Bindings.size(); i++)
+    {
+        const DescriptorBinding& layoutBinding = info.Bindings[i];
+        auto bindingIt = std::find_if(bindings.begin(), bindings.end(),
+            [&](const DescriptorSetBinding& b) { return b.Binding == layoutBinding.Slot; });
+        if (bindingIt == bindings.end())
+            throw std::runtime_error("Missing resource for binding " + std::to_string(layoutBinding.Slot));
+
+        if (layoutBinding.Type == DescriptorType::DynamicUniformBuffer)
+            tableData->DynamicAddresses.push_back(DXBuffer(GetBufferAllocation(bindingIt->Buffer))->GPUAddress);
+        else
+            WriteDescriptor(layoutBinding, *bindingIt, ShaderResourceCPU(tableData->RangeStart + info.TableOffsets[i]));
+    }
+
+    DescriptorSetAllocation allocation;
+    allocation.DescriptorAddress = tableData->BaseHandle.ptr;
+    allocation.SetKey = MakeKey(layoutID, setIndex);
+    allocation.PlatformData = tableData;
+    return DescriptorSets.Claim(allocation);
+}
+
+void DirectX12BufferAllocator::UpdateDescriptorSet(DescriptorSetHandle set, const std::vector<DescriptorSetBinding>& newBindings)
+{
     if (!DescriptorSets.IsLive(set))
         return;
 
-    DescriptorSetAllocation& allocation = DescriptorSets.Get(set);
+    const DescriptorSetAllocation& allocation = DescriptorSets.Get(set);
+    DescriptorTableData* tableData = static_cast<DescriptorTableData*>(allocation.PlatformData);
+    auto found = DescriptorSetLayouts.find(allocation.SetKey);
+    if (!tableData || found == DescriptorSetLayouts.end())
+        return;
+
+    const SetLayoutInfo& info = found->second;
+    uint32_t dynamicIndex = 0;
+    for (size_t i = 0; i < info.Bindings.size(); i++)
+    {
+        const DescriptorBinding& layoutBinding = info.Bindings[i];
+        bool isDynamic = layoutBinding.Type == DescriptorType::DynamicUniformBuffer;
+        auto bindingIt = std::find_if(newBindings.begin(), newBindings.end(),
+            [&](const DescriptorSetBinding& b) { return b.Binding == layoutBinding.Slot; });
+
+        if (bindingIt != newBindings.end())
+        {
+            if (isDynamic)
+                tableData->DynamicAddresses[dynamicIndex] = DXBuffer(GetBufferAllocation(bindingIt->Buffer))->GPUAddress;
+            else
+                WriteDescriptor(layoutBinding, *bindingIt, ShaderResourceCPU(tableData->RangeStart + info.TableOffsets[i]));
+        }
+
+        if (isDynamic)
+            dynamicIndex++;
+    }
+}
+
+void DirectX12BufferAllocator::ReleaseDescriptorSet(DescriptorSetAllocation& allocation)
+{
     DescriptorTableData* tableData = static_cast<DescriptorTableData*>(allocation.PlatformData);
     if (!tableData)
         return;
 
-    auto layoutIt = DescriptorSetLayouts.find(allocation.SetKey);
-    if (layoutIt == DescriptorSetLayouts.end())
-        return;
-
-    DescriptorSetLayoutInfo& layoutInfo = layoutIt->second;
-
-    size_t descriptorIndex = 0;
-    for (const DescriptorBinding& layoutBinding : layoutInfo.Bindings)
-    {
-        if (layoutBinding.Type == RHIStructures::DescriptorType::SampledImage)
-        {
-            auto bindingIt = std::find_if(newBindings.begin(), newBindings.end(),
-                [&](const DescriptorSetBinding& b) { return b.Binding == layoutBinding.Slot; });
-
-            if (bindingIt != newBindings.end())
-            {
-                const ImageAllocation& imageAlloc = GetImageAllocation(bindingIt->Image);
-                DX12ImageData* imageData = static_cast<DX12ImageData*>(imageAlloc.Image);
-
-                D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{};
-                srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-                srvDesc.Format = DXFormat(imageAlloc.Desc.Format);
-                srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-                srvDesc.Texture2D.MipLevels = 1;
-                srvDesc.Texture2D.MostDetailedMip = 0;
-                srvDesc.Texture2D.PlaneSlice = 0;
-
-                device->CreateShaderResourceView(imageData->Image.Get(), &srvDesc, tableData->CpuHandles[descriptorIndex]);
-            }
-        }
-        descriptorIndex++;
-    }
-}
-
-void DirectX12BufferAllocator::UpdateDescriptorSetDynamicOffsets(DescriptorSetHandle set, const std::vector<uint32_t>& offsets)
-{
-    ID3D12Device* device = D3DCore::Instance().GetDevice().Get();
-
-    DescriptorSetAllocation& allocation = DescriptorSets.Get(set);
-    DescriptorTableData* tableData = static_cast<DescriptorTableData*>(allocation.PlatformData);
-
-    if (!tableData)
-        throw std::runtime_error("Invalid descriptor table data");
-
-    // Validate alignment (DirectX12 requires 256-byte alignment for CBVs)
-    constexpr uint32_t D3D12_CONSTANT_BUFFER_ALIGNMENT = 256;
-    for (uint32_t offset : offsets)
-    {
-        if (offset % D3D12_CONSTANT_BUFFER_ALIGNMENT != 0)
-            throw std::runtime_error("Dynamic offset " + std::to_string(offset) +
-                                    " not aligned to 256 bytes");
-    }
-
-    // Update CBVs with new offsets
-    uint32_t offsetIndex = 0;
-    for (size_t i = 0; i < tableData->IsDynamic.size(); ++i)
-    {
-        if (tableData->IsDynamic[i])
-        {
-            if (offsetIndex >= offsets.size())
-                throw std::runtime_error("Not enough offsets provided");
-
-            // Get the buffer allocation
-            const BufferAllocation& bufferAlloc = GetBufferAllocation(tableData->Buffers[i]);
-            DX12BufferData* bufferData = static_cast<DX12BufferData*>(bufferAlloc.Buffer);
-
-            // Recreate the CBV with new offset
-            D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc{};
-            cbvDesc.BufferLocation = bufferData->GPUAddress + offsets[offsetIndex];
-            cbvDesc.SizeInBytes = static_cast<UINT>((bufferAlloc.Size + 255) & ~255);
-
-            device->CreateConstantBufferView(&cbvDesc, tableData->CpuHandles[i]);
-
-            offsetIndex++;
-        }
-    }
-
-    if (offsetIndex != offsets.size())
-        throw std::runtime_error("Offset count mismatch");
-
-    // Update cached offsets
-    allocation.DynamicOffsets = offsets;
-}
-
-D3D12_CPU_DESCRIPTOR_HANDLE DirectX12BufferAllocator::GetHandle(size_t index, DescriptorType type)
-{
-    D3D12_CPU_DESCRIPTOR_HANDLE handle = {};
-    switch (type)
-    {
-    case SRV:
-        handle = ShaderResourceHeap->GetCPUDescriptorHandleForHeapStart();
-        handle.ptr += index * ShaderResourceOffset;
-        return handle;
-    case CBV:
-        handle = ShaderResourceHeap->GetCPUDescriptorHandleForHeapStart();
-        handle.ptr += (MaxSRVs + index) * ShaderResourceOffset;
-        return handle;
-    case UAV:
-        handle = ShaderResourceHeap->GetCPUDescriptorHandleForHeapStart();
-        handle.ptr += (MaxSRVs + MaxCBVs + index) * ShaderResourceOffset;
-        return handle;
-    case RTV:
-        handle = RenderTargetHeap->GetCPUDescriptorHandleForHeapStart();
-        handle.ptr += index * RenderTargetOffset;
-        return handle;
-    case DSV:
-        handle = DepthStencilHeap->GetCPUDescriptorHandleForHeapStart();
-        handle.ptr += index * DepthStencilOffset;
-        return handle;
-    }
-    return handle;
+    if (tableData->RangeCount > 0)
+        ShaderResourceSlots.Release(tableData->RangeStart, tableData->RangeCount);
+    delete tableData;
+    allocation.PlatformData = nullptr;
 }

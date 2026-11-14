@@ -10,6 +10,9 @@ class ENGINE_API Light
 public:
     Light() = default;
     Light(const RHIStructures::LightData& data, bool castsShadows = false) : Data(data), CastsShadows(castsShadows) {}
+
+    const RHIStructures::LightData& GetData() const { return Data; }
+    bool IsShadowCaster() const { return CastsShadows; }
     
     DirectX::XMFLOAT4X4 GetLightMatrix() const
     {

@@ -65,8 +65,8 @@
     <ClCompile Include="Resources\ResourceManager.cpp" />
     <ClCompile Include="Resources\SceneComponent.cpp" />
     <ClCompile Include="Resources\UUID.cpp" />
+    <ClCompile Include="Scene\SceneExtraction.cpp" />
     <ClCompile Include="Scene\SceneNode.cpp" />
-    <ClCompile Include="TempGameObject.cpp" />
     <ClCompile Include="UI\DebugOverlay.cpp" />
     <ClCompile Include="UI\ImGuiLayer.cpp" />
     <ClCompile Include="UI\NoesisUILayer.cpp" />
@@ -83,7 +83,6 @@
     <ClInclude Include="CameraController.h" />
     <ClInclude Include="DerpMover.h" />
     <ClInclude Include="ENGINE_API_Macro.h" />
-    <ClInclude Include="EngineConstants.h" />
     <ClInclude Include="GameTime.h" />
     <ClInclude Include="Geometry\GeometryImport.h" />
     <ClInclude Include="Geometry\Mesh.h" />
@@ -99,8 +98,8 @@
     <ClInclude Include="Resources\ResourceManager.h" />
     <ClInclude Include="Resources\SceneComponent.h" />
     <ClInclude Include="Resources\UUID.h" />
+    <ClInclude Include="Scene\SceneExtraction.h" />
     <ClInclude Include="Scene\SceneNode.h" />
-    <ClInclude Include="TempGameObject.h" />
     <ClInclude Include="UI\DebugOverlay.h" />
     <ClInclude Include="UI\ImGuiLayer.h" />
     <ClInclude Include="UI\NoesisUILayer.h" />

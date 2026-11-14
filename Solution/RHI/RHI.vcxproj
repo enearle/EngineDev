@@ -48,7 +48,6 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="DirectX12\D3DCore.cpp" />
-    <ClCompile Include="DirectX12\D3DRootSignatureBuilder.cpp" />
     <ClCompile Include="ForwardInterface.cpp" />
     <ClCompile Include="GraphicsSettings.cpp" />
     <ClCompile Include="Input\InputState.cpp" />
@@ -56,10 +55,9 @@
     <ClCompile Include="RHI\BufferAllocator.cpp" />
     <ClCompile Include="RHI\Pipeline.cpp" />
     <ClCompile Include="RHI\PipelineExecutor.cpp" />
+    <ClCompile Include="RHI\PipelineLayout.cpp" />
     <ClCompile Include="RHI\RHIStructures.cpp" />
-    <ClCompile Include="Uploader.cpp" />
     <ClCompile Include="Vulkan\VulkanCore.cpp" />
-    <ClCompile Include="Vulkan\VulkanPipelineLayoutBuilder.cpp" />
     <ClCompile Include="Vulkan\VulkanResource.cpp" />
     <ClCompile Include="Window.cpp" />
     <ClCompile Include="Windows\Win32ErrorHandler.cpp" />
@@ -70,7 +68,6 @@
     <ClInclude Include="Data\Event.h" />
     <ClInclude Include="DirectX12\D3D12Structs.h" />
     <ClInclude Include="DirectX12\D3DCore.h" />
-    <ClInclude Include="DirectX12\D3DRootSignatureBuilder.h" />
     <ClInclude Include="DirectX12\d3dx12.h" />
     <ClInclude Include="ForwardInterface.h" />
     <ClInclude Include="GraphicsSettings.h" />
@@ -80,12 +77,11 @@
     <ClInclude Include="RHI\Handle.h" />
     <ClInclude Include="RHI\Pipeline.h" />
     <ClInclude Include="RHI\PipelineExecutor.h" />
+    <ClInclude Include="RHI\PipelineLayout.h" />
     <ClInclude Include="RHI\RHIConstants.h" />
     <ClInclude Include="RHI\RHIStructures.h" />
     <ClInclude Include="RHI_API_Macro.h" />
-    <ClInclude Include="Uploader.h" />
     <ClInclude Include="Vulkan\VulkanCore.h" />
-    <ClInclude Include="Vulkan\VulkanPipelineLayoutBuilder.h" />
     <ClInclude Include="Vulkan\VulkanResource.h" />
     <ClInclude Include="Vulkan\VulkanStructs.h" />
     <ClInclude Include="Window.h" />

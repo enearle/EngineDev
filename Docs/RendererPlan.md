@@ -8,7 +8,7 @@ maintained copy and is updated as each phase lands.
 | Phase | State | Notes |
 | --- | --- | --- |
 | 0. Stabilize and restructure | Done | Branch `Dev-2`, 14 November 2026. See "Phase 0 outcome" |
-| 1. Frame structure | Not started | |
+| 1. Frame structure | Done | Branch `Dev-2`, 14 November 2026. See "Phase 1 outcome" |
 | 2. Compute and GPU data | Not started | |
 | 3. Skeleton and animation | Not started | |
 | 4. Materials and paging | Not started | |
@@ -50,10 +50,98 @@ Open items carried forward:
   render targets "must be initialized with a Discard/Clear/Copy" operation. It goes away when Noesis
   is not started, so it is treated as third-party.
 - **Skinned mesh on D3D12.** The "Derp" mesh looked different on D3D12 than on Vulkan in the Editor
-  and was missing from one Standalone capture. That path is replaced in Phase 1 (bones move to a
-  storage buffer and the skinned variant goes away), so it is settled there.
+  and was missing from one Standalone capture. Settled in Phase 1: the hand animation moves it a long
+  way, so captures differed by timing; frozen, both backends match.
 - Runtime paths are relative to the project directory.
 - `ImageAsset` and `MaterialAsset` are still stubs from the unfinished asset work.
+
+## Phase 1 outcome
+
+Finished 14 November 2026 on `Dev-2`. The gate holds on both backends with validation clean: the
+`-stress` scene draws 10,014 objects in 14 instanced batches per pass (29 draw calls in all), and
+the standard passes are built only on the public pass graph API.
+
+Steps 1 to 3 of the order of work landed as one change, with the slim G-buffer. Doing them in
+sequence would have meant porting the variant and attachment code onto the ring first, only to
+delete it in the next step.
+
+**RHI**
+
+- `PipelineLayout` is its own object (a root signature or `VkPipelineLayout`). Pipelines either share
+  one or build their own. Set 0 stays reserved for the two global samplers.
+- `Pipeline` holds pipeline state only. Owned attachments, `IOResource`, `InputPipelineIDs` and the
+  variant machinery (`IsVariant`, `VariantResourceLayout`, `VARIANT_DESCRIPTOR_SET_BASE`,
+  `PipelineVariants`) are gone.
+- Frame ring in `BufferAllocator`: one host-visible buffer, 16 MB per frame in flight,
+  bump-allocated with any alignment, reset when the frame slot begins. Fixes defect 5.
+- Dynamic uniform buffers take their offset at bind time: `UNIFORM_BUFFER_DYNAMIC` on Vulkan, root
+  CBVs on D3D12. Storage buffers are written on Vulkan and are structured-buffer SRVs on D3D12. The
+  scene set binds the whole ring once and shaders index it by absolute element.
+- On D3D12 each set is at most one descriptor table plus one root CBV per dynamic uniform buffer.
+  Every D3D12 heap (shader-visible, RTV, DSV) uses a range free list.
+- `CreateImage` without initial data creates attachments that can also be sampled, with array
+  layers and an optimized clear value. Sampled D3D12 depth is typeless with `D32_FLOAT` and
+  `R32_FLOAT` views. Added `R16G16_UNORM`, `R32_FLOAT` and `B8G8R8A8_UNORM`.
+- The executor takes `ImageHandle`s everywhere, including the swapchain image (`GetBackBuffer`).
+  Barriers are layout to layout; stages and access masks are derived by the backend.
+- Draws take an instance count. The first instance goes in a 16-byte push constant and draws always
+  start at instance 0, because `SV_InstanceID` differs between the backends.
+- `Uploader` is deleted.
+
+**Renderer**
+
+- `PassGraph`: retained passes and images. Passes declare colour and depth writes with load ops and
+  sampled reads. The graph sorts them topologically (ties keep declaration order; overlay passes run
+  after every raster pass), creates and resizes images, places barriers from tracked layouts, and
+  allocates and rewrites each pass's input descriptor set. The back buffer starts each frame
+  `Undefined` and ends `Present`, and is cleared if nothing wrote it before the first overlay pass.
+  `EnlistExternalPass` adds an overlay pass.
+- `Passes/DeferredPasses`: shadow, G-buffer and lighting, using only the public API. The lighting
+  pass is added first on purpose, so the sort is what puts it last.
+- `MeshRegistry` and `MaterialRegistry` with `MeshHandle` and `MaterialHandle`. Meshes store vertex
+  layout and a bounding sphere; materials are shared by name and reference counted.
+- `RenderScene` snapshot (objects, bone matrices, lights, camera), filled once per frame by
+  `SceneExtraction` in the engine.
+- `DrawList` per view: frustum-cull bounding spheres, sort by a 64-bit key (vertex layout, material,
+  mesh, object), merge equal neighbours into instanced draws, write instance data (world, normal
+  matrix, bone offset) to the ring in sorted order. The shadow and G-buffer passes each build one.
+- Bones live in the ring as a storage buffer, so the skinned pipelines share the scene layout.
+- Slim G-buffer: albedo `R8G8B8A8_UNORM`, octahedral normal `R16G16_UNORM`, material
+  `R8G8B8A8_UNORM`, sampled `D32_FLOAT` depth. The lighting pass rebuilds world position from depth
+  and the inverse view-projection. 16 bytes per pixel, about 59 MB at 2560 x 1440.
+- `DebugOverlay` gets a "Renderer" panel with object count, and instances, batches and draws per pass.
+
+**Engine**
+
+- `TempGameObject` and `EngineConstants.h` are deleted. `MeshComponent` carries a material per
+  submesh and, for skinned meshes, a bone palette that `DerpMover` writes.
+- `SceneNode` world matrices are `Local * ParentWorld` (row vectors), and the importer stores true
+  local matrices, so imported hierarchies keep the transforms they had.
+- `Camera` unsubscribes from the resize event, and the constructor that takes a matrix no longer
+  zeroes its near and far planes.
+- Switches: `-stress` adds the 10,000 object grid; `-freeze-animation` holds the Derp still so
+  captures from the two backends can be compared.
+
+**Checked**
+
+- Debug: Standalone and Editor `-play` on both backends, with and without `-stress`; window resize on
+  both; the Editor with no game running. Stderr is empty apart from the known Noesis message on D3D12.
+- With the animation frozen, Vulkan and D3D12 frames differ by a mean of 0.55 out of 255, which is
+  the overlay text. The shells match the Phase 0 image.
+- The skinned Derp now matches across backends, which settles the Phase 0 open item. It moves a long
+  way because `DerpMover` translates bones by 0.1 in bone space under an armature scaled by 100; that
+  is the hand animation, replaced in Phase 3.
+- Release, `-stress`, last frame: about 32 ms on D3D12 and 55 ms on Vulkan. The shells are high
+  poly, and on Vulkan the shadow pass renders all four multiview layers, three of them for lights that
+  do not exist, while D3D12 renders one. Not optimized yet.
+
+Open items:
+
+- D3D12 still has no view instancing (shadow layer 0 only). On Vulkan the view mask is fixed at four
+  layers even with one light.
+- The D3D12 transfer command list is reset at upload time, so uploads are only safe between frames,
+  which is how loading works today.
+- The material set is a convention: set 2 of `Renderer::GetSceneLayout()`. Phase 4 replaces this.
 
 ## Verdict
 

@@ -1,67 +1,87 @@
 #include "DerpMover.h"
 #include <stdexcept>
-#include "RHI/RHIStructures.h"
-#include "TempGameObject.h"
-#include "Uploader.h"
+#include "Scene/SceneNode.h"
 
-struct BoneData
+using namespace DirectX;
+
+static void CollectSkinnedComponents(SceneNode* node, std::vector<MeshComponent*>& out)
 {
-    DirectX::XMFLOAT4X4 BoneTransforms[128];
-};
+    MeshComponent* component = static_cast<MeshComponent*>(node->GetComponent(MeshComponentType));
+    if (component)
+    {
+        MeshAsset* asset = component->GetMeshAsset();
+        for (uint32_t i = 0; i < asset->GetMeshCount(); i++)
+            if (asset->GetMesh(i).IsSkinned())
+            {
+                out.push_back(component);
+                break;
+            }
+    }
+
+    for (SceneNode* child : node->GetChildren())
+        CollectSkinnedComponents(child, out);
+}
+
+DerpMover::DerpMover(SceneNode* derpRoot)
+{
+    CollectSkinnedComponents(derpRoot, SkinnedComponents);
+
+    for (MeshComponent* component : SkinnedComponents)
+    {
+        MeshAsset* asset = component->GetMeshAsset();
+        for (uint32_t i = 0; i < asset->GetMeshCount(); i++)
+        {
+            const std::vector<XMMATRIX>& offsets = asset->GetMesh(i).GetBoneOffsets();
+            if (offsets.size() > BoneOffsets.size())
+                BoneOffsets.resize(offsets.size(), XMMatrixIdentity());
+            for (size_t j = 0; j < offsets.size(); j++)
+                BoneOffsets[j] = offsets[j];
+        }
+    }
+
+    if (BoneOffsets.size() < 3)
+        throw std::runtime_error("DerpMover needs a skinned mesh with at least three bones.");
+
+    Palette.resize(BoneOffsets.size());
+    for (XMFLOAT4X4& bone : Palette)
+        XMStoreFloat4x4(&bone, XMMatrixIdentity());
+    for (MeshComponent* component : SkinnedComponents)
+        component->GetBonePalette() = Palette;
+}
 
 void DerpMover::MoveTheDerp(double dt)
 {
-    const RHIStructures::BufferAllocation& bufferAllocation = Uploader::GetBufferAllocation(Derp->GetBoneBufferID());
-    if (!bufferAllocation.IsMapped || bufferAllocation.Address == nullptr)
-        throw std::runtime_error("VP buffer is not mapped! Check MemoryAccess flags.");
-
-    BoneData* MappedDataAddr = static_cast<BoneData*>(bufferAllocation.Address);
-
     ProgressMove += static_cast<float>(dt);
     while (ProgressMove > DurationMove)
         ProgressMove -= DurationMove;
 
-    if (DanceForward)
+    ProgressDance += DanceForward ? static_cast<float>(dt) : -static_cast<float>(dt);
+    if (ProgressDance > 1.0f)
     {
-        ProgressDance += static_cast<float>(dt);
-        if (ProgressDance > 1.0f)
-        {
-            DanceForward = false;
-            ProgressDance = 1.0f;
-        }
+        DanceForward = false;
+        ProgressDance = 1.0f;
     }
-    else
+    else if (ProgressDance < -1.0f)
     {
-        ProgressDance -= static_cast<float>(dt);
-        if (ProgressDance < -1.0f)
-        {
-            DanceForward = true;
-            ProgressDance = -1.0f;
-        }
+        DanceForward = true;
+        ProgressDance = -1.0f;
     }
 
-    // I still need a way to hand bone offsets and hierarchy correctly, but this is a start
-    float xPos = cos(ProgressMove / DurationMove * DirectX::XM_2PI) * 0.1;
-    float yPos = sin(ProgressMove / DurationMove * DirectX::XM_2PI) * 0.1;
-    float xRot = ProgressDance * DirectX::XM_PI / 4;
+    float xPos = cos(ProgressMove / DurationMove * XM_2PI) * 0.1f;
+    float yPos = sin(ProgressMove / DurationMove * XM_2PI) * 0.1f;
+    float xRot = ProgressDance * XM_PI / 4;
 
-    DirectX::XMFLOAT4X4 bone0;
-    DirectX::XMFLOAT4X4 bone1;
-    DirectX::XMFLOAT4X4 bone2;
+    XMMATRIX anim0 = XMMatrixTranslation(xPos, 0, yPos);
+    XMMATRIX anim1 = XMMatrixRotationZ(xRot * 0.5f);
+    XMMATRIX anim2 = XMMatrixRotationZ(xRot * 0.5f);
 
-    DirectX::XMMATRIX anim0 = DirectX::XMMatrixTranslation(xPos, 0, yPos);
-    DirectX::XMMATRIX anim1 = DirectX::XMMatrixRotationZ(xRot * 0.5f);
-    DirectX::XMMATRIX anim2 = DirectX::XMMatrixRotationZ(xRot * 0.5f);
+    XMMATRIX mat0 = XMMatrixInverse(nullptr, BoneOffsets[0]) * anim0 * BoneOffsets[0];
+    XMMATRIX mat1 = mat0 * XMMatrixInverse(nullptr, BoneOffsets[1]) * anim1 * BoneOffsets[1];
+    XMMATRIX mat2 = mat1 * XMMatrixInverse(nullptr, BoneOffsets[2]) * anim2 * BoneOffsets[2];
 
-    DirectX::XMMATRIX localBindPose0 = DirectX::XMMatrixInverse(nullptr, Derp->GetBoneOffsets()[0]);
-    DirectX::XMMATRIX localBindPose1 = DirectX::XMMatrixInverse(nullptr, Derp->GetBoneOffsets()[1]);
-    DirectX::XMMATRIX localBindPose2 = DirectX::XMMatrixInverse(nullptr, Derp->GetBoneOffsets()[2]);
-
-    DirectX::XMMATRIX mat0 = localBindPose0 * anim0 * Derp->GetBoneOffsets()[0];
-    DirectX::XMMATRIX mat1 = mat0 * localBindPose1 * anim1 * Derp->GetBoneOffsets()[1];
-    DirectX::XMMATRIX mat2 = mat1 * localBindPose2 * anim2 * Derp->GetBoneOffsets()[2];
-
-    DirectX::XMStoreFloat4x4(&MappedDataAddr->BoneTransforms[0], mat0);
-    DirectX::XMStoreFloat4x4(&MappedDataAddr->BoneTransforms[1], mat1);
-    DirectX::XMStoreFloat4x4(&MappedDataAddr->BoneTransforms[2], mat2);
+    XMStoreFloat4x4(&Palette[0], mat0);
+    XMStoreFloat4x4(&Palette[1], mat1);
+    XMStoreFloat4x4(&Palette[2], mat2);
+    for (MeshComponent* component : SkinnedComponents)
+        component->GetBonePalette() = Palette;
 }

@@ -104,20 +104,22 @@ Material::Material(std::string name, MaterialFormat materialFormat) : Name(name)
     }
 }
 
-DescriptorSetHandle Material::LoadMaterial(uint32_t pipelineIndex, uint32_t setIndex)
+LoadedMaterial Material::LoadMaterial(uint32_t layoutID, uint32_t setIndex)
 {
     BufferAllocator* bufferAllocator = BufferAllocator::GetInstance();
+    LoadedMaterial loaded;
     std::vector<DescriptorSetBinding> bindings;
 
     bindings.reserve(CachedTextures.size());
     for (uint32_t i = 0; i < CachedTextures.size(); ++i)
     {
-        bindings.push_back(DescriptorSetBinding::ForImage(i, bufferAllocator->CreateImage(*CachedTextures[i]->Desc)));
-
+        ImageHandle image = bufferAllocator->CreateImage(*CachedTextures[i]->Desc);
+        loaded.Images.push_back(image);
+        bindings.push_back(DescriptorSetBinding::ForImage(i, image));
         delete CachedTextures[i];
     }
     CachedTextures.clear();
 
-    return bufferAllocator->AllocateDescriptorSet(pipelineIndex, setIndex, bindings);
+    loaded.Set = bufferAllocator->AllocateDescriptorSet(layoutID, setIndex, bindings);
+    return loaded;
 }
-

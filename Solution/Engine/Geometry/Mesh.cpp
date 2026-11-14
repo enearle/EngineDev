@@ -1,6 +1,7 @@
 #include "Mesh.h"
 #include <stdexcept>
 #include "RHI/RHIConstants.h"
+#include "MeshRegistry.h"
 
 using namespace RHIStructures;
 
@@ -44,15 +45,13 @@ Mesh::Mesh(Mesh&& other) noexcept
       LocalMaterialIndex(other.LocalMaterialIndex),
       BoneOffsets(std::move(other.BoneOffsets)),
       BoneTransforms(std::move(other.BoneTransforms)),
-      VertexBufferID(other.VertexBufferID),
-      IndexBufferID(other.IndexBufferID),
+      GPUMesh(other.GPUMesh),
       TempVertexCache(other.TempVertexCache),
       TempSkinnedVertexCache(other.TempSkinnedVertexCache)
 {
     other.TempVertexCache = nullptr;
     other.TempSkinnedVertexCache = nullptr;
-    other.VertexBufferID = {};
-    other.IndexBufferID = {};
+    other.GPUMesh = {};
 }
 
 Mesh& Mesh::operator=(Mesh&& other) noexcept
@@ -66,65 +65,34 @@ Mesh& Mesh::operator=(Mesh&& other) noexcept
         LocalMaterialIndex = other.LocalMaterialIndex;
         BoneOffsets = std::move(other.BoneOffsets);
         BoneTransforms = std::move(other.BoneTransforms);
-        VertexBufferID = other.VertexBufferID;
-        IndexBufferID = other.IndexBufferID;
+        GPUMesh = other.GPUMesh;
         TempVertexCache = other.TempVertexCache;
         TempSkinnedVertexCache = other.TempSkinnedVertexCache;
 
         other.TempVertexCache = nullptr;
         other.TempSkinnedVertexCache = nullptr;
-        other.VertexBufferID = {};
-        other.IndexBufferID = {};
+        other.GPUMesh = {};
     }
     return *this;
 }
 
-void* Mesh::GetVertexBufferHandle() const
-{
-    BufferAllocation allocation = Uploader::GetBufferAllocation(VertexBufferID);
-
-    // Return the platform-specific buffer handle
-    return allocation.Buffer;  // VkBuffer or ID3D12Resource*
-}
-
-void* Mesh::GetIndexBufferHandle() const
-{
-    if (!IndexBufferID.IsValid()) return nullptr;
-
-    BufferAllocation allocation = Uploader::GetBufferAllocation(IndexBufferID);
-
-    return allocation.Buffer;
-}
-
 void Mesh::UploadToGPU()
 {
+    if (GPUMesh.IsValid())
+        return;
+
     if (!bIsSkinned && TempVertexCache)
-    {
-        if (VertexCount > 0)
-            VertexBufferID = Uploader::UploadVertices(TempVertexCache->Vertices.size() * sizeof(Vertex), TempVertexCache->Vertices.data());
-
-        if (IndexCount > 0)
-            IndexBufferID = Uploader::UploadIndices(TempVertexCache->Indices.size() * sizeof(uint32_t), TempVertexCache->Indices.data());
-    }
+        GPUMesh = MeshRegistry::Enlist(TempVertexCache->Vertices.data(), VertexCount, VertexLayout::Static,
+                                       TempVertexCache->Indices.data(), IndexCount);
     else if (bIsSkinned && TempSkinnedVertexCache)
-    {
-        if (VertexCount > 0)
-            VertexBufferID = Uploader::UploadVertices(TempSkinnedVertexCache->Vertices.size() * sizeof(SkinnedVertex), TempSkinnedVertexCache->Vertices.data());
-
-        if (IndexCount > 0)
-            IndexBufferID = Uploader::UploadIndices(TempSkinnedVertexCache->Indices.size() * sizeof(uint32_t), TempSkinnedVertexCache->Indices.data());
-    }
+        GPUMesh = MeshRegistry::Enlist(TempSkinnedVertexCache->Vertices.data(), VertexCount, VertexLayout::Skinned,
+                                       TempSkinnedVertexCache->Indices.data(), IndexCount);
 }
 
 void Mesh::FreeGPUResources()
 {
-    if (VertexBufferID.IsValid())
-        Uploader::Release(VertexBufferID);
-    if (IndexBufferID.IsValid())
-        Uploader::Release(IndexBufferID);
-
-    VertexBufferID = {};
-    IndexBufferID = {};
+    MeshRegistry::Retire(GPUMesh);
+    GPUMesh = {};
 }
 
 void* Mesh::GetCachedIndexData() const

@@ -195,3 +195,12 @@ backends with validation clean.
   light is used today. Either add `D3D12_VIEW_INSTANCING_DESC` or record it as open.
 - Runtime paths are relative to the project directory.
 - `ImageAsset` and `MaterialAsset` are still stubs from the unfinished asset work.
+
+## Status
+
+Phase 0 and Phase 1 are both finished and committed on `Dev-2`. See "Phase 0 outcome" and "Phase 1
+outcome" in `Docs/RendererPlan.md` for what landed, how it was checked, and the open items. Phase 2
+(compute and GPU data) is next.
+
+`Tools/RunAndCapture.ps1` now reads stdout and stderr with `ReadToEndAsync`. The event-based readers
+lost the last lines of output, including anything printed at shutdown.

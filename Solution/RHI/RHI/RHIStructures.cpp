@@ -20,7 +20,7 @@ namespace RHIStructures
     //====================================//
     
     // Format Mappings
-    constexpr std::array<VkFormat, 19> VULKAN_FORMATS = {
+    constexpr std::array<VkFormat, 22> VULKAN_FORMATS = {
         VK_FORMAT_UNDEFINED,
         VK_FORMAT_R8G8B8A8_UNORM,
         VK_FORMAT_R8G8B8A8_SRGB,
@@ -40,9 +40,12 @@ namespace RHIStructures
         VK_FORMAT_BC6H_UFLOAT_BLOCK,
         VK_FORMAT_BC7_UNORM_BLOCK,
         VK_FORMAT_R32G32B32A32_UINT,
+        VK_FORMAT_R16G16_UNORM,
+        VK_FORMAT_R32_SFLOAT,
+        VK_FORMAT_B8G8R8A8_UNORM,
     };
 
-    constexpr std::array<DXGI_FORMAT, 19> DX_FORMATS = {
+    constexpr std::array<DXGI_FORMAT, 22> DX_FORMATS = {
         DXGI_FORMAT_UNKNOWN,
         DXGI_FORMAT_R8G8B8A8_UNORM,
         DXGI_FORMAT_R8G8B8A8_UNORM_SRGB,
@@ -62,6 +65,9 @@ namespace RHIStructures
         DXGI_FORMAT_BC6H_UF16,
         DXGI_FORMAT_BC7_UNORM,
         DXGI_FORMAT_R32G32B32A32_UINT,
+        DXGI_FORMAT_R16G16_UNORM,
+        DXGI_FORMAT_R32_FLOAT,
+        DXGI_FORMAT_B8G8R8A8_UNORM,
     };
 
     VkFormat VulkanFormat(Format format)
@@ -115,10 +121,15 @@ namespace RHIStructures
             return 2;
         case Format::D32_FLOAT:
         case Format::D24_UNORM_S8_UINT:
-        case Format::D32_FLOAT_S8X24_UINT:
         case Format::R8G8B8A8_UNORM:
         case Format::R8G8B8A8_UNORM_SRGB:
+        case Format::B8G8R8A8_UNORM:
+        case Format::R16G16_UNORM:
+        case Format::R32_FLOAT:
             return 4;
+        case Format::D32_FLOAT_S8X24_UINT:
+        case Format::R32G32_FLOAT:
+            return 8;
         case Format::R16G16B16A16_FLOAT:
             return 8;
         case Format::R32G32B32_FLOAT:
@@ -128,6 +139,12 @@ namespace RHIStructures
         default:
             return 8;
         }
+    }
+
+    bool IsDepthFormat(Format format)
+    {
+        return format == Format::D16_UNORM || format == Format::D24_UNORM_S8_UINT
+            || format == Format::D32_FLOAT || format == Format::D32_FLOAT_S8X24_UINT;
     }
 
     ShaderStage ImportShader(const std::string& compiledDirectory, const std::string& name, const char* entryPoint)
@@ -598,7 +615,7 @@ namespace RHIStructures
         case ImageLayout::ColorAttachment: return D3D12_RESOURCE_STATE_RENDER_TARGET;
         case ImageLayout::DepthStencilAttachment: return D3D12_RESOURCE_STATE_DEPTH_WRITE;
         case ImageLayout::DepthStencilReadOnly: return D3D12_RESOURCE_STATE_DEPTH_READ;
-        case ImageLayout::ShaderReadOnly: return D3D12_RESOURCE_STATE_GENERIC_READ;
+        case ImageLayout::ShaderReadOnly: return D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
         case ImageLayout::TransferSrc: return D3D12_RESOURCE_STATE_COPY_SOURCE;
         case ImageLayout::TransferDst: return D3D12_RESOURCE_STATE_COPY_DEST;
         case ImageLayout::Present: return D3D12_RESOURCE_STATE_PRESENT;
@@ -614,40 +631,6 @@ namespace RHIStructures
         }
     }
 
-    VkPipelineStageFlags ConvertPipelineStage(PipelineStage stage)
-    {
-        switch (stage)
-        {
-        case PipelineStage::TopOfPipe: 
-            return VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-        case PipelineStage::DrawIndirect: 
-            return VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT;
-        case PipelineStage::VertexInput: 
-            return VK_PIPELINE_STAGE_VERTEX_INPUT_BIT;
-        case PipelineStage::VertexShader: 
-            return VK_PIPELINE_STAGE_VERTEX_SHADER_BIT;
-        case PipelineStage::FragmentShader: 
-            return VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-        case PipelineStage::EarlyFragmentTests: 
-            return VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
-        case PipelineStage::LateFragmentTests: 
-            return VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
-        case PipelineStage::ColorAttachmentOutput: 
-            return VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-        case PipelineStage::ComputeShader: 
-            return VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
-        case PipelineStage::Transfer: 
-            return VK_PIPELINE_STAGE_TRANSFER_BIT;
-        case PipelineStage::BottomOfPipe: 
-            return VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
-        case PipelineStage::AllGraphics: 
-            return VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT;
-        case PipelineStage::AllCommands: 
-            return VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
-        default: 
-            return VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
-        }
-    }
     
     VkImageLayout VulkanImageLayout(ImageLayout layout)
     {
@@ -685,6 +668,11 @@ namespace RHIStructures
         case BufferType::ShaderStorage:
             flags |= VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
             break;
+        case BufferType::FrameData:
+            flags |= VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+            break;
+        default:
+            break;
         }
         
         return flags;
@@ -695,45 +683,20 @@ namespace RHIStructures
         VkImageUsageFlags flags = 0;
         if (usage.TransferSource) flags |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
         if (usage.TransferDestination) flags |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-        switch (usage.Type)
-        {
-        case ImageType::Sampled:
-            flags |= VK_IMAGE_USAGE_SAMPLED_BIT;
-            break;
-        case ImageType::Storage:
-            flags |= VK_IMAGE_USAGE_STORAGE_BIT;
-            break;
-        case ImageType::RenderTarget:
-            flags |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-            break;
-        case ImageType::DepthStencil:
-            flags |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
-            break;
-        }
-        
+        if (usage.Sampled) flags |= VK_IMAGE_USAGE_SAMPLED_BIT;
+        if (usage.Storage) flags |= VK_IMAGE_USAGE_STORAGE_BIT;
+        if (usage.RenderTarget) flags |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+        if (usage.DepthStencil) flags |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
         return flags;
     }
 
     D3D12_RESOURCE_FLAGS DXImageUsage(ImageUsage usage)
     {
         D3D12_RESOURCE_FLAGS flags = D3D12_RESOURCE_FLAG_NONE;
-        if (usage.TransferSource) flags |= D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
-        if (usage.TransferDestination) flags |= D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
-        switch (usage.Type)
-        {
-        case ImageType::RenderTarget:
-            flags |= D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
-            break;
-        case ImageType::DepthStencil:
-            flags |= D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
-            break;
-        case ImageType::Storage:
-            flags |= D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
-            break;
-        default:
-            break;
-        }
-        
+        if (usage.Storage) flags |= D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+        if (usage.RenderTarget) flags |= D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
+        if (usage.DepthStencil) flags |= D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
+        if (usage.DepthStencil && !usage.Sampled) flags |= D3D12_RESOURCE_FLAG_DENY_SHADER_RESOURCE;
         return flags;
     }
 
@@ -792,10 +755,6 @@ namespace RHIStructures
         return type;
     }
 
-    D3D12_CPU_DESCRIPTOR_HANDLE DXDescriptor(const ImageAllocation& imageAllocation)
-    {
-        return static_cast<D3D12Structs::DX12ImageData*>(imageAllocation.Image)->Descriptor;
-    }
 }
 
 

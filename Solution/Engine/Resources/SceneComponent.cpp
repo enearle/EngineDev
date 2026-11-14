@@ -51,6 +51,17 @@ MeshAsset* MeshComponent::GetMeshAsset()
     return LoadedMesh;
 }
 
+void MeshComponent::AssignMaterials(const std::vector<MaterialHandle>& materialsByLocalIndex)
+{
+    MeshAsset* meshAsset = GetMeshAsset();
+    SubmeshMaterials.resize(meshAsset->GetMeshCount());
+    for (uint32_t i = 0; i < meshAsset->GetMeshCount(); i++)
+    {
+        uint32_t localIndex = meshAsset->GetMesh(i).GetLocalMaterialIndex();
+        SubmeshMaterials[i] = localIndex < materialsByLocalIndex.size() ? materialsByLocalIndex[localIndex] : MaterialHandle{};
+    }
+}
+
 bool SceneComponentFactory::SceneComponentExists(SceneComponentType sceneComponentType, SceneNode* owner)
 {
     if (owner == nullptr)

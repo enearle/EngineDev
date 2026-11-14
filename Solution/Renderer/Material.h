@@ -20,6 +20,12 @@ struct PreBufferCache
     ~PreBufferCache();
 };
 
+struct LoadedMaterial
+{
+    RHIStructures::DescriptorSetHandle Set = {};
+    std::vector<RHIStructures::ImageHandle> Images;
+};
+
 class RENDERER_API Material
 {
 public:
@@ -46,6 +52,6 @@ private:
 public:
 
     Material(std::string name, MaterialFormat materialFormat);
-    RHIStructures::DescriptorSetHandle LoadMaterial(uint32_t pipelineIndex, uint32_t setIndex);
+    LoadedMaterial LoadMaterial(uint32_t layoutID, uint32_t setIndex);
 
 };

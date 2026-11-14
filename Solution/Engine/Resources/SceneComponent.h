@@ -40,6 +40,8 @@ public:
 class ENGINE_API MeshComponent : public SceneComponentBase
 {
     MeshAsset* LoadedMesh = nullptr;
+    std::vector<MaterialHandle> SubmeshMaterials;
+    std::vector<DirectX::XMFLOAT4X4> BonePalette;
 public:
     // Create single field for MeshAsset
     MeshComponent(SceneNode* owner) : SceneComponentBase({Field(ResourceType::Mesh, "MeshAsset")}, owner) { }
@@ -49,6 +51,13 @@ public:
     
     void SetMeshAsset(MeshAsset* meshAsset) { LoadedMesh = meshAsset; Fields[0].SetID(meshAsset->GetID());}
     MeshAsset* GetMeshAsset();
+
+    // Materials are listed by the mesh's local material index and stored per submesh.
+    void AssignMaterials(const std::vector<MaterialHandle>& materialsByLocalIndex);
+    MaterialHandle GetSubmeshMaterial(uint32_t submesh) const { return submesh < SubmeshMaterials.size() ? SubmeshMaterials[submesh] : MaterialHandle{}; }
+
+    // Model-space skinning matrices for a skinned mesh, written by animation each frame.
+    std::vector<DirectX::XMFLOAT4X4>& GetBonePalette() { return BonePalette; }
 };
 
 // Scene components are responsible for managing their own resources and lifecycle

@@ -92,6 +92,14 @@ public:
     D3D12_CPU_DESCRIPTOR_HANDLE GetRenderTargetDescriptor();
     D3D12_CPU_DESCRIPTOR_HANDLE GetOverlayDepthStencilDescriptor();
     ID3D12Resource* GetCurrentBackBuffer() const { return SwapChainBuffer[CurrentFrameIndex].Get(); }
+    ID3D12Resource* GetBackBuffer(uint32_t index) const { return SwapChainBuffer[index].Get(); }
+    D3D12_CPU_DESCRIPTOR_HANDLE GetBackBufferDescriptor(uint32_t index) const
+    {
+        D3D12_CPU_DESCRIPTOR_HANDLE handle = RenderTargetDescriptorHeap->GetCPUDescriptorHandleForHeapStart();
+        handle.ptr += static_cast<SIZE_T>(index) * RenderTargetDescriptorOffset;
+        return handle;
+    }
+    uint32_t GetBackBufferCount() const { return SwapChainBufferCount; }
     DXGI_FORMAT GetRenderTargetFormat() const { return RenderTargetFormat; }
     DXGI_SAMPLE_DESC GetSampleDesc() const
     {

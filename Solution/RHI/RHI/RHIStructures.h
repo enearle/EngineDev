@@ -10,8 +10,8 @@
 #include <DirectXMath.h>
 #include <stdexcept>
 
-class Mesh;
 class Pipeline;
+class PipelineLayout;
 
 namespace VulkanStructs
 {
@@ -103,11 +103,15 @@ namespace RHIStructures
         BC6H_UF16 = 16,
         BC7_UNORM = 17,
         R32G32B32A32_UINT = 18,
+        R16G16_UNORM = 19,
+        R32_FLOAT = 20,
+        B8G8R8A8_UNORM = 21,
     };
     VkFormat VulkanFormat(Format format);
     DXGI_FORMAT DXFormat(Format format);
     VkImageAspectFlags VulkanAspects(Format format);
     size_t FormatSize(Format format);
+    RHI_API bool IsDepthFormat(Format format);
 
     
     struct ShaderStage
@@ -315,6 +319,8 @@ namespace RHIStructures
         uint32_t Set;                   // "Descriptor set" (replaces Space) - 0 for most cases
         uint32_t Count;                 // For arrays
         SamplerType Sampler;
+        uint32_t Size = 0;              // Bytes visible through a dynamic uniform buffer
+        uint32_t Stride = 0;            // Element size of a storage buffer
     };
     
 
@@ -358,29 +364,14 @@ namespace RHIStructures
         ShaderStageMask VisibleStages;
     };
     
+    // A pipeline either shares Layout with other pipelines or, when Layout is null, builds and owns
+    // one from ResourceLayout and Constants.
     struct PipelineDesc
     {
-        uint32_t PipelineID = 0;
-        bool IsVariant = false;
-        std::vector<PipelineDesc> PipelineVariants = {};
-        ResourceLayout VariantResourceLayout = {};
-        std::vector<uint32_t> InputPipelineIDs = {};
-        
-        bool IsPresented = false;
-        bool IsQuad = false;
-        bool CreateOwnAttachments = false;
-        bool UseOwnResourceLayout = true;
-        bool CreateDepthImage = false;
-        bool CreateDepthAttachment = false;
-        bool UseDescriptorBuffer = false;
-        
-        bool AttachmentsAreViewportDims = false;
-        uint32_t AttachmentWidth = 0;
-        uint32_t AttachmentHeight = 0;
-        uint32_t AttachmentArrayLayers = 1;
-        uint32_t ViewMask = 0;
-        uint32_t OutputDescriptorSetIndex = 1;
-        
+        PipelineLayout* Layout = nullptr;
+        ResourceLayout ResourceLayout = {};
+        std::vector<PipelineConstant> Constants = {};
+
         ShaderStage VertexShader = {};
         ShaderStage FragmentShader = {};
         ShaderStage GeometryShader = {};
@@ -391,123 +382,56 @@ namespace RHIStructures
         std::vector<VertexBinding> VertexBindings = {};
         PrimitiveTopology PrimitiveTopology = PrimitiveTopology::TriangleList;
         RasterizerState RasterizerState = {};
-        
+        DepthStencilState DepthStencilState = {};
+        MultisampleState MultisampleState = { 1, false };
+
         std::vector<BlendAttachmentState> BlendAttachmentStates = {};
         std::vector<Format> RenderTargetFormats = {};
-        std::vector<SamplerType> AttachmentSamplers = {};
-        std::vector<DirectX::XMFLOAT4> AttachmentClearValues = {};
-        
-        DepthStencilState DepthStencilState;
         Format DepthStencilFormat = Format::Unknown;
-        float DepthClearValue = 1.0f;
-        
-        MultisampleState MultisampleState = {};
-        std::vector<PipelineConstant> Constants = {};
-        ResourceLayout ResourceLayout = {};
-        std::vector<AttachmentLoadOp> ColorLoadOps = {};
-        std::vector<AttachmentStoreOp> ColorStoreOps = {};
-        AttachmentLoadOp DepthLoadOp = AttachmentLoadOp::DontCare;
-        AttachmentStoreOp DepthStoreOp = AttachmentStoreOp::DontCare;
-        
+        uint32_t ViewMask = 0;
+
         const void* CachedPipelineData = nullptr;
         size_t CachedPipelineDataSize = 0;
     };
     void DXRenderTargetFormats(const std::vector<Format>& formats, DXGI_FORMAT outFormats[8]);
 
     //====================================//
-    //  -----  Render Target Info  -----  //
+    //  ---------  Rendering  ----------  //
     //====================================//
 
-    struct RenderTargetAttachment
+    // Clear values come from the image's ImageDesc, which is also its optimized clear value on D3D12,
+    // unless HasClearColour overrides it.
+    struct ColorAttachment
     {
-        void* ImageView;                    // VkImageView* or D3D12 RTV handle
-        Format Format;
-        AttachmentLoadOp LoadOp;
-        AttachmentStoreOp StoreOp;
-        ImageLayout InitialLayout;
-        ImageLayout FinalLayout;
-        DirectX::XMFLOAT4 ClearColor = {0.0f, 0.0f, 0.0f, 1.0f};
+        ImageHandle Image = {};
+        AttachmentLoadOp LoadOp = AttachmentLoadOp::Load;
+        bool HasClearColour = false;
+        DirectX::XMFLOAT4 ClearColour = {};
     };
 
-    struct DepthStencilAttachment
+    struct DepthAttachment
     {
-        void* ImageView;                    // VkImageView* or D3D12 DSV handle
-        Format Format;
-        AttachmentLoadOp DepthLoadOp;
-        AttachmentStoreOp DepthStoreOp;
-        AttachmentLoadOp StencilLoadOp;
-        AttachmentStoreOp StencilStoreOp;
-        ImageLayout InitialLayout;
-        ImageLayout FinalLayout;
-        float ClearDepth = 1.0f;
-        uint32_t ClearStencil = 0;
+        ImageHandle Image = {};
+        AttachmentLoadOp LoadOp = AttachmentLoadOp::Load;
     };
 
-    //===================================//
-    //  ------  Memory Barriers  ------  //
-    //===================================//
-
-    enum class PipelineStage : uint32_t
+    struct RenderingDesc
     {
-        TopOfPipe = 0,
-        DrawIndirect = 1,
-        VertexInput = 2,
-        VertexShader = 3,
-        FragmentShader = 7,
-        EarlyFragmentTests = 8,
-        LateFragmentTests = 9,
-        ColorAttachmentOutput = 10,
-        ComputeShader = 11,
-        Transfer = 12,
-        BottomOfPipe = 13,
-        AllGraphics = 15,
-        AllCommands = 16
+        std::vector<ColorAttachment> ColorAttachments;
+        DepthAttachment Depth;
+        uint32_t Width = 0;
+        uint32_t Height = 0;
+        uint32_t ViewMask = 0;
     };
 
-    enum class AccessFlag : uint32_t
+    // Stages and access masks are derived from the two layouts by the backend.
+    struct ImageTransition
     {
-        IndirectCommandRead = 1 << 0,
-        IndexBufferRead = 1 << 1,
-        VertexAttributeRead = 1 << 2,
-        UniformBufferRead = 1 << 3,
-        InputAttachmentRead = 1 << 4,
-        ShaderRead = 1 << 5,
-        ShaderWrite = 1 << 6,
-        ColorAttachmentRead = 1 << 7,
-        ColorAttachmentWrite = 1 << 8,
-        DepthStencilAttachmentRead = 1 << 9,
-        DepthStencilAttachmentWrite = 1 << 10,
-        TransferRead = 1 << 11,
-        TransferWrite = 1 << 12,
-        MemoryRead = 1 << 15,
-        MemoryWrite = 1 << 16
+        ImageHandle Image = {};
+        ImageLayout From = ImageLayout::Undefined;
+        ImageLayout To = ImageLayout::Undefined;
     };
 
-    struct MemoryBarrier
-    {
-        PipelineStage SrcStage;
-        PipelineStage DstStage;
-        uint32_t SrcAccessMask;
-        uint32_t DstAccessMask;
-    };
-
-    struct ImageMemoryBarrier
-    {
-        PipelineStage SrcStage;
-        PipelineStage DstStage;
-        uint32_t SrcAccessMask;
-        uint32_t DstAccessMask;
-        ImageLayout OldLayout;
-        ImageLayout NewLayout;
-        void* ImageResource;   // VkImage* or D3D12 resource*
-        uint32_t BaseMipLevel = 0;
-        uint32_t MipLevelCount = 1;
-        uint32_t BaseArrayLayer = 0;
-        uint32_t ArrayLayerCount = 1;
-        bool IsDepthImage = false;
-    };
-    VkPipelineStageFlags ConvertPipelineStage(PipelineStage stage);
-    
     //===================================//
     //  ---------  Resorces  ----------  //
     //===================================//
@@ -518,22 +442,18 @@ namespace RHIStructures
         Index,
         Constant,
         ShaderStorage,
-        Upload
+        Upload,
+        FrameData       // Uniform and storage use, host visible: the per-frame ring
     };
 
-    enum class ImageType : uint8_t
-    {
-        Sampled,
-        Storage,
-        RenderTarget,
-        DepthStencil
-    };
-    
     struct ImageUsage
     {
+        bool Sampled = false;
+        bool RenderTarget = false;
+        bool DepthStencil = false;
+        bool Storage = false;
         bool TransferSource = false;
         bool TransferDestination = false;
-        ImageType Type = ImageType::Sampled;
     };
     VkImageUsageFlags VulkanImageUsage(ImageUsage usage);
     D3D12_RESOURCE_FLAGS DXImageUsage(ImageUsage usage);
@@ -598,10 +518,11 @@ namespace RHIStructures
         uint64_t Size = 0;
         Format Format = {};
         ImageUsage Usage = {};
-        ImageType Type = ImageType::Sampled;
-        MemoryAccess Access = MemoryAccess(0);
+        MemoryAccess Access = MemoryAccess(8);
         ImageLayout Layout = ImageLayout::Undefined;
         const void* InitialData = nullptr;
+        DirectX::XMFLOAT4 ClearColour = { 0.0f, 0.0f, 0.0f, 1.0f };
+        float ClearDepth = 1.0f;
     };
     VkImageViewType VulkanImageViewType(ImageDesc desc);
     
@@ -613,7 +534,6 @@ namespace RHIStructures
         uint64_t Descriptor = 0;
         uint8_t DescriptorType = 0;
     };
-    D3D12_CPU_DESCRIPTOR_HANDLE DXDescriptor(const ImageAllocation& imageAllocation);
     
     //===================================//
     //  ------  Descriptor Sets  ------  //
@@ -624,11 +544,10 @@ namespace RHIStructures
         uint32_t Binding = 0;
         BufferHandle Buffer = {};
         ImageHandle Image = {};
-        uint32_t DynamicOffset = 0;
 
-        static DescriptorSetBinding ForBuffer(uint32_t binding, BufferHandle buffer, uint32_t dynamicOffset = 0)
+        static DescriptorSetBinding ForBuffer(uint32_t binding, BufferHandle buffer)
         {
-            return DescriptorSetBinding{ .Binding = binding, .Buffer = buffer, .DynamicOffset = dynamicOffset };
+            return DescriptorSetBinding{ .Binding = binding, .Buffer = buffer };
         }
 
         static DescriptorSetBinding ForImage(uint32_t binding, ImageHandle image)
@@ -637,60 +556,16 @@ namespace RHIStructures
         }
     };
     
-    struct PipelineDescriptorData {
-        uint32_t setIndex;
-        std::vector<DescriptorSetBinding> bindings;
-    };
-
     struct DescriptorSetAllocation
     {
         uint64_t DescriptorAddress = 0;         // VkDeviceAddress for Vulkan, GPU descriptor handle for DX12
-        uint64_t SetKey = 0;                    // Pipeline ID << 32 + Set Index
-        void* PlatformData = nullptr;           // Platform-specific data if needed
-        std::vector<uint32_t> DynamicOffsets;   // Track dynamic offsets per descriptor
-        uint32_t DynamicDescriptorCount = 0;    // Number of dynamic descriptors
-    };
-    
-    struct IOResource
-    {
-        std::vector<DescriptorSetBinding> Bindings;
-        ResourceLayout Layout;
+        uint64_t SetKey = 0;                    // Layout ID << 32 + Set Index
+        void* PlatformData = nullptr;
     };
     
     //====================================//
     //  ----------  Renderer  ----------  //
     //====================================//
-    
-    constexpr size_t MaxPushConstantBytes = 128;
-
-    struct IndexedDraw
-    {
-        uint32_t PipelineVarientID = 0;
-        BufferHandle VertexBuffer = {};
-        BufferHandle IndexBuffer = {};
-        uint32_t VertexCount = 0;
-        uint32_t IndexCount = 0;
-        uint32_t VertexStride = 0;
-        uint8_t PushConstants[MaxPushConstantBytes] = {};
-        size_t PushConstantSize = 0;
-        std::vector<DescriptorSetHandle> PerDrawDescriptors;
-    };
-
-    struct MaterialDraw
-    {
-        std::vector<DescriptorSetHandle> PerMaterialDescriptors;
-        std::vector<IndexedDraw> Draws;
-    };
-
-    struct PipelineFrameContext
-    {
-        Pipeline* ContextPipeline = nullptr;
-        bool IsFSQuad = false;
-        bool IsPresented = false;
-        // [pipeline variant (0 = main pipeline, i = PipelineVariants[i - 1])][material bucket]
-        std::vector<std::vector<MaterialDraw>> IndexedDrawBins;
-        std::vector<DescriptorSetHandle> PerFrameDescriptors;
-    };
 
     struct LightData
     {

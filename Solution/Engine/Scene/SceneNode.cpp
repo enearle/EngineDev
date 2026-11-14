@@ -152,7 +152,7 @@ void SceneNode::UpdateWorldMatrix()
 {
     if (!IsWorldMatrixDirty) return;
 
-    WorldMatrix = Parent ? Parent->GetWorldMatrix() * LocalMatrix : LocalMatrix;
+    WorldMatrix = Parent ? LocalMatrix * Parent->GetWorldMatrix() : LocalMatrix;
     IsWorldMatrixDirty = false;
 }
 

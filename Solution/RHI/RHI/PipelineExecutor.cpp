@@ -2,10 +2,8 @@
 #include "../DirectX12/D3DCore.h"
 #include "../Vulkan/VulkanCore.h"
 #include "../GraphicsSettings.h"
-#include <DirectXMath.h>
 #include "../DirectX12/D3D12Structs.h"
 #include "BufferAllocator.h"
-#include "RHIConstants.h"
 #include "../Window.h"
 
 using namespace D3D12Structs;
@@ -13,17 +11,17 @@ using namespace D3D12Structs;
 PipelineExecutor* PipelineExecutor::Create(Window* window, CoreInitData data)
 {
     if (GRAPHICS_SETTINGS.APIToUse == Vulkan)
-    {
         return new VulkanPipelineExecutor(window, data);
-    }
-    else if (GRAPHICS_SETTINGS.APIToUse == DirectX12)
-    {
+    if (GRAPHICS_SETTINGS.APIToUse == DirectX12)
         return new D3DPipelineExecutor(window, data);
-    }
-    else
-    {
-        throw std::runtime_error("Invalid graphics API selected.");
-    }
+    throw std::runtime_error("Invalid graphics API selected.");
+}
+
+void PipelineExecutor::EvictBackBuffers()
+{
+    for (ImageHandle image : BackBuffers)
+        BufferAllocator::GetInstance()->EvictImage(image);
+    BackBuffers.clear();
 }
 
 //================================================//
@@ -32,33 +30,45 @@ PipelineExecutor* PipelineExecutor::Create(Window* window, CoreInitData data)
 
 D3DPipelineExecutor::D3DPipelineExecutor(Window* window, CoreInitData data)
 {
-    StartRender(window, data);
+    D3DCore::Instance().InitDirect3D(window, data);
+    BackBufferFormat = D3DCore::Instance().GetRenderTargetFormat() == DXGI_FORMAT_R16G16B16A16_FLOAT
+        ? Format::R16G16B16A16_FLOAT : Format::R8G8B8A8_UNORM;
+    EnlistBackBuffers();
 }
 
 D3DPipelineExecutor::~D3DPipelineExecutor()
 {
-    EndRender();
-}
-
-void D3DPipelineExecutor::StartRender(Window* window, CoreInitData data)
-{
-    D3DCore::Instance().InitDirect3D(window, data);
-}
-
-void D3DPipelineExecutor::EndRender()
-{
+    EvictBackBuffers();
     D3DCore::Instance().Reset();
+}
+
+void D3DPipelineExecutor::EnlistBackBuffers()
+{
+    EvictBackBuffers();
+    D3DCore& core = D3DCore::Instance();
+    for (uint32_t i = 0; i < core.GetBackBufferCount(); i++)
+    {
+        DX12ImageData* imageData = new DX12ImageData();
+        imageData->Image = core.GetBackBuffer(i);
+        imageData->RenderTargetView = core.GetBackBufferDescriptor(i);
+
+        ImageAllocation allocation;
+        allocation.Image = imageData;
+        allocation.Desc.Width = core.GetWindow()->GetWidth();
+        allocation.Desc.Height = core.GetWindow()->GetHeight();
+        allocation.Desc.Format = BackBufferFormat;
+        allocation.Desc.Usage.RenderTarget = true;
+        BackBuffers.push_back(BufferAllocator::GetInstance()->EnlistExternalImage(allocation));
+    }
 }
 
 void D3DPipelineExecutor::BeginFrame()
 {
     D3DCore::Instance().BeginFrame();
     BufferAllocator::GetInstance()->BeginFrame(D3DCore::Instance().GetFrameNumber(), D3DCore::Instance().GetFramesInFlight());
-}
-
-uint64_t D3DPipelineExecutor::GetFrameNumber() const
-{
-    return D3DCore::Instance().GetFrameNumber();
+    CurrentPipeline = nullptr;
+    BoundVertexBuffer = {};
+    BoundIndexBuffer = {};
 }
 
 void D3DPipelineExecutor::EndFrame()
@@ -66,244 +76,168 @@ void D3DPipelineExecutor::EndFrame()
     D3DCore::Instance().EndFrame();
 }
 
-void D3DPipelineExecutor::GetSwapChainRenderTargets(void*& outBackBufferView, void*& outBackBuffer)
-{
-    D3D12_CPU_DESCRIPTOR_HANDLE rtvHandle = D3DCore::Instance().GetRenderTargetDescriptor();
-    ID3D12Resource* backBuffer = D3DCore::Instance().GetCurrentBackBuffer();
-    outBackBufferView = reinterpret_cast<void*>(rtvHandle.ptr);
-    outBackBuffer = backBuffer;
-}
-
 void D3DPipelineExecutor::Wait()
 {
     D3DCore::Instance().WaitForGpu();
 }
 
-void D3DPipelineExecutor::BeginPipeline(Pipeline* pipeline,
-                                        const std::vector<void*>& colorViews,
-                                        void* depthView,
-                                        uint32_t width, uint32_t height,
-                                        bool isVariant, bool isFirstInContext)
+uint64_t D3DPipelineExecutor::GetFrameNumber() const
+{
+    return D3DCore::Instance().GetFrameNumber();
+}
+
+ImageHandle D3DPipelineExecutor::GetBackBuffer() const
+{
+    return BackBuffers[D3DCore::Instance().GetCurrentFrameIndex()];
+}
+
+ID3D12GraphicsCommandList* D3DPipelineExecutor::GetCommandList()
+{
+    return D3DCore::Instance().GetCommandList().Get();
+}
+
+void D3DPipelineExecutor::TransitionImages(std::span<const ImageTransition> transitions)
+{
+    BufferAllocator* allocator = BufferAllocator::GetInstance();
+    std::vector<D3D12_RESOURCE_BARRIER> barriers;
+    barriers.reserve(transitions.size());
+
+    for (const ImageTransition& transition : transitions)
+    {
+        D3D12_RESOURCE_STATES before = ConvertLayoutToResourceState(transition.From);
+        D3D12_RESOURCE_STATES after = ConvertLayoutToResourceState(transition.To);
+        if (before == after)
+            continue;
+
+        D3D12_RESOURCE_BARRIER barrier{};
+        barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        barrier.Transition.pResource = static_cast<DX12ImageData*>(allocator->GetImageAllocation(transition.Image).Image)->Image.Get();
+        barrier.Transition.StateBefore = before;
+        barrier.Transition.StateAfter = after;
+        barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+        barriers.push_back(barrier);
+    }
+
+    if (!barriers.empty())
+        GetCommandList()->ResourceBarrier(static_cast<UINT>(barriers.size()), barriers.data());
+}
+
+void D3DPipelineExecutor::BeginRendering(const RenderingDesc& desc)
 {
     ID3D12GraphicsCommandList* cmdList = GetCommandList();
-    CurrentPipeline = static_cast<D3DPipeline*>(pipeline);
+    BufferAllocator* allocator = BufferAllocator::GetInstance();
 
-    // Set root signature and pipeline state
-    cmdList->SetGraphicsRootSignature(CurrentPipeline->GetRootSignature());
-    cmdList->SetPipelineState(CurrentPipeline->GetPipelineState());
-
-    BufferAllocator* bufferAlloc = BufferAllocator::GetInstance();
-    DirectX12BufferAllocator* dxAlloc = static_cast<DirectX12BufferAllocator*>(bufferAlloc);
-    ID3D12DescriptorHeap* heaps[] = { dxAlloc->GetShaderResourceHeap().Get() };
-    cmdList->SetDescriptorHeaps(1, heaps);
-
-    // Convert view handles to D3D12 format
-    std::vector<D3D12_CPU_DESCRIPTOR_HANDLE> rtvHandles;
-    D3D12_CPU_DESCRIPTOR_HANDLE dsvHandle = {};
-    D3D12_CPU_DESCRIPTOR_HANDLE* pDsvHandle = nullptr;
-
-    if (!colorViews.empty() || depthView)
+    std::vector<D3D12_CPU_DESCRIPTOR_HANDLE> renderTargets;
+    for (const ColorAttachment& attachment : desc.ColorAttachments)
     {
-        for (const auto& colorView : colorViews)
-        {
-            D3D12_CPU_DESCRIPTOR_HANDLE handle;
-            handle.ptr = reinterpret_cast<SIZE_T>(colorView);
-            rtvHandles.push_back(handle);
-        }
-
-        if (depthView)
-        {
-            dsvHandle.ptr = reinterpret_cast<SIZE_T>(depthView);
-            pDsvHandle = &dsvHandle;
-        }
-    }
-    else
-    {
-        rtvHandles = CurrentPipeline->GetOwnedRTVs();
-        dsvHandle = CurrentPipeline->GetOwnedDSV();
-
-        if (dsvHandle.ptr != 0)
-        {
-            pDsvHandle = &dsvHandle;
-        }
-
-        if (rtvHandles.empty() && !pDsvHandle)
-            throw std::runtime_error("No attachments provided.");
+        const ImageAllocation& allocation = allocator->GetImageAllocation(attachment.Image);
+        D3D12_CPU_DESCRIPTOR_HANDLE view = static_cast<DX12ImageData*>(allocation.Image)->RenderTargetView;
+        renderTargets.push_back(view);
+        const DirectX::XMFLOAT4& colour = attachment.HasClearColour ? attachment.ClearColour : allocation.Desc.ClearColour;
+        if (attachment.LoadOp == AttachmentLoadOp::Clear)
+            cmdList->ClearRenderTargetView(view, &colour.x, 0, nullptr);
     }
 
-    // Set render targets (for both external and owned attachments)
-    cmdList->OMSetRenderTargets(
-        static_cast<UINT>(rtvHandles.size()),
-        rtvHandles.empty() ? nullptr : rtvHandles.data(),
-        FALSE,
-        pDsvHandle
-    );
-
-    // Clear render targets if not a pipeline variant
-    if (!isVariant)
+    D3D12_CPU_DESCRIPTOR_HANDLE depthView = {};
+    if (desc.Depth.Image.IsValid())
     {
-        for (size_t i = 0; i < rtvHandles.size() && i < CurrentPipeline->GetClearColors().size(); ++i)
-        {
-            float clearColor[] = {
-                CurrentPipeline->GetClearColors()[i].x,
-                CurrentPipeline->GetClearColors()[i].y,
-                CurrentPipeline->GetClearColors()[i].z,
-                CurrentPipeline->GetClearColors()[i].w
-            };
-            cmdList->ClearRenderTargetView(rtvHandles[i], clearColor, 0, nullptr);
-        }
-
-        if (pDsvHandle)
-        {
-            cmdList->ClearDepthStencilView(
-                *pDsvHandle,
-                D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL,
-                CurrentPipeline->GetDepthClearValue(),
-                0,
-                0,
-                nullptr
-            );
-        }
+        const ImageAllocation& allocation = allocator->GetImageAllocation(desc.Depth.Image);
+        depthView = static_cast<DX12ImageData*>(allocation.Image)->DepthStencilView;
+        if (desc.Depth.LoadOp == AttachmentLoadOp::Clear)
+            cmdList->ClearDepthStencilView(depthView, D3D12_CLEAR_FLAG_DEPTH, allocation.Desc.ClearDepth, 0, 0, nullptr);
     }
 
-    cmdList->IASetPrimitiveTopology(dynamic_cast<D3DPipeline*>(pipeline)->GetTopology());
-
-    D3D12_VIEWPORT viewport{};
-    viewport.TopLeftX = 0.0f;
-    viewport.TopLeftY = 0.0f;
-    viewport.Width = static_cast<FLOAT>(width);
-    viewport.Height = static_cast<FLOAT>(height);
-    viewport.MinDepth = 0.0f;
-    viewport.MaxDepth = 1.0f;
-
-    D3D12_RECT scissor{};
-    scissor.left = 0;
-    scissor.top = 0;
-    scissor.right = static_cast<LONG>(width);
-    scissor.bottom = static_cast<LONG>(height);
-
-    if (pipeline->ViewportSize.x != 0 || pipeline->ViewportSize.y != 0) // It really should be both, if one is 0, the other is irrelevant
-    {
-        viewport.Width = static_cast<FLOAT>(pipeline->ViewportSize.x);
-        viewport.Height = static_cast<FLOAT>(pipeline->ViewportSize.y);
-        scissor.right = static_cast<LONG>(pipeline->ViewportSize.x);
-        scissor.bottom = static_cast<LONG>(pipeline->ViewportSize.y);
-    }
-
-    cmdList->RSSetViewports(1, &viewport);
-    cmdList->RSSetScissorRects(1, &scissor);
+    cmdList->OMSetRenderTargets(static_cast<UINT>(renderTargets.size()), renderTargets.empty() ? nullptr : renderTargets.data(),
+        FALSE, desc.Depth.Image.IsValid() ? &depthView : nullptr);
+    SetViewport(0, 0, desc.Width, desc.Height);
 }
 
-void D3DPipelineExecutor::EndPipeline(bool isLastInContext)
+void D3DPipelineExecutor::EndRendering()
 {
-    // Empty atm
-
 }
 
-void D3DPipelineExecutor::IssueMemoryBarrier(const RHIStructures::MemoryBarrier& barrier)
+void D3DPipelineExecutor::BindPipeline(Pipeline* pipeline)
 {
     ID3D12GraphicsCommandList* cmdList = GetCommandList();
+    D3DPipeline* d3dPipeline = static_cast<D3DPipeline*>(pipeline);
 
-    // Global memory barrier (UAV barrier)
-    D3D12_RESOURCE_BARRIER d3dBarrier{};
-    d3dBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
-    d3dBarrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-
-    cmdList->ResourceBarrier(1, &d3dBarrier);
-}
-
-void D3DPipelineExecutor::IssueImageMemoryBarrier(const std::vector<ImageMemoryBarrier>& barriers)
-{
-    if (barriers.empty()) return;
-
-    ID3D12GraphicsCommandList* cmdList = GetCommandList();
-
-    std::vector<D3D12_RESOURCE_BARRIER> d3dBarriers;
-    d3dBarriers.reserve(barriers.size());
-
-    for (const auto& barrier : barriers)
+    if (!CurrentPipeline || CurrentPipeline->GetLayout() != pipeline->GetLayout())
     {
-        D3D12_RESOURCE_BARRIER d3dBarrier{};
-        d3dBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-        d3dBarrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-        d3dBarrier.Transition.pResource = reinterpret_cast<ID3D12Resource*>(barrier.ImageResource);
-        d3dBarrier.Transition.StateBefore = ConvertLayoutToResourceState(barrier.OldLayout);
-        d3dBarrier.Transition.StateAfter = ConvertLayoutToResourceState(barrier.NewLayout);
-        d3dBarrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-        d3dBarriers.push_back(d3dBarrier);
+        ID3D12DescriptorHeap* heaps[] = { static_cast<DirectX12BufferAllocator*>(BufferAllocator::GetInstance())->GetShaderResourceHeap() };
+        cmdList->SetDescriptorHeaps(1, heaps);
+        cmdList->SetGraphicsRootSignature(static_cast<D3DPipelineLayout*>(pipeline->GetLayout())->GetRootSignature());
     }
 
-    cmdList->ResourceBarrier(static_cast<UINT>(d3dBarriers.size()), d3dBarriers.data());
+    cmdList->SetPipelineState(d3dPipeline->GetPipelineState());
+    cmdList->IASetPrimitiveTopology(d3dPipeline->GetTopology());
+    CurrentPipeline = pipeline;
 }
 
-void D3DPipelineExecutor::DrawIndexed(BufferHandle vertexBuffer, uint32_t vertexCount, BufferHandle indexBuffer,
-    uint32_t indexCount, const void* pushConstants, size_t pushConstantsSize, uint32_t vertexStride)
+void D3DPipelineExecutor::SetViewport(uint32_t x, uint32_t y, uint32_t width, uint32_t height)
 {
-    ID3D12GraphicsCommandList* cmdList = GetCommandList();
-    BufferAllocator* bufferAlloc = BufferAllocator::GetInstance();
-
-    if (pushConstants && pushConstantsSize > 0)
-    {
-        uint32_t num32BitValues = static_cast<uint32_t>(pushConstantsSize / 4);
-        cmdList->SetGraphicsRoot32BitConstants(0, num32BitValues, pushConstants, 0);
-    }
-
-    const BufferAllocation& vertAlloc = bufferAlloc->GetBufferAllocation(vertexBuffer);
-    const BufferAllocation& indexAlloc = bufferAlloc->GetBufferAllocation(indexBuffer);
-
-    D3D12_VERTEX_BUFFER_VIEW vbv = {};
-    vbv.BufferLocation = DXBuffer(vertAlloc)->GPUAddress;
-    vbv.SizeInBytes = static_cast<UINT>(vertAlloc.Size);
-    vbv.StrideInBytes = vertexStride;
-
-    D3D12_INDEX_BUFFER_VIEW ibv = {};
-    ibv.BufferLocation = DXBuffer(indexAlloc)->GPUAddress;
-    ibv.SizeInBytes = static_cast<UINT>(indexAlloc.Size);
-    ibv.Format = DXGI_FORMAT_R32_UINT;
-
-    cmdList->IASetVertexBuffers(0, 1, &vbv);
-    cmdList->IASetIndexBuffer(&ibv);
-    cmdList->DrawIndexedInstanced(indexCount, 1, 0, 0, 0);
+    D3D12_VIEWPORT viewport = { static_cast<FLOAT>(x), static_cast<FLOAT>(y), static_cast<FLOAT>(width), static_cast<FLOAT>(height), 0.0f, 1.0f };
+    D3D12_RECT scissor = { static_cast<LONG>(x), static_cast<LONG>(y), static_cast<LONG>(x + width), static_cast<LONG>(y + height) };
+    GetCommandList()->RSSetViewports(1, &viewport);
+    GetCommandList()->RSSetScissorRects(1, &scissor);
 }
 
-void D3DPipelineExecutor::DrawFSQuad()
-{
-    ID3D12GraphicsCommandList* cmdList = GetCommandList();
-    cmdList->DrawInstanced(6, 1, 0, 0);
-}
-
-void D3DPipelineExecutor::BindDescriptorSet(DescriptorSetHandle set)
+void D3DPipelineExecutor::BindDescriptorSet(DescriptorSetHandle set, std::span<const uint32_t> dynamicOffsets)
 {
     const DescriptorSetAllocation& allocation = BufferAllocator::GetInstance()->GetDescriptorSet(set);
     uint32_t setIndex = static_cast<uint32_t>(allocation.SetKey & 0xFFFFFFFF);
 
-    const std::map<uint32_t, uint32_t>& setToRootParamMapping = CurrentPipeline->GetSetToRootParamMapping();
-    auto it = setToRootParamMapping.find(setIndex);
-    if (it == setToRootParamMapping.end())
-        throw std::runtime_error("Descriptor set " + std::to_string(setIndex) + " not found in pipeline root signature");
+    const D3DPipelineLayout::SetParameters* parameters = static_cast<D3DPipelineLayout*>(CurrentPipeline->GetLayout())->FindSet(setIndex);
+    if (!parameters)
+        throw std::runtime_error("Descriptor set " + std::to_string(setIndex) + " is not in the bound pipeline's layout");
 
-    D3D12_GPU_DESCRIPTOR_HANDLE handle;
-    handle.ptr = allocation.DescriptorAddress;
-    GetCommandList()->SetGraphicsRootDescriptorTable(it->second, handle);
+    const DirectX12BufferAllocator::DescriptorTableData* table = static_cast<DirectX12BufferAllocator::DescriptorTableData*>(allocation.PlatformData);
+    ID3D12GraphicsCommandList* cmdList = GetCommandList();
+
+    if (parameters->TableParameter >= 0)
+        cmdList->SetGraphicsRootDescriptorTable(parameters->TableParameter, table->BaseHandle);
+
+    if (dynamicOffsets.size() != parameters->DynamicParameters.size())
+        throw std::runtime_error("Dynamic offset count does not match the set's dynamic uniform buffers");
+
+    for (size_t i = 0; i < dynamicOffsets.size(); i++)
+        cmdList->SetGraphicsRootConstantBufferView(parameters->DynamicParameters[i], table->DynamicAddresses[i] + dynamicOffsets[i]);
 }
 
-void D3DPipelineExecutor::BindDrawDescriptorSets(const std::vector<DescriptorSetHandle>* descriptorSets)
+void D3DPipelineExecutor::PushConstants(const void* data, uint32_t size)
 {
-    if (!descriptorSets)
-        return;
-
-    for (DescriptorSetHandle set : *descriptorSets)
-        BindDescriptorSet(set);
+    int32_t parameter = static_cast<D3DPipelineLayout*>(CurrentPipeline->GetLayout())->GetConstantsParameter();
+    if (parameter >= 0)
+        GetCommandList()->SetGraphicsRoot32BitConstants(parameter, size / 4, data, 0);
 }
 
-void D3DPipelineExecutor::BindPipelineDescriptorSets(const std::vector<DescriptorSetHandle>* descriptorSets)
+void D3DPipelineExecutor::DrawIndexed(BufferHandle vertexBuffer, uint32_t vertexStride, BufferHandle indexBuffer,
+                                      uint32_t indexCount, uint32_t instanceCount)
 {
-    if (descriptorSets)
-        for (DescriptorSetHandle set : *descriptorSets)
-            BindDescriptorSet(set);
+    ID3D12GraphicsCommandList* cmdList = GetCommandList();
+    BufferAllocator* allocator = BufferAllocator::GetInstance();
 
-    for (DescriptorSetHandle set : CurrentPipeline->GetInputDescriptorSetIDs())
-        BindDescriptorSet(set);
+    if (vertexBuffer != BoundVertexBuffer)
+    {
+        const BufferAllocation& allocation = allocator->GetBufferAllocation(vertexBuffer);
+        D3D12_VERTEX_BUFFER_VIEW view = { DXBuffer(allocation)->GPUAddress, static_cast<UINT>(allocation.Size), vertexStride };
+        cmdList->IASetVertexBuffers(0, 1, &view);
+        BoundVertexBuffer = vertexBuffer;
+    }
+
+    if (indexBuffer != BoundIndexBuffer)
+    {
+        const BufferAllocation& allocation = allocator->GetBufferAllocation(indexBuffer);
+        D3D12_INDEX_BUFFER_VIEW view = { DXBuffer(allocation)->GPUAddress, static_cast<UINT>(allocation.Size), DXGI_FORMAT_R32_UINT };
+        cmdList->IASetIndexBuffer(&view);
+        BoundIndexBuffer = indexBuffer;
+    }
+
+    cmdList->DrawIndexedInstanced(indexCount, instanceCount, 0, 0, 0);
+}
+
+void D3DPipelineExecutor::Draw(uint32_t vertexCount, uint32_t instanceCount)
+{
+    GetCommandList()->DrawInstanced(vertexCount, instanceCount, 0, 0);
 }
 
 void D3DPipelineExecutor::BeginOverlayPass(uint32_t width, uint32_t height)
@@ -314,86 +248,97 @@ void D3DPipelineExecutor::BeginOverlayPass(uint32_t width, uint32_t height)
 
     cmdList->ClearDepthStencilView(dsv, D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 0.0f, 0, 0, nullptr);
     cmdList->OMSetRenderTargets(1, &rtv, false, &dsv);
-
-    D3D12_VIEWPORT viewport = {0.0f, 0.0f, (float)width, (float)height, 0.0f, 1.0f};
-    D3D12_RECT scissor = {0, 0, (LONG)width, (LONG)height};
-    cmdList->RSSetViewports(1, &viewport);
-    cmdList->RSSetScissorRects(1, &scissor);
+    SetViewport(0, 0, width, height);
 }
 
 void D3DPipelineExecutor::EndOverlayPass()
 {
-}
-
-void D3DPipelineExecutor::ClearBackBuffer(const DirectX::XMFLOAT4& colour, uint32_t width, uint32_t height)
-{
-    D3D12_CPU_DESCRIPTOR_HANDLE rtv = D3DCore::Instance().GetRenderTargetDescriptor();
-    const float clearColour[] = { colour.x, colour.y, colour.z, colour.w };
-    GetCommandList()->ClearRenderTargetView(rtv, clearColour, 0, nullptr);
-}
-
-void D3DPipelineExecutor::OverrideViewport(uint32_t x, uint32_t y, uint32_t w, uint32_t h)
-{
-    ID3D12GraphicsCommandList* cmdList = GetCommandList();
-    D3D12_VIEWPORT vp{};
-    vp.TopLeftX = static_cast<FLOAT>(x);
-    vp.TopLeftY = static_cast<FLOAT>(y);
-    vp.Width    = static_cast<FLOAT>(w);
-    vp.Height   = static_cast<FLOAT>(h);
-    vp.MinDepth = 0.0f;
-    vp.MaxDepth = 1.0f;
-    D3D12_RECT sc{};
-    sc.left   = static_cast<LONG>(x);
-    sc.top    = static_cast<LONG>(y);
-    sc.right  = static_cast<LONG>(x + w);
-    sc.bottom = static_cast<LONG>(y + h);
-    cmdList->RSSetViewports(1, &vp);
-    cmdList->RSSetScissorRects(1, &sc);
+    CurrentPipeline = nullptr;
+    BoundVertexBuffer = {};
+    BoundIndexBuffer = {};
 }
 
 void D3DPipelineExecutor::ResetWindow()
 {
+    EvictBackBuffers();
     D3DCore::Instance().ResetWindow();
-}
-
-ID3D12GraphicsCommandList* D3DPipelineExecutor::GetCommandList()
-{
-    return D3DCore::Instance().GetCommandList().Get();
+    EnlistBackBuffers();
 }
 
 //================================================//
 // Vulkan                                         //
 //================================================//
 
+struct VulkanLayoutAccess
+{
+    VkPipelineStageFlags Stages;
+    VkAccessFlags Access;
+};
+
+static VulkanLayoutAccess VulkanAccessFor(ImageLayout layout, bool isDepth)
+{
+    switch (layout)
+    {
+    case ImageLayout::Undefined:
+        return { VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0 };
+    case ImageLayout::ColorAttachment:
+        return { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT };
+    case ImageLayout::DepthStencilAttachment:
+        return { VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+                 VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT };
+    case ImageLayout::DepthStencilReadOnly:
+        return { VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                 VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_SHADER_READ_BIT };
+    case ImageLayout::ShaderReadOnly:
+        return { VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT };
+    case ImageLayout::TransferSrc:
+        return { VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_READ_BIT };
+    case ImageLayout::TransferDst:
+        return { VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT };
+    case ImageLayout::Present:
+        return { VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0 };
+    default:
+        return { VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT };
+    }
+}
+
 VulkanPipelineExecutor::VulkanPipelineExecutor(Window* window, CoreInitData data)
 {
-    StartRender(window, data);
+    VulkanCore::Instance().InitVulkan(window, data);
+    BackBufferFormat = VulkanCore::Instance().GetSwapchainFormat() == VK_FORMAT_B8G8R8A8_UNORM
+        ? Format::B8G8R8A8_UNORM : Format::R8G8B8A8_UNORM;
+    EnlistBackBuffers();
 }
 
 VulkanPipelineExecutor::~VulkanPipelineExecutor()
 {
-    EndRender();
-}
-
-void VulkanPipelineExecutor::StartRender(Window* window, CoreInitData data)
-{
-    VulkanCore::Instance().InitVulkan(window, data);
-}
-
-void VulkanPipelineExecutor::EndRender()
-{
+    EvictBackBuffers();
     VulkanCore::Instance().Cleanup();
+}
+
+void VulkanPipelineExecutor::EnlistBackBuffers()
+{
+    EvictBackBuffers();
+    VulkanCore& core = VulkanCore::Instance();
+    for (const VulkanImageData& swapchainImage : core.GetSwapchainImages())
+    {
+        ImageAllocation allocation;
+        allocation.Image = new VulkanImageData(swapchainImage);
+        allocation.Desc.Width = core.GetExtent().width;
+        allocation.Desc.Height = core.GetExtent().height;
+        allocation.Desc.Format = BackBufferFormat;
+        allocation.Desc.Usage.RenderTarget = true;
+        BackBuffers.push_back(BufferAllocator::GetInstance()->EnlistExternalImage(allocation));
+    }
 }
 
 void VulkanPipelineExecutor::BeginFrame()
 {
     VulkanCore::Instance().BeginFrame();
     BufferAllocator::GetInstance()->BeginFrame(VulkanCore::Instance().GetFrameNumber(), VulkanCore::Instance().GetFramesInFlight());
-}
-
-uint64_t VulkanPipelineExecutor::GetFrameNumber() const
-{
-    return VulkanCore::Instance().GetFrameNumber();
+    CurrentPipeline = nullptr;
+    BoundVertexBuffer = {};
+    BoundIndexBuffer = {};
 }
 
 void VulkanPipelineExecutor::EndFrame()
@@ -401,281 +346,212 @@ void VulkanPipelineExecutor::EndFrame()
     VulkanCore::Instance().EndFrame();
 }
 
-void VulkanPipelineExecutor::GetSwapChainRenderTargets(void*& outBackBufferView, void*& outBackBuffer)
-{
-    VkImageView swapchainImageView = VulkanCore::Instance().GetCurrentSwapchainImageView();
-    VkImage vkImage = VulkanCore::Instance().GetCurrentSwapchainImage();
-    outBackBufferView = swapchainImageView;
-    outBackBuffer = reinterpret_cast<void*>(vkImage);
-}
-
 void VulkanPipelineExecutor::Wait()
 {
     VulkanCore::Instance().WaitForGpu();
 }
 
-void VulkanPipelineExecutor::BeginPipeline(Pipeline* pipeline,
-                                           const std::vector<void*>& colorViews,
-                                           void* depthView,
-                                           uint32_t width, uint32_t height,
-                                           bool isVariant, bool isFirstInContext)
+uint64_t VulkanPipelineExecutor::GetFrameNumber() const
 {
-    CurrentPipeline = static_cast<VulkanPipeline*>(pipeline);
-    VkCommandBuffer cmdBuffer = GetCommandBuffer();
+    return VulkanCore::Instance().GetFrameNumber();
+}
 
-    if (isFirstInContext)
+ImageHandle VulkanPipelineExecutor::GetBackBuffer() const
+{
+    return BackBuffers[VulkanCore::Instance().GetCurrentSwapchainImageIndex()];
+}
+
+VkCommandBuffer VulkanPipelineExecutor::GetCommandBuffer()
+{
+    return VulkanCore::Instance().GetCommandBuffer();
+}
+
+void VulkanPipelineExecutor::TransitionImages(std::span<const ImageTransition> transitions)
+{
+    BufferAllocator* allocator = BufferAllocator::GetInstance();
+    std::vector<VkImageMemoryBarrier> barriers;
+    VkPipelineStageFlags sourceStages = 0;
+    VkPipelineStageFlags destinationStages = 0;
+
+    for (const ImageTransition& transition : transitions)
     {
-        VkRenderingInfo renderingInfo{};
-        renderingInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
-        renderingInfo.renderArea.offset = {0, 0};
-        renderingInfo.renderArea.extent = {width, height};
-        renderingInfo.layerCount = 1;
-        renderingInfo.viewMask = pipeline->GetViewMask();
+        if (transition.From == transition.To)
+            continue;
 
-        if (pipeline->ViewportSize.x != 0 && pipeline->ViewportSize.y != 0)
-            renderingInfo.renderArea.extent = VkExtent2D(pipeline->ViewportSize.x, pipeline->ViewportSize.y);
+        const ImageAllocation& allocation = allocator->GetImageAllocation(transition.Image);
+        bool isDepth = IsDepthFormat(allocation.Desc.Format);
+        VulkanLayoutAccess source = VulkanAccessFor(transition.From, isDepth);
+        VulkanLayoutAccess destination = VulkanAccessFor(transition.To, isDepth);
 
-        VkImageView depthStencilView = nullptr;
-        std::vector<VkImageView> colourAttachmentViews;
-        if (!colorViews.empty())
-            for (const auto& colorView : colorViews)
-                colourAttachmentViews.push_back(reinterpret_cast<VkImageView>(colorView));
-        else
-            colourAttachmentViews = CurrentPipeline->GetOwnedVkImageViews();
+        VkImageMemoryBarrier barrier{};
+        barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        barrier.oldLayout = VulkanImageLayout(transition.From);
+        barrier.newLayout = VulkanImageLayout(transition.To);
+        barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.image = static_cast<VulkanImageData*>(allocation.Image)->ImageHandle;
+        barrier.subresourceRange.aspectMask = isDepth ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
+        barrier.subresourceRange.levelCount = VK_REMAINING_MIP_LEVELS;
+        barrier.subresourceRange.layerCount = VK_REMAINING_ARRAY_LAYERS;
+        barrier.srcAccessMask = source.Access;
+        barrier.dstAccessMask = destination.Access;
+        barriers.push_back(barrier);
 
-        if (depthView)
-            depthStencilView = reinterpret_cast<VkImageView>(depthView);
-        else
-            depthStencilView = CurrentPipeline->GetOwnedDepthVkImageView();
-
-        if (colourAttachmentViews.empty() && depthStencilView == VK_NULL_HANDLE)
-            throw std::runtime_error("No attachments provided.");
-
-        if (CurrentPipeline->GetClearColors().size() != colourAttachmentViews.size())
-            throw std::runtime_error("Number of clear colors does not match number of attachments.");
-
-        std::vector<VkAttachmentDescription> attachmentDescs = CurrentPipeline->GetAttachmentDescriptions();
-        VkAttachmentDescription depthStencilDesc = {};  // Initialize to zero
-        if (depthStencilView != VK_NULL_HANDLE)
-            depthStencilDesc = CurrentPipeline->GetDepthAttachmentDescription();
-        std::vector<VkRenderingAttachmentInfo> colourAttachments;
-        size_t numColourAttachments = colourAttachmentViews.size();
-
-        for (size_t i = 0; i < numColourAttachments; ++i)
-        {
-            VkRenderingAttachmentInfo attachment{};
-            attachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-            attachment.imageView = colourAttachmentViews[i];
-            attachment.loadOp = isVariant ? VK_ATTACHMENT_LOAD_OP_LOAD : attachmentDescs[i].loadOp;
-            attachment.storeOp = attachmentDescs[i].storeOp;
-            attachment.imageLayout = attachmentDescs[i].finalLayout;
-            attachment.clearValue.color = {CurrentPipeline->GetClearColors()[i].x, CurrentPipeline->GetClearColors()[i].y, CurrentPipeline->GetClearColors()[i].z, CurrentPipeline->GetClearColors()[i].w};
-            colourAttachments.push_back(attachment);
-        }
-
-        renderingInfo.colorAttachmentCount = static_cast<uint32_t>(colourAttachments.size());
-        renderingInfo.pColorAttachments = colourAttachments.data();
-
-        VkRenderingAttachmentInfo depthAttachment{};
-        if (depthStencilView != VK_NULL_HANDLE)
-        {
-            depthAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-            depthAttachment.imageView = depthStencilView;
-            depthAttachment.loadOp = isVariant ? VK_ATTACHMENT_LOAD_OP_LOAD : depthStencilDesc.loadOp;
-            depthAttachment.storeOp = depthStencilDesc.storeOp;
-            depthAttachment.imageLayout = depthStencilDesc.finalLayout;
-            depthAttachment.clearValue.depthStencil = {CurrentPipeline->GetDepthClearValue(), 0};
-            renderingInfo.pDepthAttachment = &depthAttachment;
-        }
-
-        vkCmdBeginRendering(cmdBuffer, &renderingInfo);
+        sourceStages |= source.Stages;
+        destinationStages |= destination.Stages;
     }
 
-    // Bind pipeline
-    vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, CurrentPipeline->GetVulkanPipeline());
+    if (barriers.empty())
+        return;
 
-    // Set viewport
+    vkCmdPipelineBarrier(GetCommandBuffer(), sourceStages, destinationStages, 0, 0, nullptr, 0, nullptr,
+        static_cast<uint32_t>(barriers.size()), barriers.data());
+}
+
+static VkAttachmentLoadOp VulkanLoadOp(AttachmentLoadOp loadOp)
+{
+    switch (loadOp)
+    {
+    case AttachmentLoadOp::Clear:    return VK_ATTACHMENT_LOAD_OP_CLEAR;
+    case AttachmentLoadOp::DontCare: return VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    default:                         return VK_ATTACHMENT_LOAD_OP_LOAD;
+    }
+}
+
+void VulkanPipelineExecutor::BeginRendering(const RenderingDesc& desc)
+{
+    BufferAllocator* allocator = BufferAllocator::GetInstance();
+
+    std::vector<VkRenderingAttachmentInfo> colorAttachments;
+    for (const ColorAttachment& attachment : desc.ColorAttachments)
+    {
+        const ImageAllocation& allocation = allocator->GetImageAllocation(attachment.Image);
+        VkRenderingAttachmentInfo info{};
+        info.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+        info.imageView = static_cast<VulkanImageData*>(allocation.Image)->ImageView;
+        info.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        info.loadOp = VulkanLoadOp(attachment.LoadOp);
+        info.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+        const DirectX::XMFLOAT4& colour = attachment.HasClearColour ? attachment.ClearColour : allocation.Desc.ClearColour;
+        info.clearValue.color = { { colour.x, colour.y, colour.z, colour.w } };
+        colorAttachments.push_back(info);
+    }
+
+    VkRenderingAttachmentInfo depthAttachment{};
+    if (desc.Depth.Image.IsValid())
+    {
+        const ImageAllocation& allocation = allocator->GetImageAllocation(desc.Depth.Image);
+        depthAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+        depthAttachment.imageView = static_cast<VulkanImageData*>(allocation.Image)->ImageView;
+        depthAttachment.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+        depthAttachment.loadOp = VulkanLoadOp(desc.Depth.LoadOp);
+        depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+        depthAttachment.clearValue.depthStencil = { allocation.Desc.ClearDepth, 0 };
+    }
+
+    VkRenderingInfo renderingInfo{};
+    renderingInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+    renderingInfo.renderArea = { { 0, 0 }, { desc.Width, desc.Height } };
+    renderingInfo.layerCount = 1;
+    renderingInfo.viewMask = desc.ViewMask;
+    renderingInfo.colorAttachmentCount = static_cast<uint32_t>(colorAttachments.size());
+    renderingInfo.pColorAttachments = colorAttachments.empty() ? nullptr : colorAttachments.data();
+    renderingInfo.pDepthAttachment = desc.Depth.Image.IsValid() ? &depthAttachment : nullptr;
+
+    vkCmdBeginRendering(GetCommandBuffer(), &renderingInfo);
+    SetViewport(0, 0, desc.Width, desc.Height);
+}
+
+void VulkanPipelineExecutor::EndRendering()
+{
+    vkCmdEndRendering(GetCommandBuffer());
+}
+
+void VulkanPipelineExecutor::BindPipeline(Pipeline* pipeline)
+{
+    VkCommandBuffer cmdBuffer = GetCommandBuffer();
+    vkCmdBindPipeline(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, static_cast<VulkanPipeline*>(pipeline)->GetVulkanPipeline());
+
+    if (!CurrentPipeline || CurrentPipeline->GetLayout() != pipeline->GetLayout())
+    {
+        VkDescriptorSet samplerSet = VulkanCore::Instance().GetGlobalSamplerSet();
+        vkCmdBindDescriptorSets(cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+            static_cast<VulkanPipelineLayout*>(pipeline->GetLayout())->GetLayout(), 0, 1, &samplerSet, 0, nullptr);
+    }
+    CurrentPipeline = pipeline;
+}
+
+void VulkanPipelineExecutor::SetViewport(uint32_t x, uint32_t y, uint32_t width, uint32_t height)
+{
     VkViewport viewport{};
-    viewport.x = 0.0f;
-    viewport.y = static_cast<float>(height);
+    viewport.x = static_cast<float>(x);
+    viewport.y = static_cast<float>(y + height);
     viewport.width = static_cast<float>(width);
     viewport.height = -static_cast<float>(height);
-    viewport.minDepth = 0.0f;
     viewport.maxDepth = 1.0f;
 
-    // Set scissor
-    VkRect2D scissor{};
-    scissor.offset = {0, 0};
-    scissor.extent = {width, height};
-
-    if (pipeline->ViewportSize.x != 0 || pipeline->ViewportSize.y != 0)
-    {
-        viewport.y = static_cast<float>(pipeline->ViewportSize.y);
-        viewport.width = static_cast<float>(pipeline->ViewportSize.x);
-        viewport.height = -static_cast<float>(pipeline->ViewportSize.y);
-        scissor.extent = VkExtent2D(pipeline->ViewportSize.x, pipeline->ViewportSize.y);
-    }
-
-    vkCmdSetViewport(cmdBuffer, 0, 1, &viewport);
-    vkCmdSetScissor(cmdBuffer, 0, 1, &scissor);
+    VkRect2D scissor = { { static_cast<int32_t>(x), static_cast<int32_t>(y) }, { width, height } };
+    vkCmdSetViewport(GetCommandBuffer(), 0, 1, &viewport);
+    vkCmdSetScissor(GetCommandBuffer(), 0, 1, &scissor);
 }
 
-void VulkanPipelineExecutor::EndPipeline(bool isLastInContext)
-{
-    if (isLastInContext)
-    {
-        VkCommandBuffer cmdBuffer = GetCommandBuffer();
-        vkCmdEndRendering(cmdBuffer);
-    }
-}
-
-void VulkanPipelineExecutor::IssueMemoryBarrier(const RHIStructures::MemoryBarrier& barrier)
-{
-    VkMemoryBarrier memBarrier{};
-    memBarrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
-    memBarrier.srcAccessMask = barrier.SrcAccessMask;
-    memBarrier.dstAccessMask = barrier.DstAccessMask;
-
-    vkCmdPipelineBarrier(
-        GetCommandBuffer(),
-        static_cast<VkPipelineStageFlags>(barrier.SrcStage),
-        static_cast<VkPipelineStageFlags>(barrier.DstStage),
-        0,
-        1, &memBarrier,
-        0, nullptr,
-        0, nullptr
-    );
-}
-
-void VulkanPipelineExecutor::IssueImageMemoryBarrier(const std::vector<ImageMemoryBarrier>& barriers)
-{
-    if (barriers.empty()) return;
-
-    VkCommandBuffer cmdBuffer = GetCommandBuffer();
-
-    std::vector<VkImageMemoryBarrier> vkBarriers;
-    vkBarriers.reserve(barriers.size());
-
-    VkPipelineStageFlags srcStage = 0;
-    VkPipelineStageFlags dstStage = 0;
-
-    for (const auto& barrier : barriers)
-    {
-        VkImageMemoryBarrier vkBarrier{};
-        vkBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-        vkBarrier.pNext = nullptr;
-        vkBarrier.oldLayout = VulkanImageLayout(barrier.OldLayout);
-        vkBarrier.newLayout = VulkanImageLayout(barrier.NewLayout);
-        vkBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        vkBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        vkBarrier.image = reinterpret_cast<VkImage>(barrier.ImageResource);
-        vkBarrier.subresourceRange.aspectMask = barrier.IsDepthImage ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
-        vkBarrier.subresourceRange.baseMipLevel = barrier.BaseMipLevel;
-        vkBarrier.subresourceRange.levelCount = barrier.MipLevelCount;
-        vkBarrier.subresourceRange.baseArrayLayer = barrier.BaseArrayLayer;
-        vkBarrier.subresourceRange.layerCount = barrier.ArrayLayerCount;
-        vkBarrier.srcAccessMask = barrier.SrcAccessMask;
-        vkBarrier.dstAccessMask = barrier.DstAccessMask;
-        vkBarriers.push_back(vkBarrier);
-
-        srcStage |= ConvertPipelineStage(barrier.SrcStage);
-        dstStage |= ConvertPipelineStage(barrier.DstStage);
-    }
-
-    if (srcStage == 0) srcStage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
-    if (dstStage == 0) dstStage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
-
-    vkCmdPipelineBarrier(
-        cmdBuffer,
-        srcStage,
-        dstStage,
-        0,
-        0, nullptr,
-        0, nullptr,
-        static_cast<uint32_t>(vkBarriers.size()),
-        vkBarriers.data()
-    );
-}
-
-void VulkanPipelineExecutor::DrawIndexed(BufferHandle vertexBuffer, uint32_t vertexCount, BufferHandle indexBuffer,
-    uint32_t indexCount, const void* pushConstants, size_t pushConstantsSize, uint32_t vertexStride)
-{
-    VkCommandBuffer cmdBuffer = GetCommandBuffer();
-    BufferAllocator* bufferAlloc = BufferAllocator::GetInstance();
-
-    if (pushConstants && pushConstantsSize > 0)
-        vkCmdPushConstants(cmdBuffer, CurrentPipeline->GetPipelineLayout(), CurrentPipeline->GetPushConstantStages(),
-            0, static_cast<uint32_t>(pushConstantsSize), pushConstants);
-
-    const BufferAllocation& vertexBufferAlloc = bufferAlloc->GetBufferAllocation(vertexBuffer);
-    VkBuffer vkVertexBuffer = static_cast<VulkanBufferData*>(vertexBufferAlloc.Buffer)->Buffer;
-    VkDeviceSize offset = 0;
-    vkCmdBindVertexBuffers(cmdBuffer, 0, 1, &vkVertexBuffer, &offset);
-
-    if (indexCount > 0)
-    {
-        const BufferAllocation& indexBufferAlloc = bufferAlloc->GetBufferAllocation(indexBuffer);
-        VkBuffer vkIndexBuffer = static_cast<VulkanBufferData*>(indexBufferAlloc.Buffer)->Buffer;
-        vkCmdBindIndexBuffer(cmdBuffer, vkIndexBuffer, 0, VK_INDEX_TYPE_UINT32);
-        vkCmdDrawIndexed(cmdBuffer, indexCount, 1, 0, 0, 0);
-    }
-    else
-        vkCmdDraw(cmdBuffer, vertexCount, 1, 0, 0);
-}
-
-void VulkanPipelineExecutor::DrawFSQuad()
-{
-    VkCommandBuffer cmdBuffer = GetCommandBuffer();
-    vkCmdDraw(cmdBuffer, 6, 1, 0, 0);
-}
-
-void VulkanPipelineExecutor::BindDescriptorSet(DescriptorSetHandle set)
+void VulkanPipelineExecutor::BindDescriptorSet(DescriptorSetHandle set, std::span<const uint32_t> dynamicOffsets)
 {
     const DescriptorSetAllocation& allocation = BufferAllocator::GetInstance()->GetDescriptorSet(set);
     uint32_t setIndex = static_cast<uint32_t>(allocation.SetKey & 0xFFFFFFFF);
     VkDescriptorSet descriptorSet = reinterpret_cast<VkDescriptorSet>(allocation.DescriptorAddress);
 
-    vkCmdBindDescriptorSets(GetCommandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS, CurrentPipeline->GetPipelineLayout(),
-        setIndex, 1, &descriptorSet,
-        static_cast<uint32_t>(allocation.DynamicOffsets.size()),
-        allocation.DynamicOffsets.empty() ? nullptr : allocation.DynamicOffsets.data());
+    vkCmdBindDescriptorSets(GetCommandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS,
+        static_cast<VulkanPipelineLayout*>(CurrentPipeline->GetLayout())->GetLayout(), setIndex, 1, &descriptorSet,
+        static_cast<uint32_t>(dynamicOffsets.size()), dynamicOffsets.empty() ? nullptr : dynamicOffsets.data());
 }
 
-void VulkanPipelineExecutor::BindDrawDescriptorSets(const std::vector<DescriptorSetHandle>* descriptorSets)
+void VulkanPipelineExecutor::PushConstants(const void* data, uint32_t size)
 {
-    if (!descriptorSets)
-        return;
-
-    for (DescriptorSetHandle set : *descriptorSets)
-        BindDescriptorSet(set);
+    VulkanPipelineLayout* layout = static_cast<VulkanPipelineLayout*>(CurrentPipeline->GetLayout());
+    vkCmdPushConstants(GetCommandBuffer(), layout->GetLayout(), layout->GetPushConstantStages(), 0, size, data);
 }
 
-void VulkanPipelineExecutor::BindPipelineDescriptorSets(const std::vector<DescriptorSetHandle>* descriptorSets)
+void VulkanPipelineExecutor::DrawIndexed(BufferHandle vertexBuffer, uint32_t vertexStride, BufferHandle indexBuffer,
+                                         uint32_t indexCount, uint32_t instanceCount)
 {
-    VkDescriptorSet globalSamplerSet = VulkanCore::Instance().GetGlobalSamplerSet();
-    if (!CurrentPipeline->GetIsVariant())
-        vkCmdBindDescriptorSets(GetCommandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS,
-            CurrentPipeline->GetPipelineLayout(), 0, 1, &globalSamplerSet, 0, nullptr);
+    VkCommandBuffer cmdBuffer = GetCommandBuffer();
+    BufferAllocator* allocator = BufferAllocator::GetInstance();
 
-    if (descriptorSets)
-        for (DescriptorSetHandle set : *descriptorSets)
-            BindDescriptorSet(set);
+    if (vertexBuffer != BoundVertexBuffer)
+    {
+        VkBuffer buffer = static_cast<VulkanBufferData*>(allocator->GetBufferAllocation(vertexBuffer).Buffer)->Buffer;
+        VkDeviceSize offset = 0;
+        vkCmdBindVertexBuffers(cmdBuffer, 0, 1, &buffer, &offset);
+        BoundVertexBuffer = vertexBuffer;
+    }
 
-    for (DescriptorSetHandle set : CurrentPipeline->GetInputDescriptorSetIDs())
-        BindDescriptorSet(set);
+    if (indexBuffer != BoundIndexBuffer)
+    {
+        VkBuffer buffer = static_cast<VulkanBufferData*>(allocator->GetBufferAllocation(indexBuffer).Buffer)->Buffer;
+        vkCmdBindIndexBuffer(cmdBuffer, buffer, 0, VK_INDEX_TYPE_UINT32);
+        BoundIndexBuffer = indexBuffer;
+    }
+
+    vkCmdDrawIndexed(cmdBuffer, indexCount, instanceCount, 0, 0, 0);
+}
+
+void VulkanPipelineExecutor::Draw(uint32_t vertexCount, uint32_t instanceCount)
+{
+    vkCmdDraw(GetCommandBuffer(), vertexCount, instanceCount, 0, 0);
 }
 
 void VulkanPipelineExecutor::BeginOverlayPass(uint32_t width, uint32_t height)
 {
     VkClearValue clearValues[2];
-    clearValues[0].depthStencil = {0.0f, 0};
-    clearValues[1].color = {{0.0f, 0.0f, 0.0f, 0.0f}};
+    clearValues[0].depthStencil = { 0.0f, 0 };
+    clearValues[1].color = { { 0.0f, 0.0f, 0.0f, 0.0f } };
 
     VkRenderPassBeginInfo beginInfo{};
     beginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
     beginInfo.renderPass = VulkanCore::Instance().GetOverlayRenderPass();
     beginInfo.framebuffer = VulkanCore::Instance().GetCurrentOverlayFramebuffer();
-    beginInfo.renderArea = {{0, 0}, {width, height}};
+    beginInfo.renderArea = { { 0, 0 }, { width, height } };
     beginInfo.clearValueCount = 2;
     beginInfo.pClearValues = clearValues;
 
@@ -685,54 +561,14 @@ void VulkanPipelineExecutor::BeginOverlayPass(uint32_t width, uint32_t height)
 void VulkanPipelineExecutor::EndOverlayPass()
 {
     vkCmdEndRenderPass(GetCommandBuffer());
-}
-
-void VulkanPipelineExecutor::ClearBackBuffer(const DirectX::XMFLOAT4& colour, uint32_t width, uint32_t height)
-{
-    VkRenderingAttachmentInfo attachment{};
-    attachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-    attachment.imageView = VulkanCore::Instance().GetCurrentSwapchainImageView();
-    attachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-    attachment.clearValue.color = {{colour.x, colour.y, colour.z, colour.w}};
-
-    VkRenderingInfo renderingInfo{};
-    renderingInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
-    renderingInfo.renderArea = {{0, 0}, {width, height}};
-    renderingInfo.layerCount = 1;
-    renderingInfo.colorAttachmentCount = 1;
-    renderingInfo.pColorAttachments = &attachment;
-
-    vkCmdBeginRendering(GetCommandBuffer(), &renderingInfo);
-    vkCmdEndRendering(GetCommandBuffer());
-}
-
-void VulkanPipelineExecutor::OverrideViewport(uint32_t x, uint32_t y, uint32_t w, uint32_t h)
-{
-    VkViewport viewport{};
-    viewport.x = static_cast<float>(x);
-    viewport.y = static_cast<float>(y + h);
-    viewport.width = static_cast<float>(w);
-    viewport.height = -static_cast<float>(h);
-    viewport.minDepth = 0.0f;
-    viewport.maxDepth = 1.0f;
-
-    VkRect2D scissor{};
-    scissor.offset = {static_cast<int32_t>(x), static_cast<int32_t>(y)};
-    scissor.extent = {w, h};
-
-    vkCmdSetViewport(GetCommandBuffer(), 0, 1, &viewport);
-    vkCmdSetScissor(GetCommandBuffer(), 0, 1, &scissor);
+    CurrentPipeline = nullptr;
+    BoundVertexBuffer = {};
+    BoundIndexBuffer = {};
 }
 
 void VulkanPipelineExecutor::ResetWindow()
 {
+    EvictBackBuffers();
     VulkanCore::Instance().ResetWindow();
+    EnlistBackBuffers();
 }
-
-VkCommandBuffer VulkanPipelineExecutor::GetCommandBuffer()
-{
-    return VulkanCore::Instance().GetCommandBuffer();
-}
-

@@ -6,40 +6,15 @@ struct VSOutput
 
 #define PI 3.14159265358979323846
 
-cbuffer VPData : register(b0, space1)
-{
-    float4x4 viewProjection;
-    float4 cameraPosition;
-};
+#include "Common.hlsli"
 
-Texture2DArray shadowMaps           : register(t0, space2);
-Texture2D inAlbedo                  : register(t0, space3);
-Texture2D inNormal                  : register(t1, space3);
-Texture2D inMetallicRoughnessAO     : register(t2, space3);
-Texture2D inPosition                : register(t3, space3);
+Texture2DArray shadowMaps           : register(t0, space3);
+Texture2D inAlbedo                  : register(t1, space3);
+Texture2D<float2> inNormal          : register(t2, space3);
+Texture2D inMetallicRoughnessAO     : register(t3, space3);
+Texture2D<float> inDepth            : register(t4, space3);
 SamplerState linearSampler          : register(s0, space0);
 SamplerState pointSampler           : register(s1, space0);
-
-struct Light
-{
-    float3 Position;
-    float3 Colour;
-    float Intensity;
-    float Radius;
-    uint Type;
-    float Angle;
-    uint ShadowIndex;
-};
-
-cbuffer LightData : register(b0, space4)
-{
-    Light Lights[4];
-};
-
-cbuffer LightMatrices : register(b0, space5)
-{
-    float4x4 lightVP[4];
-};
 
 static float3 albedo;
 static float3 normal;
@@ -50,19 +25,22 @@ static float ambientOcclusion;
 static float3 viewVector;
 static float3 materialData;
 
-void init(VSOutput input)
+void init(VSOutput input, float depth)
 {
-    albedo = inAlbedo.Sample(linearSampler, input.uv).rgb;
-    normal = inNormal.Sample(linearSampler, input.uv).rgb;
-    materialData = inMetallicRoughnessAO.Sample(linearSampler, input.uv).rgb;
-    fragPosition = inPosition.Sample(linearSampler, input.uv).rgb;
+    albedo = inAlbedo.Sample(pointSampler, input.uv).rgb;
+    normal = DecodeNormal(inNormal.Sample(pointSampler, input.uv));
+    materialData = inMetallicRoughnessAO.Sample(pointSampler, input.uv).rgb;
+
+    float4 clip = float4(input.uv.x * 2.0 - 1.0, 1.0 - input.uv.y * 2.0, depth, 1.0);
+    float4 world = mul(InverseViewProjection, clip);
+    fragPosition = world.xyz / world.w;
     
     metallic = materialData.r;
     roughness = max(materialData.g, 0.04);
     roughness = max(roughness * roughness, 0.001);
     ambientOcclusion = materialData.b;
     
-    viewVector = normalize(cameraPosition.xyz - fragPosition);
+    viewVector = normalize(CameraPosition.xyz - fragPosition);
 }
 
 // GGX/Throwbridge-Reitz normal distribution
@@ -121,7 +99,7 @@ float3 AttenuateLight(Light light)
 
 float Shadow(Light light, float3 lightDirection)
 {
-    float4 samplePos = mul(lightVP[light.ShadowIndex], float4(fragPosition, 1));
+    float4 samplePos = mul(LightViewProjection[light.ShadowIndex], float4(fragPosition, 1));
     
     float3 ndc = samplePos.xyz / samplePos.w;
     ndc.y = -ndc.y;
@@ -170,7 +148,10 @@ float3 LightPBR(Light light)
 
 float4 main(VSOutput input) : SV_TARGET
 {
-    init(input);
+    float depth = inDepth.Sample(pointSampler, input.uv);
+    if (depth >= 1.0)
+        return float4(0.0, 0.0, 0.0, 1.0);
+    init(input, depth);
     
     float3 outGoingLight = float3(0,0,0);
     for (uint i = 0; i < 4; i++)

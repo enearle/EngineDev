@@ -33,7 +33,7 @@ EngineDev/
     ├── Engine.sln            6 projects, x64 Debug and Release only
     ├── Build/Common.props    settings shared by every project
     ├── RHI/                  RHI.dll: device, resources, pipelines, command recording, both backends
-    ├── Renderer/             Renderer.dll: frame, materials, HLSL shaders
+    ├── Renderer/             Renderer.dll: pass graph, passes, registries, draw lists, HLSL shaders
     ├── Engine/               Engine.dll: scene, assets, importers, input, Noesis and ImGui layers
     ├── Game/                 Game.dll: game code and Assets/
     ├── Editor/               Editor.exe: Dear ImGui editor
@@ -155,7 +155,8 @@ or `Solution\Editor`:
 - Noesis XAML: `../Engine/MyXAML/`
 
 **Backends.** Standalone defaults to Vulkan and the Editor to Direct3D 12. `-vulkan` or `-dx12`
-overrides either. The Editor runs the game when you press Play, or at once with `-play`.
+overrides either. The Editor runs the game when you press Play, or at once with `-play`. `-stress`
+adds 10,000 objects and `-freeze-animation` holds the animated mesh still.
 
 **Validation.** Debug builds enable the Vulkan validation layer and the Direct3D 12 debug layer; both
 print to stderr. `Tools/RunAndCapture.ps1` runs an executable for a few seconds and saves stdout,
@@ -175,5 +176,6 @@ stderr, the exit code and a screenshot, which is the quickest way to check both 
   is not in the repository; this is harmless.
 - Direct3D 12 has no view instancing set up, so the multiview shadow pass only fills layer 0 there.
   Only one light is used today. Tracked in the plan.
+- Meshes and textures upload synchronously and only between frames (at game start).
 - `ImageAsset` and `MaterialAsset` are stubs from unfinished asset work: textures are still loaded
   by file name through `Material`, and `ResourceManager::Import` only handles meshes.

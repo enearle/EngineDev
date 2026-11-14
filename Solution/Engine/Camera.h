@@ -2,15 +2,6 @@
 #include <DirectXMath.h>
 #include "ENGINE_API_Macro.h"
 #include "Renderer.h"
-#include "Uploader.h"
-#include "RHI/RHIConstants.h"
-
-struct VPData
-{
-    DirectX::XMFLOAT4X4 ViewProjection;
-    DirectX::XMFLOAT4 CameraPosition;
-    uint8_t _padding[176];
-};
 
 class ENGINE_API Camera
 {
@@ -21,78 +12,48 @@ class ENGINE_API Camera
     DirectX::XMMATRIX Transform;
     DirectX::XMMATRIX View;
     DirectX::XMMATRIX Projection;
-    VPData VPBufferData;
-    bool IsVPDataDirty = true;
+    size_t ResizeSubscription = 0;
 
-    void UpdateVPData()
+    void SubscribeToResize()
     {
-        DirectX::XMMATRIX vpMatrix = View * Projection;
-        DirectX::XMFLOAT4X4 vp;
-        DirectX::XMStoreFloat4x4(&vp, vpMatrix);
-        DirectX::XMFLOAT4 position;
-        DirectX::XMStoreFloat4(&position, Transform.r[3]);
-        VPBufferData = VPData{.ViewProjection = vp, .CameraPosition = position };
+        ResizeSubscription = Renderer::EventOnResize().Subscribe([this](uint32_t width, uint32_t height) { OnResize(width, height); });
     }
 
 public:
-    VPData& GetVpData()
-    {
-        if (IsVPDataDirty) UpdateVPData();
-        return VPBufferData;
-    }
-
-private:
-
-    // Should consider separating the Camera and it's rendering code
-    // Could be needed for render targets like minimaps etc.
-    static VPData ActiveVPData;
-    static VPData* MappedDataAddr;
-    static bool BufferInitialized;
-    static Uploader::BufferID BufferID;
-    static void InitializeBuffer(Camera* camera)
-    {
-        if (!BufferInitialized)
-        {
-            ActiveCamera = camera;
-            BufferID = Uploader::UploadDynamic(256, &ActiveVPData);
-            const BufferAllocation& vpAllocation = Uploader::GetBufferAllocation(BufferID);
-            if (!vpAllocation.IsMapped || vpAllocation.Address == nullptr)
-                throw std::runtime_error("VP buffer is not mapped! Check MemoryAccess flags.");
-
-            MappedDataAddr = static_cast<VPData*>(vpAllocation.Address);
-            BufferInitialized = true;
-        }
-    }
-
-public:
-
     static Camera* ActiveCamera;
-    void SetView(DirectX::XMMATRIX view) { View = view; Transform = DirectX::XMMatrixInverse(nullptr, view); IsVPDataDirty = true; }
-    void SetTransform(DirectX::XMMATRIX transform) { Transform = transform; View = DirectX::XMMatrixInverse(nullptr, transform); IsVPDataDirty = true; }
-    static Uploader::BufferID GetBufferID() { return BufferID; };
 
-    static void UpdateMainCameraRenderData()
+    Camera(float fovDeg, float aspectRatio, const DirectX::XMFLOAT3& position, const DirectX::XMFLOAT3& rotation = {}, float nearPlane = 0.1f, float farPlane = 100.0f)
+        : FOV(fovDeg / 180.0f * DirectX::XM_PI), AspectRatio(aspectRatio), NearPlane(nearPlane), FarPlane(farPlane)
     {
-        *MappedDataAddr = ActiveCamera->GetVpData();
-    }
-
-    Camera(float fovDeg, float aspectRatio, const DirectX::XMFLOAT3& position, const DirectX::XMFLOAT3& rotation = {}, float nearPlane = 0.1f, float farPlane = 100.0f) : AspectRatio(aspectRatio), NearPlane(nearPlane), FarPlane(farPlane)
-    {
-        InitializeBuffer(this);
         SetTransform(DirectX::XMMatrixTranslation(position.x, position.y, position.z) * DirectX::XMMatrixRotationRollPitchYaw(rotation.x, rotation.y, rotation.z));
-        FOV = fovDeg / 180 * DirectX::XM_PI;
-        Projection = DirectX::XMMatrixPerspectiveFovLH(FOV, AspectRatio, nearPlane, farPlane);
-        Renderer::EventOnResize().Subscribe([this] (uint32_t width, uint32_t height) {OnResize(width, height); });
+        Projection = DirectX::XMMatrixPerspectiveFovLH(FOV, AspectRatio, NearPlane, FarPlane);
+        SubscribeToResize();
     }
 
-    Camera(float fovDeg, float aspectRatio, const DirectX::XMMATRIX& transformOrView, bool isView = false, float nearPlane = 0.1f, float farPlane = 1000.0f) : AspectRatio(aspectRatio), NearPlane(), FarPlane()
+    Camera(float fovDeg, float aspectRatio, const DirectX::XMMATRIX& transformOrView, bool isView = false, float nearPlane = 0.1f, float farPlane = 1000.0f)
+        : FOV(fovDeg / 180.0f * DirectX::XM_PI), AspectRatio(aspectRatio), NearPlane(nearPlane), FarPlane(farPlane)
     {
-        InitializeBuffer(this);
         isView ? SetView(transformOrView) : SetTransform(transformOrView);
-        FOV = fovDeg / 180 * DirectX::XM_PI;
-        Projection = DirectX::XMMatrixPerspectiveFovLH(FOV, AspectRatio, nearPlane, farPlane);
-        Renderer::EventOnResize().Subscribe([this] (uint32_t width, uint32_t height) {OnResize(width, height); });
+        Projection = DirectX::XMMatrixPerspectiveFovLH(FOV, AspectRatio, NearPlane, FarPlane);
+        SubscribeToResize();
     }
+
+    ~Camera()
+    {
+        Renderer::EventOnResize().Unsubscribe(ResizeSubscription);
+        if (ActiveCamera == this)
+            ActiveCamera = nullptr;
+    }
+
+    Camera(const Camera&) = delete;
+    Camera& operator=(const Camera&) = delete;
+
+    void SetView(DirectX::XMMATRIX view) { View = view; Transform = DirectX::XMMatrixInverse(nullptr, view); }
+    void SetTransform(DirectX::XMMATRIX transform) { Transform = transform; View = DirectX::XMMatrixInverse(nullptr, transform); }
+
+    DirectX::XMMATRIX GetView() const { return View; }
+    DirectX::XMMATRIX GetProjection() const { return Projection; }
+    DirectX::XMVECTOR GetPositionVector() const { return Transform.r[3]; }
 
     void LookAtFloat3(DirectX::XMFLOAT3 position)
     {
@@ -106,22 +67,16 @@ public:
 
     void SetPositionFloat3(DirectX::XMFLOAT3 position)
     {
-        DirectX::XMMATRIX transfrom = Transform;
-        transfrom.r[3] = DirectX::XMVectorSet(position.x, position.y, position.z, 1);
-        SetTransform(transfrom);
-
+        DirectX::XMMATRIX transform = Transform;
+        transform.r[3] = DirectX::XMVectorSet(position.x, position.y, position.z, 1);
+        SetTransform(transform);
     }
 
     void SetPositionVector(DirectX::XMVECTOR position)
     {
-        DirectX::XMMATRIX transfrom = Transform;
-        transfrom.r[3] = position;
-        SetTransform(transfrom);
-    }
-
-    DirectX::XMVECTOR GetPositionVector() const
-    {
-        return Transform.r[3];
+        DirectX::XMMATRIX transform = Transform;
+        transform.r[3] = position;
+        SetTransform(transform);
     }
 
     void OnResize(uint32_t width, uint32_t height)
@@ -129,5 +84,4 @@ public:
         AspectRatio = static_cast<float>(width) / static_cast<float>(height);
         Projection = DirectX::XMMatrixPerspectiveFovLH(FOV, AspectRatio, NearPlane, FarPlane);
     }
-
 };

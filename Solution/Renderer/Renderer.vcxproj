@@ -48,17 +48,28 @@
     </ClCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="DrawList.cpp" />
     <ClCompile Include="Image\ImageImport.cpp" />
     <ClCompile Include="Material.cpp" />
+    <ClCompile Include="MaterialRegistry.cpp" />
+    <ClCompile Include="MeshRegistry.cpp" />
+    <ClCompile Include="Passes\DeferredPasses.cpp" />
+    <ClCompile Include="PassGraph.cpp" />
     <ClCompile Include="Renderer.cpp" />
     <ClCompile Include="ShaderLibrary.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="DrawList.h" />
     <ClInclude Include="Image\ImageImport.h" />
     <ClInclude Include="Image\stb_image.h" />
     <ClInclude Include="Material.h" />
+    <ClInclude Include="MaterialRegistry.h" />
+    <ClInclude Include="MeshRegistry.h" />
+    <ClInclude Include="Passes\DeferredPasses.h" />
+    <ClInclude Include="PassGraph.h" />
     <ClInclude Include="Renderer.h" />
     <ClInclude Include="RENDERER_API_Macro.h" />
+    <ClInclude Include="RenderScene.h" />
     <ClInclude Include="ShaderLibrary.h" />
   </ItemGroup>
   <ItemGroup>
@@ -86,6 +97,7 @@
     <ShaderSource Include="Shaders\vs_vsm_skinned.hlsl">
       <Profile>vs_6_1</Profile>
     </ShaderSource>
+    <ShaderInclude Include="Shaders\Common.hlsli" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\RHI\RHI.vcxproj">

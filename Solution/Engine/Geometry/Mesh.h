@@ -7,7 +7,7 @@
 #include <vector>
 #include "RHI/RHIStructures.h"
 #include "../ENGINE_API_Macro.h"
-#include "Uploader.h"
+#include "RenderScene.h"
 
 struct aiScene;
 struct DirectX::XMMATRIX;
@@ -43,12 +43,7 @@ public:
     uint32_t GetIndexCount() const                      { return IndexCount; }
     uint32_t GetLocalMaterialIndex() const              { return LocalMaterialIndex; }
     bool IsSkinned() const                              { return bIsSkinned; }
-    uint32_t GetVertexStride() const                    { return bIsSkinned ? sizeof(RHIStructures::SkinnedVertex) : sizeof(RHIStructures::Vertex); }
-    uint32_t GetPipelineVariantID() const               { return bIsSkinned ? 1 : 0; }
-    Uploader::BufferID GetVertexBufferID() const        { return VertexBufferID; }
-    Uploader::BufferID GetIndexBufferID() const         { return IndexBufferID; }
-    void* GetVertexBufferHandle() const;
-    void* GetIndexBufferHandle() const;
+    MeshHandle GetGPUMesh() const                       { return GPUMesh; }
     const std::vector<DirectX::XMMATRIX>& GetBoneOffsets() const { return BoneOffsets; }
     const std::vector<DirectX::XMMATRIX>& GetBoneTransforms() const { return BoneTransforms; }
     void UploadToGPU();
@@ -62,8 +57,7 @@ private:
     std::vector<DirectX::XMMATRIX> BoneOffsets;
     std::vector<DirectX::XMMATRIX> BoneTransforms;
 
-    Uploader::BufferID VertexBufferID = {};
-    Uploader::BufferID IndexBufferID = {};
+    MeshHandle GPUMesh = {};
     VertexCache* TempVertexCache = nullptr;
     SkinnedVertexCache* TempSkinnedVertexCache = nullptr;
 

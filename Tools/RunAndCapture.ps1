@@ -30,13 +30,9 @@ $psi.RedirectStandardOutput = $true
 $psi.RedirectStandardError = $true
 $p = New-Object System.Diagnostics.Process
 $p.StartInfo = $psi
-$stdout = New-Object System.Text.StringBuilder
-$stderr = New-Object System.Text.StringBuilder
-Register-ObjectEvent -InputObject $p -EventName OutputDataReceived -Action { if ($EventArgs.Data) { $Event.MessageData.AppendLine($EventArgs.Data) | Out-Null } } -MessageData $stdout | Out-Null
-Register-ObjectEvent -InputObject $p -EventName ErrorDataReceived -Action { if ($EventArgs.Data) { $Event.MessageData.AppendLine($EventArgs.Data) | Out-Null } } -MessageData $stderr | Out-Null
 $p.Start() | Out-Null
-$p.BeginOutputReadLine()
-$p.BeginErrorReadLine()
+$stdoutTask = $p.StandardOutput.ReadToEndAsync()
+$stderrTask = $p.StandardError.ReadToEndAsync()
 
 Start-Sleep -Seconds $Seconds
 
@@ -64,5 +60,5 @@ if (-not $p.HasExited) {
 }
 Start-Sleep -Milliseconds 500
 "exit=$($p.ExitCode)" | Out-File -Encoding utf8 "$Out.exit"
-$stdout.ToString() | Out-File -Encoding utf8 "$Out.stdout.txt"
-$stderr.ToString() | Out-File -Encoding utf8 "$Out.stderr.txt"
+$stdoutTask.Result | Out-File -Encoding utf8 "$Out.stdout.txt"
+$stderrTask.Result | Out-File -Encoding utf8 "$Out.stderr.txt"

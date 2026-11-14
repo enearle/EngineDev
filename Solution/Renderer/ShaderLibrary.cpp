@@ -6,3 +6,9 @@ RHIStructures::ShaderStage LoadShader(const std::string& name, const char* entry
 {
     return RHIStructures::ImportShader(COMPILED_SHADER_DIRECTORY, name, entryPoint);
 }
+
+void ReleaseShader(RHIStructures::ShaderStage& shader)
+{
+    free(const_cast<void*>(shader.ByteCode));
+    shader = {};
+}
