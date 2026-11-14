@@ -128,7 +128,7 @@ void Renderer::Start(Window* mainWindow)
     sceneResources.VisibleStages = GetSceneVisibleStages();
     sceneResources.Bindings = GetSceneSetBindings();
     for (uint32_t slot = 0; slot < 3; slot++)
-        sceneResources.Bindings.push_back({ .Type = DescriptorType::SampledImage, .Slot = slot, .Set = 2, .Count = 1, .Sampler = SamplerType::Linear });
+        sceneResources.Bindings.push_back({ .Type = DescriptorType::SampledImage, .Slot = slot, .Set = 2, .Count = 1 });
 
     ShaderStageMask constantStages(0);
     constantStages.SetVertex(true);
@@ -217,7 +217,8 @@ void Renderer::DrawFrame()
         StatsInProgress.FrameTimeMilliseconds = std::chrono::duration<double, std::milli>(frameStart - LastFrameStart).count();
     LastFrameStart = frameStart;
 
-    Executor->BeginFrame();
+    if (!Executor->BeginFrame())
+        return;
     StatsInProgress.FrameNumber = Executor->GetFrameNumber();
 
     for (EnlistedExternalPass& external : ExternalPasses)

@@ -27,7 +27,6 @@ class VulkanCore
     std::vector<VkSemaphore> ImageAvailableSemaphores;
     std::vector<VkSemaphore> RenderFinishedSemaphores;
     std::vector<VkFence> InFlightFences;
-    VkFence TransferFence = VK_NULL_HANDLE;
 
     uint32_t SwapChainImageCount = 3;                                       // Maximum number of frames == swapchain size
 
@@ -46,10 +45,9 @@ class VulkanCore
     VkFormat SwapchainFormat;                                               // Colour data packing and colour space.
     std::vector<VulkanImageData> SwapchainImages;                           // Images and their views used in the swapchain.
     std::vector<VkCommandBuffer> CommandBuffers;                            // Command buffer for each swapchain image.
-    VkCommandBuffer TransferCommandBuffer               = VK_NULL_HANDLE;
 
-    VkSampler LinearSampler                             = VK_NULL_HANDLE;
-    VkSampler PointSampler                              = VK_NULL_HANDLE;
+    VkSampler GlobalSamplerObjects[RHIStructures::GlobalSamplerCount] = {};
+    bool IsSwapchainRecreateNeeded = false;
     VkDescriptorSetLayout GlobalSamplerSetLayout        = VK_NULL_HANDLE;
     VkDescriptorPool GlobalSamplerDescriptorPool        = VK_NULL_HANDLE;
     VkDescriptorSet GlobalSamplerSet                    = VK_NULL_HANDLE;
@@ -64,8 +62,7 @@ class VulkanCore
     const std::vector<const char*> DEVICE_EXTENSIONS = {
         VK_KHR_SWAPCHAIN_EXTENSION_NAME,
         VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME,
-        VK_KHR_MAINTENANCE1_EXTENSION_NAME,
-        VK_EXT_DESCRIPTOR_BUFFER_EXTENSION_NAME
+        VK_KHR_MAINTENANCE1_EXTENSION_NAME
     };
     const std::vector<const char*> ValidationLayers = {
         "VK_LAYER_KHRONOS_validation"
@@ -74,22 +71,18 @@ class VulkanCore
     bool SwapChainMSAA = false;
     UINT SwapChainMSAASamples = 1;
 
-    // Descriptorbuffer crap, not used
-    VkPhysicalDeviceDescriptorBufferPropertiesEXT DescriptorBufferProperties{};
-    PFN_vkCmdBindDescriptorBuffersEXT        vkCmdBindDescriptorBuffersEXT_FnPtr = nullptr;
-    PFN_vkCmdSetDescriptorBufferOffsetsEXT   vkCmdSetDescriptorBufferOffsetsEXT_FnPtr = nullptr;
-    PFN_vkGetDescriptorEXT vkGetDescriptorEXT_FnPtr = nullptr;
-
 public:
 
     static VulkanCore& Instance();
 
     void InitVulkan(Window* window, RHIStructures::CoreInitData data);
     void Cleanup();
-    void BeginFrame();
+    // False when the swapchain had to be recreated and this frame is skipped.
+    bool BeginFrame();
     void EndFrame();
     void WaitForGpu();
     void ResetWindow();
+    bool IsSwapchainOutOfDate() const { return IsSwapchainRecreateNeeded; }
 
     // Getters
     Window* GetWindow() const { return RenderWindow; }
@@ -101,10 +94,8 @@ public:
     VkInstance GetInstance() const { return VulkanInstance; }
     VkQueue GetGraphicsQueue() const { return GraphicsQueue; }
     VkCommandPool GetCommandPool() const { return CommandPool; }
-    VkFence GetTransferFence() const { return TransferFence; }
     VkExtent2D GetExtent() const { return Extent2D; }
     VkFormat GetSwapchainFormat() const { return SwapchainFormat; }
-    VkCommandBuffer GetTransferCommandBuffer() const { return TransferCommandBuffer; }
     const std::vector<VulkanImageData>& GetSwapchainImages() const { return SwapchainImages; }
     VkCommandBuffer GetCommandBuffer() const { return CommandBuffers[CurrentFrameIndex]; }
     const std::vector<VkSemaphore>& GetImageAvailableSemaphores() const { return ImageAvailableSemaphores; }
@@ -115,17 +106,9 @@ public:
     uint32_t GetCurrentSwapchainImageIndex() const { return CurrentSwapchainImageIndex; }
     VkImageView GetCurrentSwapchainImageView() const { return SwapchainImages[CurrentSwapchainImageIndex].ImageView; }
     VkImage GetCurrentSwapchainImage() const {return SwapchainImages[CurrentSwapchainImageIndex].ImageHandle; }
-    PFN_vkGetDescriptorEXT GetVkGetDescriptorEXT() const { return vkGetDescriptorEXT_FnPtr; }
-    PFN_vkCmdBindDescriptorBuffersEXT GetVkCmdBindDescriptorBuffersEXT() const { return vkCmdBindDescriptorBuffersEXT_FnPtr; }
-    PFN_vkCmdSetDescriptorBufferOffsetsEXT GetVkCmdSetDescriptorBufferOffsetsEXT() const { return vkCmdSetDescriptorBufferOffsetsEXT_FnPtr; }
-    const VkPhysicalDeviceDescriptorBufferPropertiesEXT& GetDescriptorBufferProperties() const{ return DescriptorBufferProperties; }
-    const VkSampler* GetLinearSampler() const { return &LinearSampler; }
-    const VkSampler* GetNearestSampler() const { return &PointSampler; }
     uint32_t GetQueueFamilyIndex() { return FindQueueFamilies(PhysicalDevice).GraphicsFamily; }
     VkRenderPass GetOverlayRenderPass() { return OverlayRenderPass; }
     VkFramebuffer GetCurrentOverlayFramebuffer() { return OverlayFramebuffers[CurrentSwapchainImageIndex]; }
-    VkSampler* GetLinearSampler() { return &LinearSampler; }
-    VkSampler* GetNearestSampler() { return &PointSampler; }
     VkDescriptorSet GetGlobalSamplerSet() const { return GlobalSamplerSet; }
     VkDescriptorSetLayout GetGlobalSamplerSetLayout() const { return GlobalSamplerSetLayout; }
 

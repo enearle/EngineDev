@@ -554,7 +554,7 @@ namespace RHIStructures
         case DescriptorType::DynamicUniformBuffer: return VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
         case DescriptorType::StorageBuffer: return VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         case DescriptorType::StorageImage: return VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-        case DescriptorType::SampledImage: return VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        case DescriptorType::SampledImage: return VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
         }
     }
 
@@ -703,29 +703,18 @@ namespace RHIStructures
 
     D3D12_HEAP_TYPE DXMemoryType(MemoryAccess access)
     {
+        if (access.GetCPURead())
+            return D3D12_HEAP_TYPE_READBACK;
+        if (access.GetCPUWrite())
+            return D3D12_HEAP_TYPE_UPLOAD;
         return D3D12_HEAP_TYPE_DEFAULT;
     }
 
     VkMemoryPropertyFlags VulkanMemoryType(MemoryAccess access)
     {
-        VkMemoryPropertyFlags flags = 0;
-
-        // If CPU visible
         if (access.GetCPUWrite() || access.GetCPURead())
-        {
-            flags |= VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
-            
-            if (access.GetCPUWrite())
-                flags |= VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-        }
-
-        // If GPU visible
-        if ((access.GetGPUWrite() || access.GetGPURead()))
-        {
-            flags |= VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-        }
-    
-        return flags;
+            return VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+        return VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
     }
 
     VulkanBufferData* VulkanBuffer(const BufferAllocation& bufferAllocation)

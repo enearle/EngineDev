@@ -168,25 +168,31 @@ D3DPipelineLayout::D3DPipelineLayout(const ResourceLayout& resources, const std:
         if (parameter.ParameterType == D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE)
             parameter.DescriptorTable.pDescriptorRanges = tableRanges[tableIndex++].data();
 
-    D3D12_STATIC_SAMPLER_DESC samplers[2] = {};
-    samplers[0].Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
-    samplers[0].AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
-    samplers[0].AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
-    samplers[0].AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
-    samplers[0].MaxAnisotropy = 1;
-    samplers[0].ComparisonFunc = D3D12_COMPARISON_FUNC_NEVER;
-    samplers[0].BorderColor = D3D12_STATIC_BORDER_COLOR_OPAQUE_WHITE;
-    samplers[0].MaxLOD = D3D12_FLOAT32_MAX;
-    samplers[0].ShaderRegister = 0;
-    samplers[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
-    samplers[1] = samplers[0];
-    samplers[1].Filter = D3D12_FILTER_MIN_MAG_MIP_POINT;
-    samplers[1].ShaderRegister = 1;
+    D3D12_STATIC_SAMPLER_DESC samplers[GlobalSamplerCount] = {};
+    for (uint32_t i = 0; i < GlobalSamplerCount; i++)
+    {
+        const SamplerDesc& desc = GlobalSamplers[i];
+        D3D12_TEXTURE_ADDRESS_MODE address = desc.Address == SamplerAddress::Repeat
+            ? D3D12_TEXTURE_ADDRESS_MODE_WRAP : D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+        if (desc.MaxAnisotropy > 1)
+            samplers[i].Filter = D3D12_FILTER_ANISOTROPIC;
+        else
+            samplers[i].Filter = desc.Filter == SamplerFilter::Linear ? D3D12_FILTER_MIN_MAG_MIP_LINEAR : D3D12_FILTER_MIN_MAG_MIP_POINT;
+        samplers[i].AddressU = address;
+        samplers[i].AddressV = address;
+        samplers[i].AddressW = address;
+        samplers[i].MaxAnisotropy = desc.MaxAnisotropy;
+        samplers[i].ComparisonFunc = D3D12_COMPARISON_FUNC_NEVER;
+        samplers[i].BorderColor = D3D12_STATIC_BORDER_COLOR_OPAQUE_WHITE;
+        samplers[i].MaxLOD = D3D12_FLOAT32_MAX;
+        samplers[i].ShaderRegister = i;
+        samplers[i].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+    }
 
     D3D12_ROOT_SIGNATURE_DESC rootSignatureDesc = {};
     rootSignatureDesc.NumParameters = static_cast<UINT>(parameters.size());
     rootSignatureDesc.pParameters = parameters.empty() ? nullptr : parameters.data();
-    rootSignatureDesc.NumStaticSamplers = 2;
+    rootSignatureDesc.NumStaticSamplers = GlobalSamplerCount;
     rootSignatureDesc.pStaticSamplers = samplers;
     rootSignatureDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
 

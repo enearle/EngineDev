@@ -62,13 +62,14 @@ void D3DPipelineExecutor::EnlistBackBuffers()
     }
 }
 
-void D3DPipelineExecutor::BeginFrame()
+bool D3DPipelineExecutor::BeginFrame()
 {
     D3DCore::Instance().BeginFrame();
     BufferAllocator::GetInstance()->BeginFrame(D3DCore::Instance().GetFrameNumber(), D3DCore::Instance().GetFramesInFlight());
     CurrentPipeline = nullptr;
     BoundVertexBuffer = {};
     BoundIndexBuffer = {};
+    return true;
 }
 
 void D3DPipelineExecutor::EndFrame()
@@ -332,13 +333,21 @@ void VulkanPipelineExecutor::EnlistBackBuffers()
     }
 }
 
-void VulkanPipelineExecutor::BeginFrame()
+bool VulkanPipelineExecutor::BeginFrame()
 {
-    VulkanCore::Instance().BeginFrame();
-    BufferAllocator::GetInstance()->BeginFrame(VulkanCore::Instance().GetFrameNumber(), VulkanCore::Instance().GetFramesInFlight());
+    VulkanCore& core = VulkanCore::Instance();
+    if (core.IsSwapchainOutOfDate() || !core.BeginFrame())
+    {
+        core.WaitForGpu();
+        ResetWindow();
+        return false;
+    }
+
+    BufferAllocator::GetInstance()->BeginFrame(core.GetFrameNumber(), core.GetFramesInFlight());
     CurrentPipeline = nullptr;
     BoundVertexBuffer = {};
     BoundIndexBuffer = {};
+    return true;
 }
 
 void VulkanPipelineExecutor::EndFrame()

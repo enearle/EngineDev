@@ -35,7 +35,7 @@ namespace RHIConstants
         .Size = 0,
         .Format = Format::R8G8B8A8_UNORM,
         .Usage = DefaultUploadImageUsage,
-        .Access = MemoryAccess(8),
+        .Access = DeviceLocalMemory,
         .Layout = ImageLayout::General,
         .InitialData = nullptr
     };
@@ -44,7 +44,7 @@ namespace RHIConstants
     {
         .TransferSource = true,
         .TransferDestination = false,
-        .Access = MemoryAccess(9),
+        .Access = UploadMemory,
         .Type = BufferType::Constant,
     };
 
@@ -59,7 +59,7 @@ namespace RHIConstants
     {
         .TransferSource = false,
         .TransferDestination = true,
-        .Access = MemoryAccess(8),
+        .Access = DeviceLocalMemory,
         .Type = BufferType::Constant,
     };
 
@@ -74,7 +74,7 @@ namespace RHIConstants
     {
         .TransferSource = false,
         .TransferDestination = true,
-        .Access = MemoryAccess(8),
+        .Access = DeviceLocalMemory,
         .Type = BufferType::Vertex
     };
 
@@ -89,7 +89,7 @@ namespace RHIConstants
     {
         .TransferSource = false,
         .TransferDestination = true,
-        .Access = MemoryAccess(8),
+        .Access = DeviceLocalMemory,
         .Type = BufferType::Index
     };
 

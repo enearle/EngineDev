@@ -47,5 +47,6 @@ because runtime paths are relative to it.
 | `-play` | Editor only: start in play mode |
 | `-stress` | Add a grid of 10,000 objects; batch counts show in the Renderer panel |
 | `-freeze-animation` | Hold the animated test mesh still, for comparing captures |
+| `-novsync` | Present without waiting for vertical blank, on both backends |
 
 In Debug builds the Vulkan validation layer and the Direct3D 12 debug layer print to stderr.

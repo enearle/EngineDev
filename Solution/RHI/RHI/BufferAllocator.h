@@ -135,12 +135,23 @@ protected:
 
 private:
 
+    // Pools are chained: a new one is created when the last is full. A set records its pool in
+    // DescriptorSetAllocation::PlatformData.
     struct DescriptorSetLayoutInfo
     {
         VkDescriptorSetLayout Layout = VK_NULL_HANDLE;
-        VkDescriptorPool Pool = VK_NULL_HANDLE;
+        std::vector<VkDescriptorPool> Pools;
+        std::vector<VkDescriptorPoolSize> PoolSizes;
         std::vector<DescriptorBinding> Bindings;
     };
+
+    VkCommandPool UploadCommandPool = VK_NULL_HANDLE;
+    VkCommandBuffer UploadCommands = VK_NULL_HANDLE;
+    VkFence UploadFence = VK_NULL_HANDLE;
+
+    VkCommandBuffer BeginUpload();
+    void SubmitUploadAndWait();
+    static void CreateStagingBuffer(const void* data, VkDeviceSize size, VkBuffer* buffer, VkDeviceMemory* memory);
     std::map<uint64_t, DescriptorSetLayoutInfo> DescriptorSetLayouts;
     static constexpr uint32_t DescriptorSetsPerPool = 256;
 
@@ -150,9 +161,7 @@ private:
     static VkImage CreateVulkanImage(const ImageDesc& imageDesc, VkDeviceMemory* imageMemory);
     static VkImageView CreateVulkanImageView(VkImage image, const ImageDesc& imageDesc);
 
-    static void TransitionImageLayout(VkImage image, VkImageLayout oldLayout, VkImageLayout newLayout);
-    static void CopyToDeviceLocalBuffer(VkBuffer dstBuffer, const void* srcData, VkDeviceSize size);
-    static void CopyBufferToImage(VkBuffer stagingBuffer, VkImage dstImage, uint32_t width, uint32_t height);
+    void CopyToDeviceLocalBuffer(VkBuffer dstBuffer, const void* srcData, VkDeviceSize size);
 };
 
 // First-fit allocator of contiguous index ranges, used for D3D12 descriptor heap slots.
@@ -238,5 +247,15 @@ private:
 
     D3D12_CPU_DESCRIPTOR_HANDLE ShaderResourceCPU(uint32_t index) const;
     void WriteDescriptor(const DescriptorBinding& layoutBinding, const DescriptorSetBinding& binding, D3D12_CPU_DESCRIPTOR_HANDLE destination);
-    void SubmitTransferAndWait(ID3D12GraphicsCommandList* commandList);
+
+    // Uploads record into their own list and wait on a fence that only counts up, so they are safe
+    // at any time, including while a frame is being recorded.
+    ComPtr<ID3D12CommandAllocator> UploadAllocator;
+    ComPtr<ID3D12GraphicsCommandList> UploadList;
+    ComPtr<ID3D12Fence> UploadFence;
+    UINT64 UploadFenceValue = 0;
+    HANDLE UploadEvent = nullptr;
+
+    ID3D12GraphicsCommandList* BeginUpload();
+    void SubmitUploadAndWait();
 };

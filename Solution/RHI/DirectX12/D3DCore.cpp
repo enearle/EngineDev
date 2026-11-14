@@ -64,7 +64,6 @@ void D3DCore::Reset()
 
     for (UINT i = 0; i < SwapChainBufferCount; i++)
     {
-        DeferredUploadReleases[i].clear();
         CommandLists[i].Reset();
         CommandAllocators[i].Reset();
         SwapChainBuffer[i].Reset();
@@ -74,10 +73,6 @@ void D3DCore::Reset()
     RenderTargetDescriptorHeap.Reset();
     DepthStencilDescriptorHeap.Reset();
     OverlayDepthStencilDescriptorHeap.Reset();
-    TransferCommandList.Reset();
-    TransferCommandAllocator.Reset();
-    TransferCommandQueue.Reset();
-    TransferFence.Reset();
     Fence.Reset();
     CommandQueue.Reset();
     SwapChain.Reset();
@@ -98,34 +93,24 @@ void D3DCore::BeginFrame()
 {
     WaitForFrame(CurrentFrameIndex);
     FrameNumber++;
-    DeferredUploadReleases[CurrentFrameIndex].clear();
     CommandAllocators[CurrentFrameIndex]->Reset();
     CommandLists[CurrentFrameIndex]->Reset(CommandAllocators[CurrentFrameIndex].Get(), nullptr);
-    TransferCommandList->Reset(TransferCommandAllocator.Get(), nullptr);
 }
 
 void D3DCore::EndFrame()
 {
     CommandLists[CurrentFrameIndex]->Close() >> ERROR_HANDLER;
-    TransferCommandList->Close() >> ERROR_HANDLER;
 
-    ID3D12CommandList* ppCommandLists[] = { TransferCommandList.Get(), CommandLists[CurrentFrameIndex].Get() };
-    CommandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
+    ID3D12CommandList* commandLists[] = { CommandLists[CurrentFrameIndex].Get() };
+    CommandQueue->ExecuteCommandLists(1, commandLists);
 
     CurrentFence++;
     FrameFences[CurrentFrameIndex] = CurrentFence;
     CommandQueue->Signal(Fence.Get(), CurrentFence) >> ERROR_HANDLER;
-    SwapChain->Present(1, 0) >> ERROR_HANDLER;
+
+    bool isTearing = !GRAPHICS_SETTINGS.VSync && IsTearingSupported;
+    SwapChain->Present(GRAPHICS_SETTINGS.VSync ? 1 : 0, isTearing ? DXGI_PRESENT_ALLOW_TEARING : 0) >> ERROR_HANDLER;
     CurrentFrameIndex = (CurrentFrameIndex + 1) % SwapChainBufferCount;
-
-}
-
-void D3DCore::DeferUploadBufferRelease(ComPtr<ID3D12Resource> resource)
-{
-    if (!resource)
-        return;
-
-    DeferredUploadReleases[CurrentFrameIndex].emplace_back(resource);
 }
 
 void D3DCore::ResetWindow()
@@ -152,7 +137,7 @@ void D3DCore::ResetWindow()
     uint32_t width = RendererWindow->GetWidth();
     uint32_t height = RendererWindow->GetHeight();
 
-    SwapChain->ResizeBuffers(0, width, height, DXGI_FORMAT_UNKNOWN, DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH) >> ERROR_HANDLER;
+    SwapChain->ResizeBuffers(0, width, height, DXGI_FORMAT_UNKNOWN, SwapChainFlags()) >> ERROR_HANDLER;
 
     for (UINT i = 0; i < SwapChainBufferCount; ++i)
     {
@@ -196,6 +181,10 @@ void D3DCore::CreateFactory()
     flags = DXGI_CREATE_FACTORY_DEBUG;
 #endif
     CreateDXGIFactory2(flags, IID_PPV_ARGS(&Factory)) >> ERROR_HANDLER;
+
+    BOOL allowTearing = FALSE;
+    if (SUCCEEDED(Factory->CheckFeatureSupport(DXGI_FEATURE_PRESENT_ALLOW_TEARING, &allowTearing, sizeof(allowTearing))))
+        IsTearingSupported = allowTearing == TRUE;
 }
 
 void D3DCore::CreateDevice()
@@ -231,7 +220,6 @@ void D3DCore::SubscribeDebugMessages()
 void D3DCore::CreateFence()
 {
     Device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&Fence)) >> ERROR_HANDLER;
-    Device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&TransferFence)) >> ERROR_HANDLER;
 }
 
 void D3DCore::CreateCommandObjects()
@@ -262,25 +250,6 @@ void D3DCore::CreateCommandObjects()
         FrameFences[i] = 0;
     }
 
-    D3D12_COMMAND_QUEUE_DESC transferQueueDesc = {};
-    transferQueueDesc.Type = D3D12_COMMAND_LIST_TYPE_COPY;
-    transferQueueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
-    Device->CreateCommandQueue(
-        &transferQueueDesc,
-        IID_PPV_ARGS(&TransferCommandQueue)) >> ERROR_HANDLER;
-
-    Device->CreateCommandAllocator(
-    D3D12_COMMAND_LIST_TYPE_DIRECT,
-    IID_PPV_ARGS(TransferCommandAllocator.GetAddressOf())) >> ERROR_HANDLER;
-
-    Device->CreateCommandList(
-        0,
-        D3D12_COMMAND_LIST_TYPE_DIRECT,
-        TransferCommandAllocator.Get(),
-        nullptr,
-        IID_PPV_ARGS(TransferCommandList.GetAddressOf())) >> ERROR_HANDLER;
-
-    TransferCommandList.Get()->Close();
 
 
 }
@@ -322,7 +291,7 @@ void D3DCore::CreateSwapChain()
     swapChainDesc.Scaling = DXGI_SCALING_STRETCH;
     swapChainDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
     swapChainDesc.AlphaMode = DXGI_ALPHA_MODE_IGNORE;
-    swapChainDesc.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
+    swapChainDesc.Flags = SwapChainFlags();
 
     DXGI_SWAP_CHAIN_FULLSCREEN_DESC fullscreenDesc = {};
     fullscreenDesc.RefreshRate.Numerator = 0;
@@ -470,4 +439,9 @@ D3D12_CPU_DESCRIPTOR_HANDLE D3DCore::GetOverlayDepthStencilDescriptor()
         OverlayDepthStencilDescriptorHeap->GetCPUDescriptorHandleForHeapStart();
     dsvHandle.ptr += CurrentFrameIndex * DepthStencilDescriptorOffset;
     return dsvHandle;
+}
+
+UINT D3DCore::SwapChainFlags() const
+{
+    return DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH | (IsTearingSupported ? DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING : 0);
 }

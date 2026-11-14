@@ -156,7 +156,8 @@ or `Solution\Editor`:
 
 **Backends.** Standalone defaults to Vulkan and the Editor to Direct3D 12. `-vulkan` or `-dx12`
 overrides either. The Editor runs the game when you press Play, or at once with `-play`. `-stress`
-adds 10,000 objects and `-freeze-animation` holds the animated mesh still.
+adds 10,000 objects, `-freeze-animation` holds the animated mesh still, and `-novsync` turns vsync
+off (it is on by default).
 
 **Validation.** Debug builds enable the Vulkan validation layer and the Direct3D 12 debug layer; both
 print to stderr. `Tools/RunAndCapture.ps1` runs an executable for a few seconds and saves stdout,
@@ -176,6 +177,6 @@ stderr, the exit code and a screenshot, which is the quickest way to check both 
   is not in the repository; this is harmless.
 - Direct3D 12 has no view instancing set up, so the multiview shadow pass only fills layer 0 there.
   Only one light is used today. Tracked in the plan.
-- Meshes and textures upload synchronously and only between frames (at game start).
+- Meshes and textures upload synchronously: each upload waits for the GPU.
 - `ImageAsset` and `MaterialAsset` are stubs from unfinished asset work: textures are still loaded
   by file name through `Material`, and `ResourceManager::Import` only handles meshes.

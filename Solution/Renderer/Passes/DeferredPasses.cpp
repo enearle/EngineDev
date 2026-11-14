@@ -118,7 +118,7 @@ static void CreatePipelines()
     lightingResources.VisibleStages = Renderer::GetSceneVisibleStages();
     lightingResources.Bindings = Renderer::GetSceneSetBindings();
     for (uint32_t slot = 0; slot < 5; slot++)
-        lightingResources.Bindings.push_back({ .Type = DescriptorType::SampledImage, .Slot = slot, .Set = LightingInputSetIndex, .Count = 1, .Sampler = SamplerType::Linear });
+        lightingResources.Bindings.push_back({ .Type = DescriptorType::SampledImage, .Slot = slot, .Set = LightingInputSetIndex, .Count = 1 });
     LightingLayout = PipelineLayout::Create(lightingResources, {});
 
     PipelineDesc lighting;

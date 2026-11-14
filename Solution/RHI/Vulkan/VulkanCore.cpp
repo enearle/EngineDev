@@ -62,17 +62,15 @@ void VulkanCore::Cleanup()
     vkDestroyRenderPass(Device, OverlayRenderPass, nullptr);
     vkDestroyDescriptorPool(Device, GlobalSamplerDescriptorPool, nullptr);
     vkDestroyDescriptorSetLayout(Device, GlobalSamplerSetLayout, nullptr);
-    vkDestroySampler(Device, PointSampler, nullptr);
-    vkDestroySampler(Device, LinearSampler, nullptr);
+    for (VkSampler sampler : GlobalSamplerObjects)
+        vkDestroySampler(Device, sampler, nullptr);
     for (uint32_t i = 0; i < SwapChainImageCount; i++)
     {
         vkDestroySemaphore(Device, ImageAvailableSemaphores[i], nullptr);
         vkDestroySemaphore(Device, RenderFinishedSemaphores[i], nullptr);
         vkDestroyFence(Device, InFlightFences[i], nullptr);
     }
-    vkDestroyFence(Device, TransferFence, nullptr);
     vkFreeCommandBuffers(Device, CommandPool, static_cast<uint32_t>(CommandBuffers.size()), CommandBuffers.data());
-    vkFreeCommandBuffers(Device, CommandPool, 1, &TransferCommandBuffer);
     vkDestroyCommandPool(Device, CommandPool, nullptr);
     vkDestroySwapchainKHR(Device, Swapchain, nullptr);
     DestroySwapchainViews();
@@ -167,15 +165,10 @@ void VulkanCore::CreateLogicalDevice()
     multiviewFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MULTIVIEW_FEATURES;
     multiviewFeatures.multiview = VK_TRUE;
 
-    VkPhysicalDeviceDescriptorBufferFeaturesEXT descriptorBufferFeatures = {};
-    descriptorBufferFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_BUFFER_FEATURES_EXT;
-    descriptorBufferFeatures.descriptorBuffer = VK_TRUE;
-    descriptorBufferFeatures.pNext = &multiviewFeatures;
-
     VkPhysicalDeviceVulkan12Features deviceFeatures12 = {};
     deviceFeatures12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
     deviceFeatures12.bufferDeviceAddress = VK_TRUE;
-    deviceFeatures12.pNext = &descriptorBufferFeatures;
+    deviceFeatures12.pNext = &multiviewFeatures;
 
     // Creat device features
     VkPhysicalDeviceFeatures deviceFeatures = {};
@@ -203,22 +196,6 @@ void VulkanCore::CreateLogicalDevice()
     VkResult result = vkCreateDevice(PhysicalDevice, &deviceInfo, nullptr, &Device);
     if (result != VK_SUCCESS)
         throw std::runtime_error("Failed to create logical device.");
-
-    // Assign extension functions.
-    vkCmdBindDescriptorBuffersEXT_FnPtr =
-    reinterpret_cast<PFN_vkCmdBindDescriptorBuffersEXT>(
-        vkGetDeviceProcAddr(Device, "vkCmdBindDescriptorBuffersEXT"));
-
-    vkCmdSetDescriptorBufferOffsetsEXT_FnPtr =
-        reinterpret_cast<PFN_vkCmdSetDescriptorBufferOffsetsEXT>(
-            vkGetDeviceProcAddr(Device, "vkCmdSetDescriptorBufferOffsetsEXT"));
-
-    vkGetDescriptorEXT_FnPtr =
-        reinterpret_cast<PFN_vkGetDescriptorEXT>(
-            vkGetDeviceProcAddr(Device, "vkGetDescriptorEXT"));
-
-    if (!vkCmdBindDescriptorBuffersEXT_FnPtr || !vkCmdSetDescriptorBufferOffsetsEXT_FnPtr || !vkGetDescriptorEXT_FnPtr)
-        throw std::runtime_error("VK_EXT_descriptor_buffer functions not available (extension not enabled or unsupported).");
 
     // Assign queue handles
     vkGetDeviceQueue(Device, indices.GraphicsFamily, 0, &GraphicsQueue);
@@ -377,95 +354,61 @@ void VulkanCore::CreateSwapchain()
 
 void VulkanCore::CreateSamplers()
 {
-    VkSamplerCreateInfo samplerInfo{};
-    samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-    samplerInfo.magFilter = VK_FILTER_LINEAR;
-    samplerInfo.minFilter = VK_FILTER_LINEAR;
-    samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+    VkDescriptorSetLayoutBinding samplerBindings[GlobalSamplerCount] = {};
+    for (uint32_t i = 0; i < GlobalSamplerCount; i++)
+    {
+        const SamplerDesc& desc = GlobalSamplers[i];
+        VkFilter filter = desc.Filter == SamplerFilter::Linear ? VK_FILTER_LINEAR : VK_FILTER_NEAREST;
+        VkSamplerAddressMode address = desc.Address == SamplerAddress::Repeat
+            ? VK_SAMPLER_ADDRESS_MODE_REPEAT : VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
 
-    samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-    samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-    samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+        VkSamplerCreateInfo samplerInfo{};
+        samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+        samplerInfo.magFilter = filter;
+        samplerInfo.minFilter = filter;
+        samplerInfo.mipmapMode = desc.Filter == SamplerFilter::Linear ? VK_SAMPLER_MIPMAP_MODE_LINEAR : VK_SAMPLER_MIPMAP_MODE_NEAREST;
+        samplerInfo.addressModeU = address;
+        samplerInfo.addressModeV = address;
+        samplerInfo.addressModeW = address;
+        samplerInfo.maxLod = VK_LOD_CLAMP_NONE;
+        samplerInfo.anisotropyEnable = desc.MaxAnisotropy > 1;
+        samplerInfo.maxAnisotropy = static_cast<float>(desc.MaxAnisotropy);
+        samplerInfo.compareOp = VK_COMPARE_OP_ALWAYS;
 
-    samplerInfo.mipLodBias = 0.0f;
-    samplerInfo.minLod = 0.0f;
-    samplerInfo.maxLod = VK_LOD_CLAMP_NONE; // or FLT_MAX
+        if (vkCreateSampler(Device, &samplerInfo, nullptr, &GlobalSamplerObjects[i]) != VK_SUCCESS)
+            throw std::runtime_error("Failed to create a global sampler.");
 
-    samplerInfo.anisotropyEnable = /* if supported */ VK_TRUE;
-    samplerInfo.maxAnisotropy = /* clamp to limits */ 16.0f;
-
-    samplerInfo.compareEnable = VK_FALSE;
-    samplerInfo.compareOp = VK_COMPARE_OP_ALWAYS;
-
-    samplerInfo.unnormalizedCoordinates = VK_FALSE;
-
-    VkResult result = vkCreateSampler(Device, &samplerInfo, nullptr, &LinearSampler);
-    if (result != VK_SUCCESS)
-        throw std::runtime_error("Failed to create texture sampler.");
-
-    samplerInfo.magFilter = VK_FILTER_NEAREST;
-    samplerInfo.minFilter = VK_FILTER_NEAREST;
-    samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
-
-    result = vkCreateSampler(Device, &samplerInfo, nullptr, &PointSampler);
-    if (result != VK_SUCCESS)
-        throw std::runtime_error("Failed to create texture sampler.");
-
-    // Create Set 0 descriptor set layout with immutable samplers
-    VkSampler immutableSamplers[2] = { LinearSampler, PointSampler };
-
-    VkDescriptorSetLayoutBinding samplerBindings[2] = {};
-
-    // Linear sampler at binding 0
-    samplerBindings[0].binding = 0;
-    samplerBindings[0].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
-    samplerBindings[0].descriptorCount = 1;
-    samplerBindings[0].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_VERTEX_BIT;
-    samplerBindings[0].pImmutableSamplers = &immutableSamplers[0];
-
-    // Point/Nearest sampler at binding 1
-    samplerBindings[1].binding = 1;
-    samplerBindings[1].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
-    samplerBindings[1].descriptorCount = 1;
-    samplerBindings[1].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_VERTEX_BIT;
-    samplerBindings[1].pImmutableSamplers = &immutableSamplers[1];
+        samplerBindings[i].binding = i;
+        samplerBindings[i].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
+        samplerBindings[i].descriptorCount = 1;
+        samplerBindings[i].stageFlags = VK_SHADER_STAGE_ALL;
+        samplerBindings[i].pImmutableSamplers = &GlobalSamplerObjects[i];
+    }
 
     VkDescriptorSetLayoutCreateInfo layoutInfo{};
     layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    layoutInfo.bindingCount = 2;
+    layoutInfo.bindingCount = GlobalSamplerCount;
     layoutInfo.pBindings = samplerBindings;
-
-    result = vkCreateDescriptorSetLayout(Device, &layoutInfo, nullptr, &GlobalSamplerSetLayout);
-    if (result != VK_SUCCESS)
+    if (vkCreateDescriptorSetLayout(Device, &layoutInfo, nullptr, &GlobalSamplerSetLayout) != VK_SUCCESS)
         throw std::runtime_error("Failed to create global sampler descriptor set layout.");
 
-    // Create a descriptor pool for this single set
-    VkDescriptorPoolSize poolSize{};
-    poolSize.type = VK_DESCRIPTOR_TYPE_SAMPLER;
-    poolSize.descriptorCount = 2;
-
+    VkDescriptorPoolSize poolSize{ VK_DESCRIPTOR_TYPE_SAMPLER, GlobalSamplerCount };
     VkDescriptorPoolCreateInfo poolInfo{};
     poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
     poolInfo.maxSets = 1;
     poolInfo.poolSizeCount = 1;
     poolInfo.pPoolSizes = &poolSize;
-
-    result = vkCreateDescriptorPool(Device, &poolInfo, nullptr, &GlobalSamplerDescriptorPool);
-    if (result != VK_SUCCESS)
+    if (vkCreateDescriptorPool(Device, &poolInfo, nullptr, &GlobalSamplerDescriptorPool) != VK_SUCCESS)
         throw std::runtime_error("Failed to create sampler descriptor pool.");
 
-    // Allocate the descriptor set
+    // Immutable samplers need no descriptor writes.
     VkDescriptorSetAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
     allocInfo.descriptorPool = GlobalSamplerDescriptorPool;
     allocInfo.descriptorSetCount = 1;
     allocInfo.pSetLayouts = &GlobalSamplerSetLayout;
-
-    result = vkAllocateDescriptorSets(Device, &allocInfo, &GlobalSamplerSet);
-    if (result != VK_SUCCESS)
+    if (vkAllocateDescriptorSets(Device, &allocInfo, &GlobalSamplerSet) != VK_SUCCESS)
         throw std::runtime_error("Failed to allocate global sampler descriptor set.");
-
-    // Note: No need to update the descriptor set since samplers are immutable
 }
 
 void VulkanCore::CreateOverlayRenderPass()
@@ -668,9 +611,6 @@ void VulkanCore::CreateSynchronizationPrimitives()
         }
     }
 
-    VkResult result = vkCreateFence(Device, &fenceInfo, nullptr, &TransferFence);
-    if (result != VK_SUCCESS)
-        throw std::runtime_error("Failed to create transfer fence.");
 
 }
 
@@ -699,15 +639,6 @@ void VulkanCore::CreateCommandPool()
     if (result != VK_SUCCESS)
         throw std::runtime_error("Failed to allocate command buffers.");
 
-    VkCommandBufferAllocateInfo transferAllocInfo{};
-    transferAllocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    transferAllocInfo.commandPool = CommandPool;
-    transferAllocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    transferAllocInfo.commandBufferCount = 1;
-
-    result = vkAllocateCommandBuffers(Device, &transferAllocInfo, &TransferCommandBuffer);
-    if (result != VK_SUCCESS)
-        throw std::runtime_error("Failed to allocate transfer command buffer.");
 
 }
 
@@ -771,14 +702,15 @@ VkSurfaceFormatKHR VulkanCore::SelectSwapchainSurfaceFormat(const std::vector<Vk
 
 VkPresentModeKHR VulkanCore::SelectPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes)
 {
-    // Look for mailbox present mode
-    for (auto availablePresentMode : availablePresentModes)
-    {
-        if (availablePresentMode == VK_PRESENT_MODE_MAILBOX_KHR)
-            return availablePresentMode;
-    }
+    // FIFO is the only mode the spec guarantees, and it waits for vertical blank.
+    if (GRAPHICS_SETTINGS.VSync)
+        return VK_PRESENT_MODE_FIFO_KHR;
 
-    // FIFO should always be available in the Vulkan spec
+    for (VkPresentModeKHR preferred : { VK_PRESENT_MODE_IMMEDIATE_KHR, VK_PRESENT_MODE_MAILBOX_KHR })
+        for (VkPresentModeKHR available : availablePresentModes)
+            if (available == preferred)
+                return available;
+
     return VK_PRESENT_MODE_FIFO_KHR;
 }
 
@@ -946,15 +878,6 @@ void VulkanCore::SelectPhysicalDevice()
     VkPhysicalDeviceProperties properties;
     vkGetPhysicalDeviceProperties(PhysicalDevice, &properties);
 
-    VkPhysicalDeviceProperties2 props2{};
-    props2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
-
-    DescriptorBufferProperties = {};
-    DescriptorBufferProperties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_BUFFER_PROPERTIES_EXT;
-    DescriptorBufferProperties.pNext = nullptr;
-
-    props2.pNext = &DescriptorBufferProperties;
-    vkGetPhysicalDeviceProperties2(PhysicalDevice, &props2);
 }
 
 QueueFamilyIndicesData VulkanCore::FindQueueFamilies(VkPhysicalDevice device)
@@ -1046,41 +969,39 @@ void VulkanCore::DestroySwapchainViews()
 // Command Recording                                    //
 //======================================================//
 
-void VulkanCore::BeginFrame()
+bool VulkanCore::BeginFrame()
 {
-    WaitForFrame(CurrentFrameIndex);
-    FrameNumber++;
+    if (IsSwapchainRecreateNeeded)
+        return false;
 
-    VkResult result = vkAcquireNextImageKHR(
-        Device,
-        Swapchain,
-        UINT64_MAX,
-        ImageAvailableSemaphores[CurrentFrameIndex],
-        VK_NULL_HANDLE,
-        &CurrentSwapchainImageIndex
-    );
+    WaitForFrame(CurrentFrameIndex);
+
+    VkResult result = vkAcquireNextImageKHR(Device, Swapchain, UINT64_MAX, ImageAvailableSemaphores[CurrentFrameIndex],
+        VK_NULL_HANDLE, &CurrentSwapchainImageIndex);
 
     if (result == VK_ERROR_OUT_OF_DATE_KHR)
     {
-        // TODO: Recreate swapchain for window resize
-        throw std::runtime_error("Swapchain out of date - recreation needed");
+        IsSwapchainRecreateNeeded = true;
+        return false;
     }
-    else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR)
-    {
+    if (result == VK_SUBOPTIMAL_KHR)
+        IsSwapchainRecreateNeeded = true;
+    else if (result != VK_SUCCESS)
         throw std::runtime_error("Failed to acquire swapchain image");
-    }
 
-    result = vkResetCommandBuffer(CommandBuffers[CurrentFrameIndex], 0);
-    if (result != VK_SUCCESS)
+    // Reset only once an image is acquired, so a skipped frame leaves the fence signalled.
+    vkResetFences(Device, 1, &InFlightFences[CurrentFrameIndex]);
+    FrameNumber++;
+
+    if (vkResetCommandBuffer(CommandBuffers[CurrentFrameIndex], 0) != VK_SUCCESS)
         throw std::runtime_error("Failed to reset command buffer");
 
     VkCommandBufferBeginInfo beginInfo{};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-
-    result = vkBeginCommandBuffer(CommandBuffers[CurrentFrameIndex], &beginInfo);
-    if (result != VK_SUCCESS)
+    if (vkBeginCommandBuffer(CommandBuffers[CurrentFrameIndex], &beginInfo) != VK_SUCCESS)
         throw std::runtime_error("Failed to begin recording command buffer");
+    return true;
 }
 
 void VulkanCore::EndFrame()
@@ -1125,9 +1046,7 @@ void VulkanCore::EndFrame()
     result = vkQueuePresentKHR(PresentQueue, &presentInfo);
 
     if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR)
-    {
-        throw std::runtime_error("Swapchain out of date or suboptimal - recreation needed");
-    }
+        IsSwapchainRecreateNeeded = true;
     else if (result != VK_SUCCESS)
     {
         throw std::runtime_error("Failed to present swapchain image");
@@ -1139,19 +1058,8 @@ void VulkanCore::EndFrame()
 
 void VulkanCore::WaitForFrame(uint32_t frameIndex)
 {
-    VkResult result = vkWaitForFences(
-        Device,
-        1,
-        &InFlightFences[frameIndex],
-        VK_TRUE,
-        UINT64_MAX
-    );
-
-    if (result != VK_SUCCESS)
+    if (vkWaitForFences(Device, 1, &InFlightFences[frameIndex], VK_TRUE, UINT64_MAX) != VK_SUCCESS)
         throw std::runtime_error("Failed to wait for frame fence");
-
-    // Reset fence for next use
-    vkResetFences(Device, 1, &InFlightFences[frameIndex]);
 }
 
 void VulkanCore::WaitForGpu()
@@ -1187,5 +1095,6 @@ void VulkanCore::ResetWindow()
     CreateSwapchain();
     CreateOverlayStencilImages();
     CreateOverlayFramebuffers();
+    IsSwapchainRecreateNeeded = false;
 
 }

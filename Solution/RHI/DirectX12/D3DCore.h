@@ -42,10 +42,7 @@ class D3DCore
     std::array<ComPtr<ID3D12GraphicsCommandList>, SwapChainBufferCount> CommandLists;
     std::array<UINT64, SwapChainBufferCount> FrameFences;
 
-    ComPtr<ID3D12GraphicsCommandList> TransferCommandList;
-    ComPtr<ID3D12CommandAllocator> TransferCommandAllocator;
-    ComPtr<ID3D12CommandQueue> TransferCommandQueue;
-    ComPtr<ID3D12Fence> TransferFence;
+    bool IsTearingSupported = false;
 
     ComPtr<ID3D12Resource> SwapChainBuffer[SwapChainBufferCount];
     ComPtr<ID3D12Resource> OverlayDepthStencilBuffers[SwapChainBufferCount];
@@ -75,16 +72,12 @@ public:
     void EndFrame();
     void ResetWindow();
 
-    void DeferUploadBufferRelease(ComPtr<ID3D12Resource> resource);
     Window* GetWindow() const { return RendererWindow; }
     uint64_t GetFrameNumber() const { return FrameNumber; }
     ComPtr<ID3D12Device> GetDevice() const { return Device; }
     ComPtr<ID3D12CommandQueue> GetCommandQueue() const { return CommandQueue; }
     ComPtr<ID3D12GraphicsCommandList> GetCommandList() const { return CommandLists[CurrentFrameIndex]; }
-    ComPtr<ID3D12GraphicsCommandList> GetTransferCommandList() const { return TransferCommandList; }
-    ComPtr<ID3D12CommandAllocator> GetTransferCommandAllocator() const { return TransferCommandAllocator; }
     ComPtr<ID3D12Fence> GetFrameFence() const { return Fence; }
-    ComPtr<ID3D12Fence> GetTransferFence() const { return TransferFence; }
     uint32_t GetCurrentFrameIndex() const { return CurrentFrameIndex; }
     uint32_t GetFramesInFlight() const { return SwapChainBufferCount; }
     ComPtr<ID3D12DescriptorHeap> GetRenderTargetDescriptorHeap() const { return RenderTargetDescriptorHeap; }
@@ -121,7 +114,7 @@ private:
     void CreateSwapChainDescriptorHeaps();
     void CreateOverlayDepthStencilBuffers();
     void WaitForFrame(uint32_t frameIndex);
+    UINT SwapChainFlags() const;
 
-    std::vector<ComPtr<ID3D12Resource>> DeferredUploadReleases[SwapChainBufferCount];
 
 };

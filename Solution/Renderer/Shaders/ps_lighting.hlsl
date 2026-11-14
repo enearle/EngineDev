@@ -13,8 +13,8 @@ Texture2D inAlbedo                  : register(t1, space3);
 Texture2D<float2> inNormal          : register(t2, space3);
 Texture2D inMetallicRoughnessAO     : register(t3, space3);
 Texture2D<float> inDepth            : register(t4, space3);
-SamplerState linearSampler          : register(s0, space0);
-SamplerState pointSampler           : register(s1, space0);
+SamplerState pointClampSampler      : register(s1, space0);
+SamplerState linearClampSampler     : register(s2, space0);
 
 static float3 albedo;
 static float3 normal;
@@ -27,9 +27,9 @@ static float3 materialData;
 
 void init(VSOutput input, float depth)
 {
-    albedo = inAlbedo.Sample(pointSampler, input.uv).rgb;
-    normal = DecodeNormal(inNormal.Sample(pointSampler, input.uv));
-    materialData = inMetallicRoughnessAO.Sample(pointSampler, input.uv).rgb;
+    albedo = inAlbedo.Sample(pointClampSampler, input.uv).rgb;
+    normal = DecodeNormal(inNormal.Sample(pointClampSampler, input.uv));
+    materialData = inMetallicRoughnessAO.Sample(pointClampSampler, input.uv).rgb;
 
     float4 clip = float4(input.uv.x * 2.0 - 1.0, 1.0 - input.uv.y * 2.0, depth, 1.0);
     float4 world = mul(InverseViewProjection, clip);
@@ -108,7 +108,7 @@ float Shadow(Light light, float3 lightDirection)
     if (sampleUV.x < 0.0 || sampleUV.x > 1.0 || sampleUV.y < 0.0 || sampleUV.y > 1.0)
         return 1.0;
     
-    float2 m1m2 = shadowMaps.Sample(linearSampler, float3(sampleUV, light.ShadowIndex)).xy;
+    float2 m1m2 = shadowMaps.Sample(linearClampSampler, float3(sampleUV, light.ShadowIndex)).xy;
     
     float t = abs(samplePos.w) / light.Radius;
     
@@ -148,7 +148,7 @@ float3 LightPBR(Light light)
 
 float4 main(VSOutput input) : SV_TARGET
 {
-    float depth = inDepth.Sample(pointSampler, input.uv);
+    float depth = inDepth.Sample(pointClampSampler, input.uv);
     if (depth >= 1.0)
         return float4(0.0, 0.0, 0.0, 1.0);
     init(input, depth);

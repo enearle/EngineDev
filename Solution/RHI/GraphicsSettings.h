@@ -13,13 +13,14 @@ inline struct GraphicsSettings
     API APIToUse = Vulkan;
     bool MSAA = false;
     bool HDR = false;
+    bool VSync = true;
 
     void SetEditorMode(bool isEditor)
     {
         APIToUse = isEditor ? DirectX12 : Vulkan;
     }
 
-    // -dx12 or -vulkan on the command line overrides the backend chosen in code.
+    // -dx12 or -vulkan on the command line overrides the backend chosen in code; -novsync turns vsync off.
     void ApplyCommandLine(int argumentCount, char** arguments)
     {
         for (int i = 1; i < argumentCount; i++)
@@ -27,6 +28,8 @@ inline struct GraphicsSettings
                 APIToUse = DirectX12;
             else if (std::strcmp(arguments[i], "-vulkan") == 0)
                 APIToUse = Vulkan;
+            else if (std::strcmp(arguments[i], "-novsync") == 0)
+                VSync = false;
     }
 };
 

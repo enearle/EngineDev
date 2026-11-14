@@ -9,7 +9,7 @@ maintained copy and is updated as each phase lands.
 | --- | --- | --- |
 | 0. Stabilize and restructure | Done | Branch `Dev-2`, 14 November 2026. See "Phase 0 outcome" |
 | 1. Frame structure | Done | Branch `Dev-2`, 14 November 2026. See "Phase 1 outcome" |
-| 2. Compute and GPU data | Not started | |
+| 2. Compute and GPU data | Not started | Plan and review findings in `Docs/Handoff-Phase2.md` |
 | 3. Skeleton and animation | Not started | |
 | 4. Materials and paging | Not started | |
 | 5. Procedural skin on the character | Not started | |
@@ -135,12 +135,30 @@ delete it in the next step.
   poly, and on Vulkan the shadow pass renders all four multiview layers, three of them for lights that
   do not exist, while D3D12 renders one. Not optimized yet.
 
+**Corrections after review** (commit "Phase 1 corrections", from `Docs/Handoff-Phase2.md`):
+
+- Uploads go through an upload context per backend: its own command list or buffer and a fence that
+  only counts up. The per-frame D3D12 transfer list is gone, so an upload is safe at any time.
+  Before this, D3D12 buffer and image uploads signalled one fence with two schemes and could skip
+  the wait.
+- One sampler table (`GlobalSamplers`) builds the D3D12 static samplers, now visible to every stage,
+  and the Vulkan set 0: `s0` linear repeat 16x anisotropic, `s1` point clamp, `s2` linear clamp, `s3`
+  point repeat. Vulkan sampled images are `SAMPLED_IMAGE`; `DescriptorBinding::Sampler` is gone.
+- Memory access has named presets (`DeviceLocalMemory`, `UploadMemory`, `ReadbackMemory`). A
+  CPU-readable buffer is a readback heap on D3D12.
+- Vulkan descriptor pools chain when full; a set remembers its pool.
+- Vulkan recreates the swapchain when it is out of date or suboptimal and skips that frame.
+- `-novsync`; vsync is on by default on both backends (Vulkan used to pick mailbox, uncapped).
+- `VK_EXT_descriptor_buffer` is no longer required.
+- Frozen captures vary between two states from run to run on both backends, probably a UI animation
+  phase. Compare runs in the same state: Vulkan and D3D12 then differ by a mean of 0.39 out of 255.
+
+The Release frame times above are not comparable: D3D12 was vsync-capped and Vulkan was not.
+
 Open items:
 
 - D3D12 still has no view instancing (shadow layer 0 only). On Vulkan the view mask is fixed at four
   layers even with one light.
-- The D3D12 transfer command list is reset at upload time, so uploads are only safe between frames,
-  which is how loading works today.
 - The material set is a convention: set 2 of `Renderer::GetSceneLayout()`. Phase 4 replaces this.
 
 ## Verdict

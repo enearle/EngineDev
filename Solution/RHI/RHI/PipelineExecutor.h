@@ -23,7 +23,8 @@ public:
     static PipelineExecutor* Create(Window* window, CoreInitData data);
     virtual ~PipelineExecutor() = default;
 
-    virtual void BeginFrame() = 0;
+    // False when no frame can be recorded now (the swapchain was recreated); skip the frame.
+    virtual bool BeginFrame() = 0;
     virtual void EndFrame() = 0;
     virtual void Wait() = 0;
     virtual uint64_t GetFrameNumber() const = 0;
@@ -61,7 +62,7 @@ public:
     D3DPipelineExecutor(Window* window, CoreInitData data);
     ~D3DPipelineExecutor() override;
 
-    void BeginFrame() override;
+    bool BeginFrame() override;
     void EndFrame() override;
     void Wait() override;
     uint64_t GetFrameNumber() const override;
@@ -92,7 +93,7 @@ public:
     VulkanPipelineExecutor(Window* window, CoreInitData data);
     ~VulkanPipelineExecutor() override;
 
-    void BeginFrame() override;
+    bool BeginFrame() override;
     void EndFrame() override;
     void Wait() override;
     uint64_t GetFrameNumber() const override;

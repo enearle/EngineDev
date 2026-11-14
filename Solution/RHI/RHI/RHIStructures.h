@@ -277,7 +277,7 @@ namespace RHIStructures
         UniformBuffer = 0,          // CBV in D3D12, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER in Vulkan
         StorageBuffer = 1,          // SRV buffer in D3D12, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER in Vulkan
         StorageImage = 2,           // UAV in D3D12, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE in Vulkan
-        SampledImage = 3,           // SRV+Sampler in D3D12, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER in Vulkan
+        SampledImage = 3,           // SRV in D3D12, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE in Vulkan; samplers come from set 0
         DynamicUniformBuffer = 4
     };
     VkDescriptorType VulkanDescriptorType(DescriptorType descriptorType);
@@ -306,11 +306,26 @@ namespace RHIStructures
     VkShaderStageFlags VulkanShaderStageFlags(ShaderStageMask flags);
     D3D12_SHADER_VISIBILITY DXShaderStageFlags(ShaderStageMask flags);
     
-    enum class SamplerType
+    enum class SamplerFilter : uint8_t { Linear, Point };
+    enum class SamplerAddress : uint8_t { Repeat, Clamp };
+
+    struct SamplerDesc
     {
-        Linear,
-        Nearest
+        SamplerFilter Filter;
+        SamplerAddress Address;
+        uint32_t MaxAnisotropy;
     };
+
+    // The only samplers there are: registers s0 to s3 in space 0 on D3D12 (static samplers visible to
+    // every stage), bindings 0 to 3 of set 0 on Vulkan.
+    inline constexpr SamplerDesc GlobalSamplers[] =
+    {
+        { SamplerFilter::Linear, SamplerAddress::Repeat, 16 },  // s0: material textures
+        { SamplerFilter::Point,  SamplerAddress::Clamp,  1 },   // s1: G-buffer reads, page atlas
+        { SamplerFilter::Linear, SamplerAddress::Clamp,  1 },   // s2: shadow maps
+        { SamplerFilter::Point,  SamplerAddress::Repeat, 1 },   // s3
+    };
+    inline constexpr uint32_t GlobalSamplerCount = 4;
     
     struct DescriptorBinding
     {
@@ -318,7 +333,6 @@ namespace RHIStructures
         uint32_t Slot;                  // "Binding index" (replaces Register)
         uint32_t Set;                   // "Descriptor set" (replaces Space) - 0 for most cases
         uint32_t Count;                 // For arrays
-        SamplerType Sampler;
         uint32_t Size = 0;              // Bytes visible through a dynamic uniform buffer
         uint32_t Stride = 0;            // Element size of a storage buffer
     };
@@ -458,6 +472,14 @@ namespace RHIStructures
     VkImageUsageFlags VulkanImageUsage(ImageUsage usage);
     D3D12_RESOURCE_FLAGS DXImageUsage(ImageUsage usage);
 
+    namespace AccessFlag
+    {
+        constexpr uint32_t CPUWrite = 1 << 0;
+        constexpr uint32_t CPURead = 1 << 1;
+        constexpr uint32_t GPUWrite = 1 << 2;
+        constexpr uint32_t GPURead = 1 << 3;
+    }
+
     class MemoryAccess : public Mask
     {
     public:
@@ -473,6 +495,13 @@ namespace RHIStructures
         void SetGPUWrite(bool b) { b ? Value |= (1 << 2) : Value &= ~(1 << 2); }
         void SetGPURead(bool b) { b ? Value |= (1 << 3) : Value &= ~(1 << 3); }
     };
+    // Device memory the CPU never touches.
+    inline constexpr MemoryAccess DeviceLocalMemory = MemoryAccess(AccessFlag::GPURead | AccessFlag::GPUWrite);
+    // Written by the CPU, read by the GPU: an upload heap on D3D12.
+    inline constexpr MemoryAccess UploadMemory = MemoryAccess(AccessFlag::CPUWrite | AccessFlag::GPURead);
+    // Written by the GPU, read by the CPU: a readback heap on D3D12.
+    inline constexpr MemoryAccess ReadbackMemory = MemoryAccess(AccessFlag::CPURead | AccessFlag::GPUWrite);
+
     D3D12_HEAP_TYPE DXMemoryType(MemoryAccess access);
     VkMemoryPropertyFlags VulkanMemoryType(MemoryAccess access);
 
@@ -480,7 +509,7 @@ namespace RHIStructures
     {
         bool TransferSource = false;
         bool TransferDestination = false;
-        MemoryAccess Access = MemoryAccess(0);
+        MemoryAccess Access = MemoryAccess(AccessFlag::GPURead);
         BufferType Type = BufferType::Constant;
     };
     VkBufferUsageFlags VulkanBufferUsage(BufferUsage usage);
@@ -518,7 +547,7 @@ namespace RHIStructures
         uint64_t Size = 0;
         Format Format = {};
         ImageUsage Usage = {};
-        MemoryAccess Access = MemoryAccess(8);
+        MemoryAccess Access = MemoryAccess(AccessFlag::GPURead);
         ImageLayout Layout = ImageLayout::Undefined;
         const void* InitialData = nullptr;
         DirectX::XMFLOAT4 ClearColour = { 0.0f, 0.0f, 0.0f, 1.0f };
