@@ -26,6 +26,7 @@ struct PendingRequest
 struct PendingBufferRequest
 {
     BufferHandle Buffer = {};
+    GraphBufferID GraphBuffer = UINT32_MAX;     // When set, Buffer is looked up in the graph at record time
     BufferState State = BufferState::Undefined;
     uint64_t Offset = 0;
     uint64_t Size = 0;
@@ -44,6 +45,7 @@ struct InFlightCopy
 
 static std::vector<PooledBuffer> Pool;
 static std::vector<GraphImageID> WatchedImages;
+static std::vector<GraphBufferID> WatchedBuffers;
 static std::vector<PendingRequest> Pending;
 static std::vector<PendingBufferRequest> PendingBuffers;
 static std::vector<InFlightCopy> InFlight;
@@ -92,6 +94,12 @@ static void RecordCopies(const PassContext& context)
 
     for (PendingBufferRequest& request : PendingBuffers)
     {
+        if (request.GraphBuffer != UINT32_MAX)
+        {
+            request.Buffer = graph.GetBuffer(request.GraphBuffer);
+            if (!request.Buffer.IsValid())
+                continue;
+        }
         size_t poolIndex = ClaimBuffer(request.Size);
         BufferTransition toCopy = { request.Buffer, request.State, BufferState::CopySource };
         executor->TransitionBuffers({ &toCopy, 1 });
@@ -116,6 +124,8 @@ static void RebuildPass()
     desc.Order = INT_MAX;
     for (GraphImageID image : WatchedImages)
         desc.SampledReads.push_back({ image, 0 });
+    for (GraphBufferID buffer : WatchedBuffers)
+        desc.BufferReads.push_back({ buffer, BufferState::CopySource });
     desc.Execute = RecordCopies;
     ReadbackPass = graph.AddPass(std::move(desc));
 }
@@ -132,6 +142,7 @@ void Readback::Shutdown()
         allocator->DestroyBuffer(buffer.Buffer);
     Pool.clear();
     WatchedImages.clear();
+    WatchedBuffers.clear();
     Pending.clear();
     PendingBuffers.clear();
     InFlight.clear();
@@ -164,7 +175,37 @@ void Readback::RequestBuffer(BufferHandle buffer, BufferState state, uint64_t of
 {
     if (size == 0)
         throw std::runtime_error("Readback::RequestBuffer with no bytes.");
-    PendingBuffers.push_back({ buffer, state, offset, size, std::move(callback) });
+    PendingBuffers.push_back({ buffer, UINT32_MAX, state, offset, size, std::move(callback) });
+}
+
+void Readback::WatchBuffer(GraphBufferID buffer)
+{
+    if (std::find(WatchedBuffers.begin(), WatchedBuffers.end(), buffer) != WatchedBuffers.end())
+        return;
+    WatchedBuffers.push_back(buffer);
+    RebuildPass();
+}
+
+void Readback::UnwatchBuffer(GraphBufferID buffer)
+{
+    std::erase(WatchedBuffers, buffer);
+    std::erase_if(PendingBuffers, [buffer](const PendingBufferRequest& request) { return request.GraphBuffer == buffer; });
+    RebuildPass();
+}
+
+void Readback::RequestBuffer(GraphBufferID buffer, uint64_t offset, uint64_t size, ReadbackCallback callback)
+{
+    if (std::find(WatchedBuffers.begin(), WatchedBuffers.end(), buffer) == WatchedBuffers.end())
+        throw std::runtime_error("Readback::RequestBuffer on a graph buffer that is not watched.");
+    if (size == 0)
+        throw std::runtime_error("Readback::RequestBuffer with no bytes.");
+    PendingBufferRequest request;
+    request.GraphBuffer = buffer;
+    request.State = BufferState::CopySource;
+    request.Offset = offset;
+    request.Size = size;
+    request.Callback = std::move(callback);
+    PendingBuffers.push_back(std::move(request));
 }
 
 void Readback::DeliverCompleted()

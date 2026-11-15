@@ -29,8 +29,8 @@ class ENGINE_API Mesh
 public:
     Mesh();
     Mesh(VertexCache* vertexCache, uint32_t LocalMaterialIndex);
-    Mesh(SkinnedVertexCache* skinnedVertexCache, uint32_t LocalMaterialIndex,
-        const std::vector<DirectX::XMMATRIX>& boneOffsets = {}, const std::vector<DirectX::XMMATRIX>& boneTransforms = {});
+    // Skinned vertices are in model space and their bone indices are joints of the model's skeleton.
+    Mesh(SkinnedVertexCache* skinnedVertexCache, uint32_t LocalMaterialIndex);
     ~Mesh();
 
     // Move-only: cache pointers are owned exclusively; copy would double-free.
@@ -44,8 +44,6 @@ public:
     uint32_t GetLocalMaterialIndex() const              { return LocalMaterialIndex; }
     bool IsSkinned() const                              { return bIsSkinned; }
     MeshHandle GetGPUMesh() const                       { return GPUMesh; }
-    const std::vector<DirectX::XMMATRIX>& GetBoneOffsets() const { return BoneOffsets; }
-    const std::vector<DirectX::XMMATRIX>& GetBoneTransforms() const { return BoneTransforms; }
     void UploadToGPU();
     void FreeGPUResources();
 private:
@@ -54,8 +52,6 @@ private:
     uint32_t VertexCount;
     uint32_t IndexCount;
     uint32_t LocalMaterialIndex;
-    std::vector<DirectX::XMMATRIX> BoneOffsets;
-    std::vector<DirectX::XMMATRIX> BoneTransforms;
 
     MeshHandle GPUMesh = {};
     VertexCache* TempVertexCache = nullptr;

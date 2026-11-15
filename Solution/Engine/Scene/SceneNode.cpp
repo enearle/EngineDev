@@ -80,6 +80,9 @@ SceneNode::~SceneNode()
             delete child;
         }
     }
+
+    for (SceneComponentBase* component : Components)
+        delete component;
 }
 
 void SceneNode::AddChild(SceneNode* child)
@@ -122,6 +125,8 @@ void SceneNode::UploadToGPU()
 void SceneNode::FreeGPUResources()
 {
     auto* meshComponent = static_cast<MeshComponent*>(GetComponent(MeshComponentType));
+    if (meshComponent)
+        meshComponent->FreeGPUResources();
     MeshAsset* meshAsset = meshComponent ? meshComponent->GetMeshAsset() : nullptr;
     if (meshAsset)
         meshAsset->FreeGPUResources();

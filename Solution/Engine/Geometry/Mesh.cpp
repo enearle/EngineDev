@@ -22,9 +22,8 @@ Mesh::Mesh(VertexCache* vertexCache, uint32_t LocalMaterialIndex) :
     TempVertexCache = vertexCache;
 }
 
-Mesh::Mesh(SkinnedVertexCache* skinnedVertexCache, uint32_t LocalMaterialIndex,
-    const  std::vector<DirectX::XMMATRIX>& boneOffsets, const std::vector<DirectX::XMMATRIX>& boneTransforms) :
-    LocalMaterialIndex(LocalMaterialIndex), bIsSkinned(true), BoneOffsets(boneOffsets), BoneTransforms(boneTransforms)
+Mesh::Mesh(SkinnedVertexCache* skinnedVertexCache, uint32_t LocalMaterialIndex) :
+    LocalMaterialIndex(LocalMaterialIndex), bIsSkinned(true)
 {
     using namespace RHIStructures;
 
@@ -43,8 +42,6 @@ Mesh::Mesh(Mesh&& other) noexcept
       VertexCount(other.VertexCount),
       IndexCount(other.IndexCount),
       LocalMaterialIndex(other.LocalMaterialIndex),
-      BoneOffsets(std::move(other.BoneOffsets)),
-      BoneTransforms(std::move(other.BoneTransforms)),
       GPUMesh(other.GPUMesh),
       TempVertexCache(other.TempVertexCache),
       TempSkinnedVertexCache(other.TempSkinnedVertexCache)
@@ -63,8 +60,6 @@ Mesh& Mesh::operator=(Mesh&& other) noexcept
         VertexCount = other.VertexCount;
         IndexCount = other.IndexCount;
         LocalMaterialIndex = other.LocalMaterialIndex;
-        BoneOffsets = std::move(other.BoneOffsets);
-        BoneTransforms = std::move(other.BoneTransforms);
         GPUMesh = other.GPUMesh;
         TempVertexCache = other.TempVertexCache;
         TempSkinnedVertexCache = other.TempSkinnedVertexCache;

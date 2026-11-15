@@ -49,6 +49,7 @@ public:
     virtual void Reset();
 
     SceneNode* GetRootNode() { return Parent ? Parent->GetRootNode() : this; }
+    SceneNode* GetParent() const { return Parent; }
     const AssetID& GetID() const override;
 
     const std::vector<SceneNode*>& GetChildren() const { return Children; }

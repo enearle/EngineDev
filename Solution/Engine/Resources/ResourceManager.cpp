@@ -4,6 +4,7 @@
 
 #include "AssetBase.h"
 #include "Assets/MeshAsset.h"
+#include "../Animation/Clip.h"
 #include "../Geometry/GeometryImport.h"
 #include "../Scene/SceneNode.h"
 
@@ -91,6 +92,12 @@ AssetBase* ResourceManager::GetAsset(const AssetID& id, ResourceType type)
         break;
     case ResourceType::SceneNode:
         asset = new SceneNode();
+        break;
+    case ResourceType::Skeleton:
+        asset = new Skeleton();
+        break;
+    case ResourceType::AnimationClip:
+        asset = new Clip();
         break;
     default:
         return nullptr;

@@ -35,6 +35,11 @@ public:
     static void RequestBuffer(RHIStructures::BufferHandle buffer, RHIStructures::BufferState state, uint64_t offset, uint64_t size,
                               ReadbackCallback callback);
 
+    // Graph buffers are watched like images, so the pass is ordered after their writers.
+    static void WatchBuffer(GraphBufferID buffer);
+    static void UnwatchBuffer(GraphBufferID buffer);
+    static void RequestBuffer(GraphBufferID buffer, uint64_t offset, uint64_t size, ReadbackCallback callback);
+
     // Fires the callbacks of every copy whose frame the GPU has finished. Called by the renderer at
     // the start of each frame.
     static void DeliverCompleted();

@@ -28,19 +28,9 @@ struct InstanceData
 {
     float4x4 World;
     float4x4 Normal;
-    uint BoneOffset;
-    uint Padding0;
-    uint Padding1;
-    uint Padding2;
-};
-
-struct BoneData
-{
-    float4x4 Transform;
 };
 
 StructuredBuffer<InstanceData> Instances : register(t1, space1);
-StructuredBuffer<BoneData> Bones : register(t2, space1);
 
 struct DrawConstantsData
 {
@@ -55,15 +45,6 @@ ConstantBuffer<DrawConstantsData> Draw : register(b0, space999);
 InstanceData LoadInstance(uint instanceID)
 {
     return Instances[Draw.FirstInstance + instanceID];
-}
-
-float4x4 SkinMatrix(uint boneOffset, float4 weights, uint4 indices)
-{
-    float4x4 skin = (float4x4)0;
-    for (int i = 0; i < 4; i++)
-        if (weights[i] > 0.0)
-            skin += weights[i] * Bones[boneOffset + indices[i]].Transform;
-    return skin;
 }
 
 float2 OctahedralWrap(float2 v)

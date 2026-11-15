@@ -6,10 +6,10 @@
 #include <iostream>
 #include <string>
 #include "Game.h"
+#include "AnimationDemo.h"
 #include "imgui.h"
 #include "Camera.h"
 #include "CameraController.h"
-#include "DerpMover.h"
 #include "GameTime.h"
 #include "Light.h"
 #include "MaterialRegistry.h"
@@ -17,6 +17,7 @@
 #include "MeshRegistry.h"
 #include "Renderer.h"
 #include "Window.h"
+#include "Animation/AnimationSystem.h"
 #include "Geometry/GeometryImport.h"
 #include "Input/InputEventSystem.h"
 #include "Passes/ComputeTestPass.h"
@@ -32,15 +33,24 @@ static constexpr uint32_t StressObjectCount = 10000;
 
 static Camera* sCamera = nullptr;
 static Light* sLight = nullptr;
-static DerpMover* sDerpMover = nullptr;
 static CameraController* sCameraCon = nullptr;
 static std::vector<MaterialHandle> sMaterials;
 static DebugOverlay::PanelID sStatsPanel = 0;
-static bool sIsAnimationFrozen = false;
 
 static bool IsSwitchPresent(const wchar_t* name)
 {
     return std::wcsstr(GetCommandLineW(), name) != nullptr;
+}
+
+// The number after a switch, or fallback when the switch has none.
+static uint32_t SwitchNumber(const wchar_t* name, uint32_t fallback)
+{
+    const wchar_t* found = std::wcsstr(GetCommandLineW(), name);
+    if (!found)
+        return 0;
+    wchar_t* end = nullptr;
+    unsigned long value = std::wcstoul(found + std::wcslen(name), &end, 10);
+    return end == found + std::wcslen(name) ? fallback : static_cast<uint32_t>(value);
 }
 
 static void AssignMaterials(SceneNode* node, const std::vector<MaterialHandle>& materials)
@@ -167,14 +177,15 @@ void GameInit()
 
     SceneNode* derp = GeometryImport::CreateMeshGroup("../Engine/Meshes/Derp.fbx", "derp", XMMatrixIdentity(), true);
     AssignMaterials(derp, derpMaterials);
+    // The demo copies source vertices for the skinning check before the upload drops them.
+    AnimationDemo::Start(derp, derpMaterials, SwitchNumber(L" -crowd", 100), IsSwitchPresent(L" -animation-test"));
     derp->UploadToGPU();
-    sDerpMover = new DerpMover(derp);
 
     if (IsSwitchPresent(L" -stress"))
         BuildStressScene(shells, shellMaterials);
 
     sCameraCon = new CameraController(sCamera, 5.0f);
-    sIsAnimationFrozen = IsSwitchPresent(L" -freeze-animation");
+    AnimationSystem::SetFrozen(IsSwitchPresent(L" -freeze-animation"));
     sStatsPanel = DebugOverlay::EnlistPanel("Renderer", DrawRendererPanel);
     GameTime::Init();
 }
@@ -185,9 +196,11 @@ void GameRunFrame(float /*dt*/)
     InputEventSystem::PollInput(Renderer::GetWindow()->GetWindowHandle(), GameTime::GetDeltaTime());
     InputEventSystem::ProcessCommands(GameTime::GetDeltaTime());
     NoesisUILayer::Instance().NoesisUpdate(GameTime::GetDeltaTime());
-    if (sDerpMover) sDerpMover->MoveTheDerp(sIsAnimationFrozen ? 0.0 : GameTime::GetDeltaTime());
     if (sCameraCon) sCameraCon->MoveCamera(GameTime::GetDeltaTime());
+    AnimationDemo::Update(static_cast<float>(GameTime::GetDeltaTime()));
+    AnimationSystem::Update(static_cast<float>(GameTime::GetDeltaTime()));
     SceneExtraction::ExtractFrame(sCamera, { sLight });
+    AnimationDemo::RequestChecks();
 }
 
 void GameShutdown()
@@ -202,6 +215,7 @@ void GameShutdown()
     for (const GpuPassTime& time : stats.GpuPasses)
         std::cout << " " << time.Name << " " << time.Milliseconds << ";";
     std::cout << std::endl;
+    AnimationDemo::PrintResults();
 
     Renderer::WaitForGpu();
     DebugOverlay::RetirePanel(sStatsPanel);
@@ -217,9 +231,9 @@ void GameShutdown()
         MaterialRegistry::Retire(material);
     sMaterials.clear();
 
+    AnimationDemo::Shutdown();
     NoesisUILayer::Instance().NoesisShutdown();
 
-    delete sDerpMover; sDerpMover = nullptr;
     delete sCameraCon; sCameraCon = nullptr;
     delete sCamera;    sCamera = nullptr;
     delete sLight;     sLight = nullptr;

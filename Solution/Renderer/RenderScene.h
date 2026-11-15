@@ -5,6 +5,7 @@
 
 using MeshHandle = Handle<struct MeshHandleTag>;
 using MaterialHandle = Handle<struct MaterialHandleTag>;
+using SkinnedMeshHandle = Handle<struct SkinnedMeshHandleTag>;
 
 enum class VertexLayout : uint8_t
 {
@@ -18,7 +19,11 @@ struct RenderObject
     MeshHandle Mesh = {};
     MaterialHandle Material = {};
     DirectX::XMFLOAT4X4 World = {};
-    uint32_t BoneOffset = 0;            // First palette entry in RenderScene::BoneMatrices
+    // A skinned object is skinned this frame with the palette starting at BoneOffset in
+    // RenderScene::BoneMatrices, then drawn from the skinning pool; Mesh is its source.
+    SkinnedMeshHandle SkinnedMesh = {};
+    uint32_t BoneOffset = 0;
+    DirectX::XMFLOAT4 Bounds = {};      // World-space sphere (centre, radius) replacing the mesh's when the radius is above 0
     bool CastsShadows = true;
 };
 
@@ -71,10 +76,8 @@ struct InstanceData
 {
     DirectX::XMFLOAT4X4 World;
     DirectX::XMFLOAT4X4 Normal;
-    uint32_t BoneOffset;
-    uint32_t Padding[3];
 };
-static_assert(sizeof(InstanceData) == 144);
+static_assert(sizeof(InstanceData) == 128);
 
 // Mirrors DrawConstants in Shaders/Common.hlsli.
 struct DrawConstants

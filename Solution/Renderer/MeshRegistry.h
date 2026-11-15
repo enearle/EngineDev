@@ -8,14 +8,15 @@ struct MeshRecord
     RHIStructures::BufferHandle VertexBuffer = {};
     RHIStructures::BufferHandle IndexBuffer = {};
     uint32_t VertexStride = 0;
+    uint32_t VertexCount = 0;
     uint32_t IndexCount = 0;
-    VertexLayout Layout = VertexLayout::Static;
+    VertexLayout Layout = VertexLayout::Static;     // Of the source vertices; skinned ones are drawn from the skinning pool
     DirectX::XMFLOAT3 BoundsCenter = {};
     float BoundsRadius = 0.0f;
 };
 
 // GPU copies of mesh geometry. One per program. Vertices start with a float3 position, which is
-// read to compute the bounding sphere.
+// read to compute the bounding sphere. Skinned vertex buffers can also be read as storage buffers.
 class RENDERER_API MeshRegistry
 {
 public:

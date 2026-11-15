@@ -5,6 +5,8 @@
 #include "MaterialRegistry.h"
 #include "MeshRegistry.h"
 #include "Renderer.h"
+#include "Skinning.h"
+#include "PassGraph.h"
 #include "RHI/BufferAllocator.h"
 #include "RHI/PipelineExecutor.h"
 
@@ -85,33 +87,29 @@ void DrawList::Build(std::span<const Frustum> frusta, bool isShadowCastersOnly)
         if (isSameBatch)
             Batches.back().InstanceCount++;
         else
-            Batches.push_back({ object.Layout, object.Material, object.Mesh, firstInstance + static_cast<uint32_t>(i), 1 });
+            Batches.push_back({ object.Material, object.Mesh, object.SkinnedMesh, firstInstance + static_cast<uint32_t>(i), 1 });
     }
     InstanceCount = static_cast<uint32_t>(SortKeys.size());
 }
 
-void DrawList::Record(PipelineExecutor* executor, std::span<Pipeline* const> pipelines, bool isMaterialBound, const std::string& passName,
+void DrawList::Record(PipelineExecutor* executor, Pipeline* pipeline, bool isMaterialBound, const std::string& passName,
                       uint32_t viewIndex) const
 {
-    Pipeline* boundPipeline = nullptr;
     MaterialHandle boundMaterial = {};
     uint32_t drawCalls = 0;
+    if (!Batches.empty())
+    {
+        executor->BindPipeline(pipeline);
+        Renderer::BindSceneSet(executor);
+    }
+    BufferHandle pool = Renderer::GetPassGraph().GetBuffer(Skinning::GetPool());
 
     for (const DrawBatch& batch : Batches)
     {
-        Pipeline* pipeline = pipelines[static_cast<size_t>(batch.Layout)];
-        if (!pipeline || !MeshRegistry::IsLive(batch.Mesh))
+        if (!MeshRegistry::IsLive(batch.Mesh))
             continue;
         if (isMaterialBound && !MaterialRegistry::IsLive(batch.Material))
             continue;
-
-        if (pipeline != boundPipeline)
-        {
-            executor->BindPipeline(pipeline);
-            Renderer::BindSceneSet(executor);
-            boundPipeline = pipeline;
-            boundMaterial = {};
-        }
 
         if (isMaterialBound && batch.Material != boundMaterial)
         {
@@ -123,7 +121,15 @@ void DrawList::Record(PipelineExecutor* executor, std::span<Pipeline* const> pip
         executor->PushConstants(&constants, sizeof(constants));
 
         const MeshRecord& mesh = MeshRegistry::Get(batch.Mesh);
-        executor->DrawIndexed(mesh.VertexBuffer, mesh.VertexStride, mesh.IndexBuffer, mesh.IndexCount, batch.InstanceCount);
+        if (batch.SkinnedMesh.IsValid())
+        {
+            if (!Skinning::IsLive(batch.SkinnedMesh))
+                continue;
+            executor->DrawIndexed(pool, sizeof(RHIStructures::Vertex), mesh.IndexBuffer, mesh.IndexCount, batch.InstanceCount,
+                                  Skinning::GetBaseVertex(batch.SkinnedMesh));
+        }
+        else
+            executor->DrawIndexed(mesh.VertexBuffer, mesh.VertexStride, mesh.IndexBuffer, mesh.IndexCount, batch.InstanceCount);
         drawCalls++;
     }
 

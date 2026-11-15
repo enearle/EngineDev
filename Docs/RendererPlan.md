@@ -10,7 +10,7 @@ maintained copy and is updated as each phase lands.
 | 0. Stabilize and restructure | Done | Branch `Dev-2`, 14 November 2026. See "Phase 0 outcome" |
 | 1. Frame structure | Done | Branch `Dev-2`, 14 November 2026. See "Phase 1 outcome" |
 | 2. Compute and GPU data | Done | Branch `Dev-2`, 14 November 2026. See "Phase 2 outcome" |
-| 3. Skeleton and animation | Not started | |
+| 3. Skeleton and animation | In progress | Branch `Dev-2`, 14 November 2026. Steps 1 to 5 done; clip import waits for a character. See "Phase 3 outcome" |
 | 4. Materials and paging | Not started | |
 | 5. Procedural skin on the character | Not started | |
 | 6. Subdivision and deep zoom | Not started | Optional |
@@ -241,6 +241,110 @@ Carried, not part of Phase 2:
 - `RHIStructures.h` exposes `d3d12.h` and Vulkan types to every layer.
 - `D3DPipelineExecutor::GetBackBuffer` uses its own frame counter, not `GetCurrentBackBufferIndex`.
 
+## Phase 3 outcome
+
+In progress on `Dev-2`, 14 November 2026, following `Docs/Handoff-Phase3.md`. Steps 1 to 5 and 7
+are done: step 1 is the "Phase 2 corrections" commit, the rest is "Phase 3". Step 6, clips imported
+from a file, waits for a character with clips (see "Open items").
+
+**Gate so far.** Both backends, validation clean:
+
+- `-animation-test` prints "Animation test: bind pose identity for 4 joints" and "Skinning test: 108
+  vertices matched on 994 frames, largest error 1.90735e-06" on Vulkan, and the same with 863 frames
+  on D3D12. The Derp has 108 vertices, so all of them are checked instead of the first 256. Each
+  read-back vertex is also checked to lie inside the culling sphere of its frame.
+- `-crowd 100` runs 100 copies that start at different times and cross-fade between two clips on a
+  timer: "Crowd: 100 copies, 138 cross-fades started, 751 frames fading" on Vulkan, 147 and 762 on
+  D3D12.
+- Not met yet: a character imported from a file with at least two clips. The Derp has no animation
+  stack, so its two clips, "Dance" and "Sway", are built in code (`Game/AnimationDemo.cpp`). Both are
+  at the bind pose at time 0, so `-freeze-animation` shows the rest pose.
+
+**RHI** (step 1, "Phase 2 corrections")
+
+- `BufferState::VertexBuffer` and `IndexBuffer`, a base vertex on `DrawIndexed`, `CopyBuffer`, and
+  `Readback::RequestBuffer`.
+- Skinning and its check are the first clients of `ReadWriteStorageBuffer`, `TransitionBuffers` and
+  `CopyBuffer`, and all three work on both backends. `CopyBufferToImage` still has no client.
+
+**Engine**
+
+- One matrix convention: row vectors, `Model[j] = Local[j] * Model[parent]`,
+  `Skin[j] = InverseBind[j] * Model[j]`. Every Assimp matrix is transposed on import, bone offsets
+  included (finding 7).
+- `Engine/Animation`: `Skeleton`, `Clip` (linear keys, rotations by normalised lerp on the shorter
+  arc), `Pose` (`Blend`, `BuildPalette`), `AnimatorComponent` (named states, fades requested by code,
+  an automatic next state when a clip that does not loop ends) and `AnimationSystem`, which
+  `GameRunFrame` updates before extraction. `-freeze-animation` holds every animator at time 0.
+- Import: `AI_CONFIG_IMPORT_FBX_PRESERVE_PIVOTS` is off. The skeleton is every bone node and its
+  ancestors below the model root. Skinned vertices are baked into model space with joint indices,
+  so one palette serves the whole character (finding 9). Inverse binds come from the bone offsets
+  moved into model space, with a warning when meshes disagree. Joints are not scene nodes; a mesh
+  without skinning under a joint is attached to the model root with a warning. Each joint stores the
+  largest distance to a vertex it moves. Clips are read one per `aiAnimation`.
+- Assets: `ResourceType::Skeleton` and `ResourceType::AnimationClip`, written as `.asset` files
+  beside the meshes. `MeshAsset` lost both bone arrays (finding 8) and gained a skeleton field.
+- `DerpMover` and `MeshComponent::BonePalette` are gone. A mesh component finds the animator on
+  its nearest ancestor once, and owns its own skinned copies, so copies of a character share the
+  mesh asset. `SceneNode` now deletes its components, which leaked before.
+- The Derp's skeleton is 4 joints: the armature (scale 100) and three bones.
+
+**Renderer**
+
+- Buffers in the pass graph: `ImportBuffer`, `SetBuffer`, `ReleaseBuffer`, and `BufferWrites` and
+  `BufferReads` on `PassDesc`. Writers run before readers and every buffer is undefined at the
+  start of a frame. The D3D12 debug layer accepts that, so no state is kept across frames.
+- `Renderer/Skinning`: one pool buffer of static `Vertex` layout, ranges claimed by `Enlist` and
+  returned by `Retire`, a larger pool and new descriptor sets when it is full. One compute pass
+  (`Order` just after mip generation) dispatches once per skinned object. Vertices are read and
+  written as 32-bit words, with `static_assert`s on the 56- and 88-byte layouts. Positions use the
+  full skin matrix; normal, tangent and bitangent its 3 x 3, normalised (finding 11). A vertex with
+  no weights keeps its bind position.
+- `RenderObject` gained `SkinnedMesh` and a world-space `Bounds`. A skinned object draws alone from
+  the pool with its base vertex, its own index buffer and the static pipeline. Its bounds are the
+  joints grown by their radii (finding 10).
+- Deleted: `vs_pbr_skinned.hlsl`, `vs_vsm_skinned.hlsl`, `SkinMatrix` and the `Bones` binding,
+  `InstanceData::BoneOffset` (instances are 128 bytes), the per-layout pipeline arrays and the
+  layout bits of the batch key.
+- `Readback::WatchBuffer` and `RequestBuffer` for graph buffers, ordered like watched images.
+- An "Animation" panel (characters, joints, skinned vertices, animation CPU ms, skinning GPU ms),
+  and an `Animation:` line with the same figures on exit.
+
+**Checked**
+
+- Debug: Standalone Vulkan and D3D12, Editor `-play` on both, `-stress`, `-compute-test`,
+  `-animation-test` and `-crowd 100` on both. Every run exits 0 and stderr holds only "DirectX
+  debugging enabled." and the Noesis message. The compute test still passes.
+- Rest pose: on Vulkan the frozen frames of steps 3 and 4 differ only where the new panel is; the
+  Derp's cells are unchanged. Steps 2 and 3 differ only in the cells that change between run
+  states. Vulkan against D3D12 gives a mean of 3.7 to 4.0 in the same cells as the Phase 2 runs in
+  different run states; no pair of runs in this phase landed in the same state, so the 0.23 figure
+  was not reproduced.
+- Release `-crowd 100 -novsync`, 101 characters, 404 joints, 10,908 skinned vertices: Vulkan
+  0.28 ms a frame, animation 0.011 ms CPU, skinning 0.019 ms GPU; D3D12 0.34 ms, 0.012 ms and
+  0.011 ms. The Derp is tiny, so these say little about a real character. Release
+  `-animation-test` passes on both.
+- Debug `-stress` is unchanged: Vulkan 32 ms, D3D12 54 ms, which includes GPU-based validation
+  (finding 5).
+
+Open items:
+
+- **Step 6.** Clip import from a file is written but has never run on a file with clips. Cross-fades
+  between imported clips and `-crowd` with that character wait for it, and Phase 3 stays in
+  progress until then.
+- Morph targets: no asset has them. The skinning shader would apply them before the bones.
+- Skinned normals use the 3 x 3 of the skin matrix, exact for rotation and uniform scale only.
+- Every character is animated and skinned whether or not a view sees it.
+- Attaching objects to joints needs a later feature; joints are not scene nodes.
+- Animator states live only at runtime; only the skeleton field of `AnimatorComponent` is saved.
+- Skeletons, clips and mesh assets made by the import are never freed, as `MeshAsset` was before.
+
+Carried, not part of Phase 3:
+
+- Every launch re-imports the FBX files and rewrites their `.asset` files and `registry.bin`.
+  Cooked assets are the fix.
+- The open and carried items under "Phase 2 outcome".
+
 ## Verdict
 
 EngineDev is a viable starting point: keep it. The slow, unglamorous parts already work on both backends, and most of what the cache system needs is additive.
@@ -266,7 +370,7 @@ The RHI is real and symmetric across both backends; everything above it is place
 | Resources | Partial | Buffers and images behind integer IDs. Images must be uploaded from CPU data, with 1 mip and 1 layer. Buffers are never freed at runtime, and each resource is its own device allocation |
 | Descriptors | Partial | Sets per pipeline and slot. Dynamic uniform buffers work on both backends. Storage buffers and storage images are never written on the Vulkan side |
 | Lighting | Working | Deferred PBR with 4 lights and variance shadow maps rendered with multiview |
-| Skinning | Partial | Vertex-shader skinning with 4 weights and a fixed 128-bone uniform buffer. No joint hierarchy and no clips; DerpMover animates three bones by hand |
+| Skinning | Working | Since Phase 3: a skeleton imported from the node tree, clips, an animator with fades, and compute skinning once per frame into a pool drawn with the static pipelines. Clip import from a file is untested |
 | Import | Working | Assimp for FBX, stb_image for textures. A material is one of two hard-coded texture layouts, found by file name |
 | UI | Working | NoesisGUI on both backends, with Noesis-specific calls inside the RHI executor |
 | Engine side | Placeholder | TempGameObject, a static active camera, and an input command system. About 1,600 lines |

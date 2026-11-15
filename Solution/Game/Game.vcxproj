@@ -47,9 +47,11 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="AnimationDemo.cpp" />
     <ClCompile Include="Game.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="AnimationDemo.h" />
     <ClInclude Include="Game.h" />
   </ItemGroup>
   <ItemGroup>

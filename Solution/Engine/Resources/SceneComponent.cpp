@@ -2,6 +2,8 @@
 #include <algorithm>
 #include "AssetSerializer.h"
 #include "../Scene/SceneNode.h"
+#include "../Animation/AnimatorComponent.h"
+#include "Skinning.h"
 
 void SceneComponentBase::Serialize(std::string& data)
 {
@@ -62,6 +64,32 @@ void MeshComponent::AssignMaterials(const std::vector<MaterialHandle>& materials
     }
 }
 
+AnimatorComponent* MeshComponent::GetAnimator()
+{
+    if (IsAnimatorSearched)
+        return Animator;
+    IsAnimatorSearched = true;
+    for (SceneNode* node = Owner; node && !Animator; node = node->GetParent())
+        Animator = static_cast<AnimatorComponent*>(node->GetComponent(AnimatorComponentType));
+    return Animator;
+}
+
+SkinnedMeshHandle MeshComponent::GetSkinnedMesh(uint32_t submesh)
+{
+    if (SkinnedMeshes.size() <= submesh)
+        SkinnedMeshes.resize(submesh + 1);
+    if (!SkinnedMeshes[submesh].IsValid())
+        SkinnedMeshes[submesh] = Skinning::Enlist(GetMeshAsset()->GetMesh(submesh).GetGPUMesh());
+    return SkinnedMeshes[submesh];
+}
+
+void MeshComponent::FreeGPUResources()
+{
+    for (SkinnedMeshHandle mesh : SkinnedMeshes)
+        Skinning::Retire(mesh);
+    SkinnedMeshes.clear();
+}
+
 bool SceneComponentFactory::SceneComponentExists(SceneComponentType sceneComponentType, SceneNode* owner)
 {
     if (owner == nullptr)
@@ -82,6 +110,8 @@ SceneComponentBase* SceneComponentFactory::SceneComponentBuilder(SceneComponentT
     {
     case SceneComponentType::MeshComponentType:
         return new MeshComponent(owner);
+    case SceneComponentType::AnimatorComponentType:
+        return new AnimatorComponent(owner);
     default:
         return nullptr;
     }

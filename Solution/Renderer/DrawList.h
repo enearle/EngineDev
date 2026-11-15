@@ -16,7 +16,7 @@ struct PreparedObject
     uint64_t BatchKey = 0;              // Objects with equal keys draw in one instanced call
     MeshHandle Mesh = {};
     MaterialHandle Material = {};
-    VertexLayout Layout = VertexLayout::Static;
+    SkinnedMeshHandle SkinnedMesh = {};
     bool CastsShadows = true;
 };
 
@@ -28,17 +28,18 @@ struct Frustum
     bool IntersectsSphere(const DirectX::XMFLOAT4& sphere) const;
 };
 
+// A skinned mesh draws alone, from its range of the skinning pool.
 struct DrawBatch
 {
-    VertexLayout Layout = VertexLayout::Static;
     MaterialHandle Material = {};
     MeshHandle Mesh = {};
+    SkinnedMeshHandle SkinnedMesh = {};
     uint32_t FirstInstance = 0;
     uint32_t InstanceCount = 0;
 };
 
-// The draws of one view, rebuilt every frame: cull, sort by vertex layout, material and mesh, merge
-// equal neighbours into instanced draws, and write their instance data to the frame ring.
+// The draws of one view, rebuilt every frame: cull, sort by material and mesh, merge equal
+// neighbours into instanced draws, and write their instance data to the frame ring.
 class RENDERER_API DrawList
 {
     std::vector<uint64_t> SortKeys;
@@ -49,8 +50,7 @@ public:
     // An object is kept when it intersects any of the frusta. No frusta keeps everything.
     void Build(std::span<const Frustum> frusta, bool isShadowCastersOnly);
 
-    // pipelines is indexed by VertexLayout; a null entry skips that layout.
-    void Record(PipelineExecutor* executor, std::span<Pipeline* const> pipelines, bool isMaterialBound, const std::string& passName,
+    void Record(PipelineExecutor* executor, Pipeline* pipeline, bool isMaterialBound, const std::string& passName,
                 uint32_t viewIndex = 0) const;
 
     const std::vector<DrawBatch>& GetBatches() const { return Batches; }

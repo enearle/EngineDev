@@ -1,218 +1,380 @@
 #include "GeometryImport.h"
+#include <algorithm>
 #include <filesystem>
 #include <iostream>
 #include <stdexcept>
+#include <unordered_map>
+#include <vector>
 #include <assimp/Importer.hpp>
+#include <assimp/config.h>
 #include <assimp/scene.h>
 #include <assimp/postprocess.h>
-#include <vector>
 #include "Mesh.h"
 #include "DirectXMath.h"
 #include "RHI/RHIStructures.h"
+#include "../Animation/AnimatorComponent.h"
+#include "../Animation/Clip.h"
 #include "../Resources/ResourceManager.h"
 #include "../Engine/Scene/SceneNode.h"
 
 using namespace DirectX;
 
-SceneNode* GeometryImport::LoadNode(aiNode* node, const aiScene* scene, const XMMATRIX& transform, const std::string& name,
-                                    bool allowSkinned, const std::string& destDir, SceneNode* parent)
+// Assimp matrices act on column vectors; every one is transposed into DirectXMath row-vector form.
+static XMMATRIX ToMatrix(const aiMatrix4x4& matrix)
 {
-    XMMATRIX newTransform = XMMatrixTranspose(XMMATRIX(&node->mTransformation.a1)) * transform;
+    return XMMatrixTranspose(XMMATRIX(&matrix.a1));
+}
+
+static bool IsNearlyEqual(const XMFLOAT4X4& a, const XMFLOAT4X4& b)
+{
+    for (int row = 0; row < 4; row++)
+        for (int column = 0; column < 4; column++)
+            if (std::abs(a.m[row][column] - b.m[row][column]) > 1e-3f * (std::max)(1.0f, std::abs(a.m[row][column])))
+                return false;
+    return true;
+}
+
+// What one import knows: the model root, and for a skinned model its skeleton, the joint of each
+// joint node and every node's bind-pose transform into model space (the model root's frame).
+struct ImportState
+{
+    const aiScene* Scene = nullptr;
+    std::string Name;
+    std::string DestDir;
+    SceneNode* Root = nullptr;
+    Skeleton* ModelSkeleton = nullptr;
+    std::unordered_map<const aiNode*, int32_t> JointByNode;
+    std::unordered_map<std::string, int32_t> JointByName;
+    std::unordered_map<const aiNode*, XMFLOAT4X4> ModelByNode;
+
+    XMMATRIX GetModel(const aiNode* node) const { return XMLoadFloat4x4(&ModelByNode.at(node)); }
+    bool IsJoint(const aiNode* node) const { return JointByNode.contains(node); }
+};
+
+static void CollectModelTransforms(const aiNode* node, const XMMATRIX& model, ImportState& state)
+{
+    XMStoreFloat4x4(&state.ModelByNode[node], model);
+    for (uint32_t i = 0; i < node->mNumChildren; i++)
+        CollectModelTransforms(node->mChildren[i], ToMatrix(node->mChildren[i]->mTransformation) * model, state);
+}
+
+static void CollectJoints(const aiNode* node, int32_t parentJoint, const std::unordered_map<const aiNode*, bool>& isMarked,
+                          std::vector<Joint>& joints, ImportState& state)
+{
+    int32_t joint = parentJoint;
+    if (isMarked.contains(node))
+    {
+        Joint newJoint;
+        newJoint.Name = node->mName.C_Str();
+        newJoint.Parent = parentJoint;
+        XMVECTOR scale, rotation, translation;
+        XMMatrixDecompose(&scale, &rotation, &translation, ToMatrix(node->mTransformation));
+        XMStoreFloat3(&newJoint.BindLocal.Scale, scale);
+        XMStoreFloat4(&newJoint.BindLocal.Rotation, rotation);
+        XMStoreFloat3(&newJoint.BindLocal.Translation, translation);
+        XMStoreFloat4x4(&newJoint.InverseBind, XMMatrixInverse(nullptr, state.GetModel(node)));
+
+        joint = static_cast<int32_t>(joints.size());
+        state.JointByNode[node] = joint;
+        state.JointByName[newJoint.Name] = joint;
+        joints.push_back(newJoint);
+    }
+
+    for (uint32_t i = 0; i < node->mNumChildren; i++)
+        CollectJoints(node->mChildren[i], joint, isMarked, joints, state);
+}
+
+static void CollectSkinnedMeshes(const aiNode* node, const aiScene* scene, std::vector<std::pair<const aiNode*, const aiMesh*>>& out)
+{
+    for (uint32_t i = 0; i < node->mNumMeshes; i++)
+        if (scene->mMeshes[node->mMeshes[i]]->mNumBones > 0)
+            out.push_back({ node, scene->mMeshes[node->mMeshes[i]] });
+    for (uint32_t i = 0; i < node->mNumChildren; i++)
+        CollectSkinnedMeshes(node->mChildren[i], scene, out);
+}
+
+// The joints are every bone node and every ancestor of one below the model root, in parent-first
+// order. A joint's inverse bind comes from the meshes' bone offsets, moved into model space; a joint
+// no mesh binds to uses the inverse of its node's model transform.
+static void BuildSkeleton(ImportState& state)
+{
+    const aiScene* scene = state.Scene;
+    std::vector<std::pair<const aiNode*, const aiMesh*>> skinnedMeshes;
+    CollectSkinnedMeshes(scene->mRootNode, scene, skinnedMeshes);
+    if (skinnedMeshes.empty())
+        return;
+
+    std::unordered_map<const aiNode*, bool> isMarked;
+    for (const auto& [node, mesh] : skinnedMeshes)
+        for (uint32_t i = 0; i < mesh->mNumBones; i++)
+        {
+            const aiNode* boneNode = scene->mRootNode->FindNode(mesh->mBones[i]->mName);
+            if (!boneNode)
+            {
+                std::cout << "Import warning: bone " << mesh->mBones[i]->mName.C_Str() << " has no node in " << state.Name << std::endl;
+                continue;
+            }
+            for (const aiNode* ancestor = boneNode; ancestor && ancestor != scene->mRootNode; ancestor = ancestor->mParent)
+                isMarked[ancestor] = true;
+        }
+
+    std::vector<Joint> joints;
+    CollectJoints(scene->mRootNode, -1, isMarked, joints, state);
+
+    std::vector<bool> isBound(joints.size(), false);
+    for (const auto& [node, mesh] : skinnedMeshes)
+    {
+        XMMATRIX meshToModel = state.GetModel(node);
+        XMMATRIX modelToMesh = XMMatrixInverse(nullptr, meshToModel);
+        for (uint32_t i = 0; i < mesh->mNumBones; i++)
+        {
+            const aiBone* bone = mesh->mBones[i];
+            auto found = state.JointByName.find(bone->mName.C_Str());
+            if (found == state.JointByName.end())
+                continue;
+
+            Joint& joint = joints[found->second];
+            XMFLOAT4X4 inverseBind;
+            XMStoreFloat4x4(&inverseBind, modelToMesh * ToMatrix(bone->mOffsetMatrix));
+            if (isBound[found->second] && !IsNearlyEqual(joint.InverseBind, inverseBind))
+                std::cout << "Import warning: meshes disagree about the inverse bind of joint " << joint.Name << " in " << state.Name << std::endl;
+            joint.InverseBind = inverseBind;
+            isBound[found->second] = true;
+
+            XMVECTOR jointPosition = XMMatrixInverse(nullptr, XMLoadFloat4x4(&inverseBind)).r[3];
+            for (uint32_t w = 0; w < bone->mNumWeights; w++)
+            {
+                if (bone->mWeights[w].mWeight <= 0.0f)
+                    continue;
+                const aiVector3D& p = mesh->mVertices[bone->mWeights[w].mVertexId];
+                XMVECTOR position = XMVector3TransformCoord(XMVectorSet(p.x, p.y, p.z, 1.0f), meshToModel);
+                joint.InfluenceRadius = (std::max)(joint.InfluenceRadius, XMVectorGetX(XMVector3Length(position - jointPosition)));
+            }
+        }
+    }
+
+    state.ModelSkeleton = new Skeleton(state.Name + "_skeleton", std::move(joints));
+    ResourceManager::CreateAsset(state.ModelSkeleton, ResourceType::Skeleton, state.DestDir);
+}
+
+// One clip per animation, its channels matched to joints by name.
+static std::vector<std::pair<std::string, Clip*>> LoadClips(const ImportState& state)
+{
+    std::vector<std::pair<std::string, Clip*>> clips;
+    const aiScene* scene = state.Scene;
+    for (uint32_t a = 0; a < scene->mNumAnimations; a++)
+    {
+        const aiAnimation* animation = scene->mAnimations[a];
+        double ticksPerSecond = animation->mTicksPerSecond > 0.0 ? animation->mTicksPerSecond : 25.0;
+        std::vector<JointTrack> tracks(state.ModelSkeleton->GetJointCount());
+
+        for (uint32_t c = 0; c < animation->mNumChannels; c++)
+        {
+            const aiNodeAnim* channel = animation->mChannels[c];
+            auto found = state.JointByName.find(channel->mNodeName.C_Str());
+            if (found == state.JointByName.end())
+            {
+                std::cout << "Import warning: animation channel " << channel->mNodeName.C_Str() << " matches no joint in " << state.Name << std::endl;
+                continue;
+            }
+
+            JointTrack& track = tracks[found->second];
+            for (uint32_t k = 0; k < channel->mNumPositionKeys; k++)
+            {
+                const aiVectorKey& key = channel->mPositionKeys[k];
+                track.Translations.push_back({ static_cast<float>(key.mTime / ticksPerSecond), { key.mValue.x, key.mValue.y, key.mValue.z } });
+            }
+            for (uint32_t k = 0; k < channel->mNumRotationKeys; k++)
+            {
+                const aiQuatKey& key = channel->mRotationKeys[k];
+                track.Rotations.push_back({ static_cast<float>(key.mTime / ticksPerSecond), { key.mValue.x, key.mValue.y, key.mValue.z, key.mValue.w } });
+            }
+            for (uint32_t k = 0; k < channel->mNumScalingKeys; k++)
+            {
+                const aiVectorKey& key = channel->mScalingKeys[k];
+                track.Scales.push_back({ static_cast<float>(key.mTime / ticksPerSecond), { key.mValue.x, key.mValue.y, key.mValue.z } });
+            }
+        }
+
+        std::string clipName = animation->mName.length ? animation->mName.C_Str() : "Clip " + std::to_string(a);
+        std::string assetName = state.Name + "_" + clipName;
+        std::replace_if(assetName.begin(), assetName.end(), [](char c) { return c == '|' || c == '/' || c == '\\' || c == ':' || c == ' '; }, '_');
+        Clip* clip = new Clip(assetName, static_cast<float>(animation->mDuration / ticksPerSecond), std::move(tracks));
+        ResourceManager::CreateAsset(clip, ResourceType::AnimationClip, state.DestDir);
+        clips.push_back({ clipName, clip });
+    }
+    return clips;
+}
+
+static SceneNode* LoadNode(const aiNode* node, const XMMATRIX& local, SceneNode* parent, ImportState& state)
+{
+    const aiScene* scene = state.Scene;
+    bool isJoint = state.IsJoint(node);
+    std::string nodeName = node->mName.length ? std::string(node->mName.C_Str()) : state.Name;
 
     std::vector<Mesh> meshes;
     meshes.reserve(node->mNumMeshes);
-    for (size_t i = 0; i < node->mNumMeshes; i++)
+    for (uint32_t i = 0; i < node->mNumMeshes; i++)
     {
-        uint32_t meshIndex = node->mMeshes[i];
-        aiMesh* assimpMesh = scene->mMeshes[meshIndex];
-        if (allowSkinned && assimpMesh->mNumBones > 0)
-            meshes.emplace_back(LoadSkinnedMesh(assimpMesh, XMMATRIX(&node->mTransformation.a1) * transform));
+        const aiMesh* assimpMesh = scene->mMeshes[node->mMeshes[i]];
+        if (state.ModelSkeleton && assimpMesh->mNumBones > 0)
+            meshes.emplace_back(GeometryImport::LoadSkinnedMesh(assimpMesh, state.GetModel(node), state.JointByName));
         else
-            meshes.emplace_back(LoadMesh(assimpMesh, newTransform));
+        {
+            if (isJoint)
+                std::cout << "Import warning: mesh on joint " << nodeName << " is attached to the model root at its bind position" << std::endl;
+            meshes.emplace_back(GeometryImport::LoadMesh(assimpMesh));
+        }
     }
 
-    std::string nodeName = node->mName.length ? std::string(node->mName.C_Str()) : name;
-    XMMATRIX localTransform = parent ? XMMatrixTranspose(XMMATRIX(&node->mTransformation.a1)) : newTransform;
-    SceneNode* newSceneNode = new SceneNode(nodeName, localTransform, parent); // ctor adds to parent->Children
+    // Joint nodes become no scene node; what hangs from them is attached to the model root.
+    SceneNode* sceneNode = nullptr;
+    if (!isJoint || !meshes.empty())
+        sceneNode = new SceneNode(nodeName, isJoint ? state.GetModel(node) : local, isJoint ? state.Root : parent);
+    if (!state.Root)
+        state.Root = sceneNode;
 
     if (!meshes.empty())
     {
-        MeshComponent* meshComponent = static_cast<MeshComponent*>(newSceneNode->AddComponent(MeshComponentType));
-        if (meshComponent)
-        {
-            MeshAsset* meshAsset = new MeshAsset(meshes, nodeName);
-            // Register asset BEFORE wiring it onto the component so Field::SetID's
-            // type validation against the registry passes.
-            ResourceManager::CreateAsset(meshAsset, ResourceType::Mesh, destDir);
-            meshComponent->SetMeshAsset(meshAsset);
-        }
+        MeshComponent* meshComponent = static_cast<MeshComponent*>(sceneNode->AddComponent(MeshComponentType));
+        MeshAsset* meshAsset = new MeshAsset(meshes, nodeName);
+        bool isSkinned = false;
+        for (uint32_t i = 0; i < meshAsset->GetMeshCount(); i++)
+            isSkinned |= meshAsset->GetMesh(i).IsSkinned();
+        if (isSkinned)
+            meshAsset->SetSkeleton(state.ModelSkeleton);
+        // Register the asset before wiring it onto the component so Field::SetID's type check passes.
+        ResourceManager::CreateAsset(meshAsset, ResourceType::Mesh, state.DestDir);
+        meshComponent->SetMeshAsset(meshAsset);
     }
 
-    for (size_t i = 0; i < node->mNumChildren; i++)
-        LoadNode(node->mChildren[i], scene, newTransform, name, allowSkinned, destDir, newSceneNode); // B10: no outer AddChild
-    return newSceneNode;
+    for (uint32_t i = 0; i < node->mNumChildren; i++)
+    {
+        const aiNode* child = node->mChildren[i];
+        if (isJoint)
+            LoadNode(child, state.GetModel(child), state.Root, state);
+        else
+            LoadNode(child, ToMatrix(child->mTransformation), sceneNode, state);
+    }
+    return sceneNode;
 }
 
-Mesh GeometryImport::LoadMesh(aiMesh* mesh, const XMMATRIX& transform)
+static void ReadVertexBasis(const aiMesh* mesh, size_t i, RHIStructures::Vertex& vertex)
 {
+    vertex.Position = { mesh->mVertices[i].x, mesh->mVertices[i].y, mesh->mVertices[i].z };
+    if (mesh->mTextureCoords[0])
+        vertex.TexCoord = { mesh->mTextureCoords[0][i].x, mesh->mTextureCoords[0][i].y };
+    vertex.Normal = { mesh->mNormals[i].x, mesh->mNormals[i].y, mesh->mNormals[i].z };
+    vertex.Tangent = { mesh->mTangents[i].x, mesh->mTangents[i].y, mesh->mTangents[i].z };
+    vertex.Bitangent = { mesh->mBitangents[i].x, mesh->mBitangents[i].y, mesh->mBitangents[i].z };
+}
 
+static void ReadIndices(const aiMesh* mesh, std::vector<uint32_t>& indices)
+{
+    indices.reserve(mesh->mNumFaces * 3);
+    for (uint32_t i = 0; i < mesh->mNumFaces; i++)
+        for (uint32_t j = 0; j < mesh->mFaces[i].mNumIndices; j++)
+            indices.push_back(mesh->mFaces[i].mIndices[j]);
+}
+
+Mesh GeometryImport::LoadMesh(const aiMesh* mesh)
+{
     VertexCache* vertexCache = new VertexCache();
-
     vertexCache->Vertices.resize(mesh->mNumVertices);
-    vertexCache->Indices.reserve(mesh->mNumFaces * 3);
-
     for (size_t i = 0; i < mesh->mNumVertices; i++)
-    {
-        vertexCache->Vertices[i].Position.x = mesh->mVertices[i].x;
-        vertexCache->Vertices[i].Position.y = mesh->mVertices[i].y;
-        vertexCache->Vertices[i].Position.z = mesh->mVertices[i].z;
-
-        if (mesh->mTextureCoords[0])
-        {
-            vertexCache->Vertices[i].TexCoord.x = mesh->mTextureCoords[0][i].x;
-            vertexCache->Vertices[i].TexCoord.y = mesh->mTextureCoords[0][i].y;
-        }
-
-        vertexCache->Vertices[i].Normal.x = mesh->mNormals[i].x;
-        vertexCache->Vertices[i].Normal.y = mesh->mNormals[i].y;
-        vertexCache->Vertices[i].Normal.z = mesh->mNormals[i].z;
-
-        vertexCache->Vertices[i].Tangent.x = mesh->mTangents[i].x;
-        vertexCache->Vertices[i].Tangent.y = mesh->mTangents[i].y;
-        vertexCache->Vertices[i].Tangent.z = mesh->mTangents[i].z;
-
-        vertexCache->Vertices[i].Bitangent.x = mesh->mBitangents[i].x;
-        vertexCache->Vertices[i].Bitangent.y = mesh->mBitangents[i].y;
-        vertexCache->Vertices[i].Bitangent.z = mesh->mBitangents[i].z;
-    }
-
-    for (size_t i = 0; i < mesh->mNumFaces; i++)
-    {
-        aiFace face = mesh->mFaces[i];
-        for (size_t j = 0; j < face.mNumIndices; j++)
-            vertexCache->Indices.push_back(face.mIndices[j]);
-    }
-
+        ReadVertexBasis(mesh, i, vertexCache->Vertices[i]);
+    ReadIndices(mesh, vertexCache->Indices);
     return Mesh(vertexCache, mesh->mMaterialIndex);
 }
 
-Mesh GeometryImport::LoadSkinnedMesh(aiMesh* mesh, const XMMATRIX& transform)
+Mesh GeometryImport::LoadSkinnedMesh(const aiMesh* mesh, const XMMATRIX& meshToModel, const std::unordered_map<std::string, int32_t>& jointByName)
 {
     using namespace RHIStructures;
 
-    SkinnedVertexCache* skinnedVertexCache = new SkinnedVertexCache();
+    SkinnedVertexCache* cache = new SkinnedVertexCache();
+    cache->Vertices.resize(mesh->mNumVertices);
 
-    skinnedVertexCache->Vertices.resize(mesh->mNumVertices);
-    skinnedVertexCache->Indices.reserve(mesh->mNumFaces * 3);
-
+    // Vertices are baked into model space, so one palette serves every mesh of the model.
+    XMMATRIX normalMatrix = XMMatrixTranspose(XMMatrixInverse(nullptr, meshToModel));
     for (size_t i = 0; i < mesh->mNumVertices; i++)
     {
-        skinnedVertexCache->Vertices[i].Position.x = mesh->mVertices[i].x;
-        skinnedVertexCache->Vertices[i].Position.y = mesh->mVertices[i].y;
-        skinnedVertexCache->Vertices[i].Position.z = mesh->mVertices[i].z;
-
-        if (mesh->mTextureCoords[0])
-        {
-            skinnedVertexCache->Vertices[i].TexCoord.x = mesh->mTextureCoords[0][i].x;
-            skinnedVertexCache->Vertices[i].TexCoord.y = mesh->mTextureCoords[0][i].y;
-        }
-
-        skinnedVertexCache->Vertices[i].Normal.x = mesh->mNormals[i].x;
-        skinnedVertexCache->Vertices[i].Normal.y = mesh->mNormals[i].y;
-        skinnedVertexCache->Vertices[i].Normal.z = mesh->mNormals[i].z;
-
-        skinnedVertexCache->Vertices[i].Tangent.x = mesh->mTangents[i].x;
-        skinnedVertexCache->Vertices[i].Tangent.y = mesh->mTangents[i].y;
-        skinnedVertexCache->Vertices[i].Tangent.z = mesh->mTangents[i].z;
-
-        skinnedVertexCache->Vertices[i].Bitangent.x = mesh->mBitangents[i].x;
-        skinnedVertexCache->Vertices[i].Bitangent.y = mesh->mBitangents[i].y;
-        skinnedVertexCache->Vertices[i].Bitangent.z = mesh->mBitangents[i].z;
-
-        skinnedVertexCache->Vertices[i].BoneWeights = XMFLOAT4(0.0f, 0.0f, 0.0f, 0.0f);
-        skinnedVertexCache->Vertices[i].BoneIndices = XMUINT4(0, 0, 0, 0);
+        Vertex basis;
+        ReadVertexBasis(mesh, i, basis);
+        SkinnedVertex& vertex = cache->Vertices[i];
+        XMStoreFloat3(&vertex.Position, XMVector3TransformCoord(XMLoadFloat3(&basis.Position), meshToModel));
+        XMStoreFloat3(&vertex.Normal, XMVector3Normalize(XMVector3TransformNormal(XMLoadFloat3(&basis.Normal), normalMatrix)));
+        XMStoreFloat3(&vertex.Tangent, XMVector3Normalize(XMVector3TransformNormal(XMLoadFloat3(&basis.Tangent), meshToModel)));
+        XMStoreFloat3(&vertex.Bitangent, XMVector3Normalize(XMVector3TransformNormal(XMLoadFloat3(&basis.Bitangent), meshToModel)));
+        vertex.TexCoord = basis.TexCoord;
+        vertex.BoneWeights = XMFLOAT4(0.0f, 0.0f, 0.0f, 0.0f);
+        vertex.BoneIndices = XMUINT4(0, 0, 0, 0);
     }
 
-    std::vector<XMMATRIX> boneOffsets;
-    std::vector<XMMATRIX> boneTransforms;
-    boneOffsets.resize(mesh->mNumBones);
-    boneTransforms.resize(mesh->mNumBones);
-
-    // Convert from bone->vertices mapping to vertex->bones mapping and store inverse bind pose matrices
-    std::vector<std::vector<std::pair<uint32_t, float>>> vertexBoneData(mesh->mNumVertices);
-
-    for (size_t boneIndex = 0; boneIndex < mesh->mNumBones; boneIndex++)
+    // Bone to vertices becomes vertex to joints; the four largest weights are kept.
+    std::vector<std::vector<std::pair<uint32_t, float>>> influences(mesh->mNumVertices);
+    for (uint32_t b = 0; b < mesh->mNumBones; b++)
     {
-        aiBone* bone = mesh->mBones[boneIndex];
-
-        aiMatrix4x4 offsetMatrix = bone->mOffsetMatrix;
-        boneOffsets[boneIndex] = XMMATRIX(&offsetMatrix.a1);
-
-        for (size_t weightIndex = 0; weightIndex < bone->mNumWeights; weightIndex++)
-        {
-            aiVertexWeight weight = bone->mWeights[weightIndex];
-            uint32_t vertexId = weight.mVertexId;
-            float boneWeight = weight.mWeight;
-
-            vertexBoneData[vertexId].push_back(std::make_pair(boneIndex, boneWeight));
-        }
+        const aiBone* bone = mesh->mBones[b];
+        auto found = jointByName.find(bone->mName.C_Str());
+        if (found == jointByName.end())
+            continue;
+        for (uint32_t w = 0; w < bone->mNumWeights; w++)
+            influences[bone->mWeights[w].mVertexId].push_back({ static_cast<uint32_t>(found->second), bone->mWeights[w].mWeight });
     }
 
-    // Assign bone weights and indices to each vertex
-    for (size_t vertexIndex = 0; vertexIndex < mesh->mNumVertices; vertexIndex++)
+    for (size_t v = 0; v < mesh->mNumVertices; v++)
     {
-        auto& boneData = vertexBoneData[vertexIndex];
+        std::vector<std::pair<uint32_t, float>>& list = influences[v];
+        std::sort(list.begin(), list.end(), [](const std::pair<uint32_t, float>& a, const std::pair<uint32_t, float>& b) { return a.second > b.second; });
 
-        // Sort bone weights and take 4 most influential bones
-        std::sort(boneData.begin(), boneData.end(),
-            [](const std::pair<uint32_t, float>& a, const std::pair<uint32_t, float>& b) {
-                return a.second > b.second;
-            });
-
+        float weights[4] = {};
+        uint32_t joints[4] = {};
         float weightSum = 0.0f;
-        size_t numBones = std::min(boneData.size(), size_t(4));
-
-        float weights[4] = {0.0f, 0.0f, 0.0f, 0.0f};
-        uint32_t indices[4] = {0, 0, 0, 0};
-
-        for (size_t i = 0; i < numBones; i++)
+        for (size_t i = 0; i < (std::min)(list.size(), size_t(4)); i++)
         {
-            indices[i] = boneData[i].first;
-            weights[i] = boneData[i].second;
+            joints[i] = list[i].first;
+            weights[i] = list[i].second;
             weightSum += weights[i];
         }
-
-        // Normalize weights to sum to 1.0
         if (weightSum > 0.0f)
-        {
-            for (size_t i = 0; i < 4; i++)
-                weights[i] /= weightSum;
-        }
+            for (float& weight : weights)
+                weight /= weightSum;
 
-        skinnedVertexCache->Vertices[vertexIndex].BoneWeights = XMFLOAT4(weights[0], weights[1], weights[2], weights[3]);
-        skinnedVertexCache->Vertices[vertexIndex].BoneIndices = XMUINT4(indices[0], indices[1], indices[2], indices[3]);
+        cache->Vertices[v].BoneWeights = XMFLOAT4(weights[0], weights[1], weights[2], weights[3]);
+        cache->Vertices[v].BoneIndices = XMUINT4(joints[0], joints[1], joints[2], joints[3]);
     }
 
-    for (size_t i = 0; i < mesh->mNumFaces; i++)
-    {
-        aiFace face = mesh->mFaces[i];
-        for (size_t j = 0; j < face.mNumIndices; j++)
-            skinnedVertexCache->Indices.push_back(face.mIndices[j]);
-    }
-
-    return Mesh(skinnedVertexCache, mesh->mMaterialIndex, boneOffsets, boneTransforms);
+    ReadIndices(mesh, cache->Indices);
+    return Mesh(cache, mesh->mMaterialIndex);
 }
 
 SceneNode* GeometryImport::CreateMeshGroup(const std::string& sourcePath, const std::string& name, const XMMATRIX& transform, bool allowSkinned)
 {
     Assimp::Importer importer;
+    // Without this Assimp splits each FBX joint into helper nodes and clip channels stop naming joints.
+    importer.SetPropertyBool(AI_CONFIG_IMPORT_FBX_PRESERVE_PIVOTS, false);
     const aiScene* scene = importer.ReadFile(sourcePath,
         aiProcess_Triangulate | aiProcess_JoinIdenticalVertices |
         aiProcess_CalcTangentSpace | aiProcess_GenSmoothNormals | aiProcess_ConvertToLeftHanded);
     if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode)
         throw std::runtime_error("Failed to load model: " + sourcePath);
 
-    std::filesystem::path src(sourcePath);
-    std::string destDir = src.parent_path().string();
-    return LoadNode(scene->mRootNode, scene, transform, name, allowSkinned, destDir, nullptr);
+    ImportState state;
+    state.Scene = scene;
+    state.Name = name;
+    state.DestDir = std::filesystem::path(sourcePath).parent_path().string();
+    CollectModelTransforms(scene->mRootNode, XMMatrixIdentity(), state);
+    if (allowSkinned)
+        BuildSkeleton(state);
+
+    SceneNode* root = LoadNode(scene->mRootNode, ToMatrix(scene->mRootNode->mTransformation) * transform, nullptr, state);
+
+    if (state.ModelSkeleton)
+    {
+        AnimatorComponent* animator = static_cast<AnimatorComponent*>(root->AddComponent(AnimatorComponentType));
+        animator->SetSkeleton(state.ModelSkeleton);
+        for (const auto& [clipName, clip] : LoadClips(state))
+            animator->AddState({ clipName, clip });
+    }
+    return root;
 }

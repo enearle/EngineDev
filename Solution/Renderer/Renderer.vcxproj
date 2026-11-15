@@ -60,6 +60,7 @@
     <ClCompile Include="Readback.cpp" />
     <ClCompile Include="Renderer.cpp" />
     <ClCompile Include="ShaderLibrary.cpp" />
+    <ClCompile Include="Skinning.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="DrawList.h" />
@@ -77,12 +78,16 @@
     <ClInclude Include="RENDERER_API_Macro.h" />
     <ClInclude Include="RenderScene.h" />
     <ClInclude Include="ShaderLibrary.h" />
+    <ClInclude Include="Skinning.h" />
   </ItemGroup>
   <ItemGroup>
     <ShaderSource Include="Shaders\cs_compute_test.hlsl">
       <Profile>cs_6_1</Profile>
     </ShaderSource>
     <ShaderSource Include="Shaders\cs_downsample.hlsl">
+      <Profile>cs_6_1</Profile>
+    </ShaderSource>
+    <ShaderSource Include="Shaders\cs_skinning.hlsl">
       <Profile>cs_6_1</Profile>
     </ShaderSource>
     <ShaderSource Include="Shaders\ps_compute_test.hlsl">
@@ -103,13 +108,7 @@
     <ShaderSource Include="Shaders\vs_pbr.hlsl">
       <Profile>vs_6_1</Profile>
     </ShaderSource>
-    <ShaderSource Include="Shaders\vs_pbr_skinned.hlsl">
-      <Profile>vs_6_1</Profile>
-    </ShaderSource>
     <ShaderSource Include="Shaders\vs_vsm.hlsl">
-      <Profile>vs_6_1</Profile>
-    </ShaderSource>
-    <ShaderSource Include="Shaders\vs_vsm_skinned.hlsl">
       <Profile>vs_6_1</Profile>
     </ShaderSource>
     <ShaderInclude Include="Shaders\Common.hlsli" />

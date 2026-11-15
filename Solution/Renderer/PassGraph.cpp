@@ -90,6 +90,34 @@ ImageHandle PassGraph::GetImage(GraphImageID image) const
     return Images[image].Image;
 }
 
+GraphBufferID PassGraph::ImportBuffer(BufferHandle buffer)
+{
+    GraphBufferID id = 0;
+    while (id < Buffers.size() && Buffers[id].IsLive)
+        id++;
+    if (id == Buffers.size())
+        Buffers.emplace_back();
+    Buffers[id] = { buffer, BufferState::Undefined, true };
+    return id;
+}
+
+void PassGraph::SetBuffer(GraphBufferID buffer, BufferHandle handle)
+{
+    Buffers[buffer].Buffer = handle;
+    Buffers[buffer].State = BufferState::Undefined;
+}
+
+void PassGraph::ReleaseBuffer(GraphBufferID buffer)
+{
+    if (buffer < Buffers.size())
+        Buffers[buffer] = {};
+}
+
+BufferHandle PassGraph::GetBuffer(GraphBufferID buffer) const
+{
+    return Buffers[buffer].Buffer;
+}
+
 PassID PassGraph::AddPass(PassDesc desc)
 {
     PassEntry entry;
@@ -122,6 +150,11 @@ static bool IsWriting(const PassDesc& pass, GraphImageID image)
         if (storage.Image == image)
             return true;
     return pass.HasDepthWrite && pass.DepthWrite.Image == image;
+}
+
+static bool IsWritingBuffer(const PassDesc& pass, GraphBufferID buffer)
+{
+    return std::find(pass.BufferWrites.begin(), pass.BufferWrites.end(), buffer) != pass.BufferWrites.end();
 }
 
 void PassGraph::SortPasses()
@@ -158,6 +191,9 @@ void PassGraph::SortPasses()
             for (const PassInput& input : pass.SampledReads)
                 if (IsWriting(other, input.Image))
                     addEdge(j, i);
+            for (const PassBufferRead& read : pass.BufferReads)
+                if (IsWritingBuffer(other, read.Buffer))
+                    addEdge(j, i);
 
             if (j >= i)
                 continue;
@@ -169,6 +205,9 @@ void PassGraph::SortPasses()
                     addEdge(j, i);
             if (pass.HasDepthWrite && IsWriting(other, pass.DepthWrite.Image))
                 addEdge(j, i);
+            for (GraphBufferID buffer : pass.BufferWrites)
+                if (IsWritingBuffer(other, buffer))
+                    addEdge(j, i);
         }
     }
 
@@ -237,6 +276,15 @@ void PassGraph::Transition(GraphImageID image, ImageLayout layout, std::vector<I
     entry.Layout = layout;
 }
 
+void PassGraph::TransitionBuffer(GraphBufferID buffer, BufferState state, std::vector<BufferTransition>& out)
+{
+    BufferEntry& entry = Buffers[buffer];
+    if (!entry.Buffer.IsValid() || (entry.State == state && state != BufferState::ShaderWrite))
+        return;
+    out.push_back({ entry.Buffer, entry.State, state });
+    entry.State = state;
+}
+
 void PassGraph::Execute(PipelineExecutor* executor, uint32_t width, uint32_t height)
 {
     if (ViewportWidth == 0)
@@ -258,6 +306,8 @@ void PassGraph::Execute(PipelineExecutor* executor, uint32_t width, uint32_t hei
     BufferAllocator* allocator = BufferAllocator::GetInstance();
     Images[BackBuffer].Image = executor->GetBackBuffer();
     Images[BackBuffer].Layout = ImageLayout::Undefined;
+    for (BufferEntry& buffer : Buffers)
+        buffer.State = BufferState::Undefined;
 
     auto clearBackBuffer = [&]()
     {
@@ -271,10 +321,19 @@ void PassGraph::Execute(PipelineExecutor* executor, uint32_t width, uint32_t hei
 
     bool isBackBufferWritten = false;
     std::vector<ImageTransition> transitions;
+    std::vector<BufferTransition> bufferTransitions;
     for (uint32_t passIndex : ExecutionOrder)
     {
         PassEntry& pass = Passes[passIndex];
         const PassDesc& desc = pass.Desc;
+
+        bufferTransitions.clear();
+        for (GraphBufferID buffer : desc.BufferWrites)
+            TransitionBuffer(buffer, BufferState::ShaderWrite, bufferTransitions);
+        for (const PassBufferRead& read : desc.BufferReads)
+            TransitionBuffer(read.Buffer, read.State, bufferTransitions);
+        if (!bufferTransitions.empty())
+            executor->TransitionBuffers(bufferTransitions);
 
         transitions.clear();
         for (const PassInput& input : desc.SampledReads)
@@ -395,5 +454,6 @@ void PassGraph::Clear()
     for (GraphImageID i = 1; i < Images.size(); i++)
         DestroyImage(i);
     Images.resize(1);
+    Buffers.clear();
     IsOrderDirty = true;
 }

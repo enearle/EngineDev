@@ -7,6 +7,7 @@
 #include "../PassGraph.h"
 #include "../Renderer.h"
 #include "../ShaderLibrary.h"
+#include "../Skinning.h"
 #include "RHI/Pipeline.h"
 #include "RHI/PipelineExecutor.h"
 #include "RHI/RHIConstants.h"
@@ -17,8 +18,6 @@ using namespace RHIConstants;
 static constexpr uint32_t ShadowMapSize = 1024;
 static constexpr uint32_t LightingInputSetIndex = 3;
 
-using LayoutPipelines = std::array<Pipeline*, static_cast<size_t>(VertexLayout::Count)>;
-
 static bool IsEnlisted = false;
 static GraphImageID ShadowMap = 0;
 static GraphImageID ShadowDepth = 0;
@@ -28,8 +27,8 @@ static GraphImageID Material = 0;
 static GraphImageID Depth = 0;
 static std::vector<PassID> Passes;
 
-static LayoutPipelines ShadowPipelines = {};
-static LayoutPipelines GBufferPipelines = {};
+static Pipeline* ShadowPipeline = nullptr;
+static Pipeline* GBufferPipeline = nullptr;
 static Pipeline* LightingPipeline = nullptr;
 static PipelineLayout* LightingLayout = nullptr;
 
@@ -51,15 +50,6 @@ static std::vector<VertexAttribute> StaticAttributes(bool isPositionOnly)
     return attributes;
 }
 
-static std::vector<VertexAttribute> SkinnedAttributes(bool isPositionOnly)
-{
-    std::vector<VertexAttribute> attributes = StaticAttributes(isPositionOnly);
-    uint32_t location = static_cast<uint32_t>(attributes.size());
-    attributes.push_back({ .Binding = 0, .Location = location, .Format = Format::R32G32B32A32_FLOAT, .Offset = 56, .SemanticName = SemanticName::BlendWeight, .SemanticIndex = 0 });
-    attributes.push_back({ .Binding = 0, .Location = location + 1, .Format = Format::R32G32B32A32_UINT, .Offset = 72, .SemanticName = SemanticName::BlendIndices, .SemanticIndex = 0 });
-    return attributes;
-}
-
 static DepthStencilState DepthState(bool isEnabled)
 {
     StencilOpState keep = { CompareOp::Always, StencilOp::Keep, StencilOp::Keep, StencilOp::Keep };
@@ -71,24 +61,16 @@ static RasterizerState Rasterizer(CullMode cullMode)
     return { FillMode::Solid, cullMode, false, 0.0f, 0.0f, 0.0f, true };
 }
 
-static LayoutPipelines CreateMeshPipelines(PipelineDesc desc, const char* staticShader, const char* skinnedShader, bool isPositionOnly)
+// Every mesh is drawn with the static Vertex layout; skinned ones from the skinning pool.
+static Pipeline* CreateMeshPipeline(PipelineDesc desc, const char* vertexShader, bool isPositionOnly)
 {
-    LayoutPipelines pipelines = {};
-
-    desc.VertexShader = LoadShader(staticShader);
+    desc.VertexShader = LoadShader(vertexShader);
     desc.VertexBindings = { { 0, sizeof(Vertex), false } };
     desc.VertexAttributes = StaticAttributes(isPositionOnly);
-    pipelines[static_cast<size_t>(VertexLayout::Static)] = Pipeline::Create(desc);
-    ReleaseShader(desc.VertexShader);
-
-    desc.VertexShader = LoadShader(skinnedShader);
-    desc.VertexBindings = { { 0, sizeof(SkinnedVertex), false } };
-    desc.VertexAttributes = SkinnedAttributes(isPositionOnly);
-    pipelines[static_cast<size_t>(VertexLayout::Skinned)] = Pipeline::Create(desc);
+    Pipeline* pipeline = Pipeline::Create(desc);
     ReleaseShader(desc.VertexShader);
     ReleaseShader(desc.FragmentShader);
-
-    return pipelines;
+    return pipeline;
 }
 
 static void CreatePipelines()
@@ -101,7 +83,7 @@ static void CreatePipelines()
     shadow.BlendAttachmentStates = { DisabledBlendAttachmentState };
     shadow.RenderTargetFormats = { Format::R32G32_FLOAT };
     shadow.DepthStencilFormat = Format::D32_FLOAT;
-    ShadowPipelines = CreateMeshPipelines(shadow, "vs_vsm", "vs_vsm_skinned", true);
+    ShadowPipeline = CreateMeshPipeline(shadow, "vs_vsm", true);
 
     PipelineDesc gBuffer;
     gBuffer.Layout = Renderer::GetSceneLayout();
@@ -111,7 +93,7 @@ static void CreatePipelines()
     gBuffer.BlendAttachmentStates = { DisabledBlendAttachmentState, DisabledBlendAttachmentState, DisabledBlendAttachmentState };
     gBuffer.RenderTargetFormats = { Format::R8G8B8A8_UNORM, Format::R16G16_UNORM, Format::R8G8B8A8_UNORM };
     gBuffer.DepthStencilFormat = Format::D32_FLOAT;
-    GBufferPipelines = CreateMeshPipelines(gBuffer, "vs_pbr", "vs_pbr_skinned", false);
+    GBufferPipeline = CreateMeshPipeline(gBuffer, "vs_pbr", false);
 
     ResourceLayout lightingResources;
     lightingResources.VisibleStages = Renderer::GetSceneVisibleStages();
@@ -143,7 +125,7 @@ static void ExecuteShadowPass(const PassContext& context, uint32_t layer)
 
     Frustum frustum = Frustum::FromViewProjection(lights[layer].ViewProjection);
     ShadowDraws[layer].Build({ &frustum, 1 }, true);
-    ShadowDraws[layer].Record(context.Executor, ShadowPipelines, false, "Shadow " + std::to_string(layer), layer);
+    ShadowDraws[layer].Record(context.Executor, ShadowPipeline, false, "Shadow " + std::to_string(layer), layer);
 }
 
 static void ExecuteGBufferPass(const PassContext& context)
@@ -157,7 +139,7 @@ static void ExecuteGBufferPass(const PassContext& context)
     Frustum frustum = Frustum::FromViewProjection(viewProjection);
 
     GBufferDraws.Build({ &frustum, 1 }, false);
-    GBufferDraws.Record(context.Executor, GBufferPipelines, true, "G-buffer");
+    GBufferDraws.Record(context.Executor, GBufferPipeline, true, "G-buffer");
 }
 
 static void ExecuteLightingPass(const PassContext& context)
@@ -199,6 +181,7 @@ void DeferredPasses::Enlist()
     gBuffer.ColorWrites = { { Albedo, AttachmentLoadOp::Clear }, { Normal, AttachmentLoadOp::Clear }, { Material, AttachmentLoadOp::Clear } };
     gBuffer.HasDepthWrite = true;
     gBuffer.DepthWrite = { Depth, AttachmentLoadOp::Clear };
+    gBuffer.BufferReads = { { Skinning::GetPool(), BufferState::VertexBuffer } };
     gBuffer.Execute = ExecuteGBufferPass;
 
     PassDesc lighting;
@@ -217,6 +200,7 @@ void DeferredPasses::Enlist()
         shadow.ColorWrites = { { ShadowMap, AttachmentLoadOp::Clear, SubresourceRange::Layer(layer) } };
         shadow.HasDepthWrite = true;
         shadow.DepthWrite = { ShadowDepth, AttachmentLoadOp::Clear, SubresourceRange::Layer(layer) };
+        shadow.BufferReads = { { Skinning::GetPool(), BufferState::VertexBuffer } };
         shadow.Execute = [layer](const PassContext& context) { ExecuteShadowPass(context, layer); };
         Passes.push_back(graph.AddPass(std::move(shadow)));
     }
@@ -237,16 +221,10 @@ void DeferredPasses::Retire()
     for (GraphImageID image : { ShadowMap, ShadowDepth, Albedo, Normal, Material, Depth })
         graph.DestroyImage(image);
 
-    for (Pipeline*& pipeline : ShadowPipelines)
-    {
-        delete pipeline;
-        pipeline = nullptr;
-    }
-    for (Pipeline*& pipeline : GBufferPipelines)
-    {
-        delete pipeline;
-        pipeline = nullptr;
-    }
+    delete ShadowPipeline;
+    ShadowPipeline = nullptr;
+    delete GBufferPipeline;
+    GBufferPipeline = nullptr;
     delete LightingPipeline;
     LightingPipeline = nullptr;
     delete LightingLayout;

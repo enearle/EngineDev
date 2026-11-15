@@ -1,11 +1,25 @@
 #include "SceneExtraction.h"
 
+#include <algorithm>
+#include <unordered_map>
 #include "SceneNode.h"
+#include "../Animation/AnimatorComponent.h"
 #include "../Camera.h"
 #include "../Light.h"
 #include "Renderer.h"
 
 using namespace DirectX;
+
+// The first palette entry of each animator extracted this frame.
+static std::unordered_map<const AnimatorComponent*, uint32_t> PaletteOffsets;
+
+static uint32_t ExtractPalette(const AnimatorComponent* animator, RenderScene& scene)
+{
+    auto [found, isNew] = PaletteOffsets.try_emplace(animator, static_cast<uint32_t>(scene.BoneMatrices.size()));
+    if (isNew)
+        scene.BoneMatrices.insert(scene.BoneMatrices.end(), animator->GetPalette().begin(), animator->GetPalette().end());
+    return found->second;
+}
 
 static void ExtractNode(SceneNode* node, RenderScene& scene)
 {
@@ -13,13 +27,21 @@ static void ExtractNode(SceneNode* node, RenderScene& scene)
     if (component)
     {
         MeshAsset* asset = component->GetMeshAsset();
-
-        uint32_t boneOffset = static_cast<uint32_t>(scene.BoneMatrices.size());
-        const std::vector<XMFLOAT4X4>& palette = component->GetBonePalette();
-        scene.BoneMatrices.insert(scene.BoneMatrices.end(), palette.begin(), palette.end());
+        AnimatorComponent* animator = component->GetAnimator();
 
         XMFLOAT4X4 world;
         XMStoreFloat4x4(&world, node->GetWorldMatrix());
+        XMFLOAT4X4 characterWorld = {};
+        XMFLOAT4 characterBounds = {};
+        if (animator)
+        {
+            XMMATRIX matrix = animator->GetOwner()->GetWorldMatrix();
+            XMStoreFloat4x4(&characterWorld, matrix);
+            const XMFLOAT4& model = animator->GetModelBounds();
+            float scale = (std::max)({ XMVectorGetX(XMVector3Length(matrix.r[0])), XMVectorGetX(XMVector3Length(matrix.r[1])),
+                                       XMVectorGetX(XMVector3Length(matrix.r[2])) });
+            XMStoreFloat4(&characterBounds, XMVectorSetW(XMVector3TransformCoord(XMVectorSet(model.x, model.y, model.z, 1.0f), matrix), model.w * scale));
+        }
 
         for (uint32_t i = 0; i < asset->GetMeshCount(); i++)
         {
@@ -31,7 +53,15 @@ static void ExtractNode(SceneNode* node, RenderScene& scene)
             object.Mesh = mesh.GetGPUMesh();
             object.Material = component->GetSubmeshMaterial(i);
             object.World = world;
-            object.BoneOffset = boneOffset;
+            // Skinned vertices are in model space, so they take the animator node's world matrix and
+            // the bounds of its joints.
+            if (mesh.IsSkinned() && animator)
+            {
+                object.World = characterWorld;
+                object.Bounds = characterBounds;
+                object.SkinnedMesh = component->GetSkinnedMesh(i);
+                object.BoneOffset = ExtractPalette(animator, scene);
+            }
             scene.Objects.push_back(object);
         }
     }
@@ -44,6 +74,7 @@ void SceneExtraction::ExtractFrame(const Camera* camera, const std::vector<const
 {
     RenderScene& scene = Renderer::GetRenderScene();
     scene.Clear();
+    PaletteOffsets.clear();
 
     for (SceneNode* root : SceneNode::GetRootNodes())
         ExtractNode(root, scene);

@@ -48,9 +48,13 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="Animation\AnimationSystem.cpp" />
+    <ClCompile Include="Animation\AnimatorComponent.cpp" />
+    <ClCompile Include="Animation\Clip.cpp" />
+    <ClCompile Include="Animation\Pose.cpp" />
+    <ClCompile Include="Animation\Skeleton.cpp" />
     <ClCompile Include="Camera.cpp" />
     <ClCompile Include="CameraController.cpp" />
-    <ClCompile Include="DerpMover.cpp" />
     <ClCompile Include="GameTime.cpp" />
     <ClCompile Include="Geometry\GeometryImport.cpp" />
     <ClCompile Include="Geometry\Mesh.cpp" />
@@ -79,9 +83,13 @@
     <ClCompile Include="$(ImGuiDir)backends\imgui_impl_vulkan.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Animation\AnimationSystem.h" />
+    <ClInclude Include="Animation\AnimatorComponent.h" />
+    <ClInclude Include="Animation\Clip.h" />
+    <ClInclude Include="Animation\Pose.h" />
+    <ClInclude Include="Animation\Skeleton.h" />
     <ClInclude Include="Camera.h" />
     <ClInclude Include="CameraController.h" />
-    <ClInclude Include="DerpMover.h" />
     <ClInclude Include="ENGINE_API_Macro.h" />
     <ClInclude Include="GameTime.h" />
     <ClInclude Include="Geometry\GeometryImport.h" />

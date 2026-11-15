@@ -9,6 +9,7 @@
 #include "PassGraph.h"
 #include "Readback.h"
 #include "MipGenerator.h"
+#include "Skinning.h"
 #include "RHI/BufferAllocator.h"
 #include "RHI/PipelineExecutor.h"
 #include "RHI/PipelineLayout.h"
@@ -77,7 +78,6 @@ std::vector<DescriptorBinding> Renderer::GetSceneSetBindings()
     return {
         { .Type = DescriptorType::DynamicUniformBuffer, .Slot = 0, .Set = SceneSetIndex, .Count = 1, .Size = sizeof(FrameConstants) },
         { .Type = DescriptorType::StorageBuffer, .Slot = 1, .Set = SceneSetIndex, .Count = 1, .Stride = sizeof(InstanceData) },
-        { .Type = DescriptorType::StorageBuffer, .Slot = 2, .Set = SceneSetIndex, .Count = 1, .Stride = sizeof(XMFLOAT4X4) },
     };
 }
 
@@ -129,6 +129,7 @@ void Renderer::Start(Window* mainWindow)
     Graph = new PassGraph();
     Readback::Start();
     MipGenerator::Start();
+    Skinning::Start();
 
     ResourceLayout sceneResources;
     sceneResources.VisibleStages = GetSceneVisibleStages();
@@ -144,7 +145,6 @@ void Renderer::Start(Window* mainWindow)
     SceneSet = Allocator->AllocateDescriptorSet(SceneLayout->GetID(), SceneSetIndex, {
         DescriptorSetBinding::ForBuffer(0, ring),
         DescriptorSetBinding::ForBuffer(1, ring),
-        DescriptorSetBinding::ForBuffer(2, ring),
     });
 
     ShowWindow(MainWindow->GetWindowHandle(), 5);
@@ -171,13 +171,13 @@ static void PrepareFrameData()
     memcpy(constantsAllocation.Address, &constants, sizeof(FrameConstants));
     FrameConstantsOffset = static_cast<uint32_t>(constantsAllocation.Offset);
 
-    uint32_t boneBase = 0;
+    uint32_t paletteBase = 0;
     if (!Scene.BoneMatrices.empty())
     {
         uint64_t size = Scene.BoneMatrices.size() * sizeof(XMFLOAT4X4);
         FrameAllocation bones = Allocator->AllocateFrameData(size, sizeof(XMFLOAT4X4));
         memcpy(bones.Address, Scene.BoneMatrices.data(), size);
-        boneBase = static_cast<uint32_t>(bones.Offset / sizeof(XMFLOAT4X4));
+        paletteBase = static_cast<uint32_t>(bones.Offset / sizeof(XMFLOAT4X4));
     }
 
     PreparedObjects.clear();
@@ -186,6 +186,9 @@ static void PrepareFrameData()
     {
         if (!MeshRegistry::IsLive(object.Mesh))
             continue;
+        bool isSkinned = object.SkinnedMesh.IsValid();
+        if (isSkinned && !Skinning::IsLive(object.SkinnedMesh))
+            continue;
 
         const MeshRecord& mesh = MeshRegistry::Get(object.Mesh);
         XMMATRIX world = XMLoadFloat4x4(&object.World);
@@ -193,20 +196,27 @@ static void PrepareFrameData()
         PreparedObject prepared;
         prepared.Instance.World = object.World;
         XMStoreFloat4x4(&prepared.Instance.Normal, XMMatrixTranspose(XMMatrixInverse(nullptr, world)));
-        prepared.Instance.BoneOffset = boneBase + object.BoneOffset;
 
-        XMVECTOR center = XMVector3TransformCoord(XMLoadFloat3(&mesh.BoundsCenter), world);
-        float scale = (std::max)({ XMVectorGetX(XMVector3Length(world.r[0])),
-                                   XMVectorGetX(XMVector3Length(world.r[1])),
-                                   XMVectorGetX(XMVector3Length(world.r[2])) });
-        XMStoreFloat4(&prepared.Sphere, XMVectorSetW(center, mesh.BoundsRadius * scale));
+        if (object.Bounds.w > 0.0f)
+            prepared.Sphere = object.Bounds;
+        else
+        {
+            XMVECTOR center = XMVector3TransformCoord(XMLoadFloat3(&mesh.BoundsCenter), world);
+            float scale = (std::max)({ XMVectorGetX(XMVector3Length(world.r[0])),
+                                       XMVectorGetX(XMVector3Length(world.r[1])),
+                                       XMVectorGetX(XMVector3Length(world.r[2])) });
+            XMStoreFloat4(&prepared.Sphere, XMVectorSetW(center, mesh.BoundsRadius * scale));
+        }
 
+        // A skinned object has its own vertices, so its key is unique and it draws alone.
         uint64_t materialIndex = object.Material.Index & 0xFFFFF;
-        uint64_t meshIndex = object.Mesh.Index & 0xFFFFF;
-        prepared.BatchKey = (static_cast<uint64_t>(mesh.Layout) << 60) | (materialIndex << 40) | (meshIndex << 20);
+        uint64_t meshIndex = (isSkinned ? object.SkinnedMesh.Index : object.Mesh.Index) & 0xFFFFF;
+        prepared.BatchKey = (static_cast<uint64_t>(isSkinned) << 60) | (materialIndex << 40) | (meshIndex << 20);
         prepared.Mesh = object.Mesh;
         prepared.Material = object.Material;
-        prepared.Layout = mesh.Layout;
+        prepared.SkinnedMesh = object.SkinnedMesh;
+        if (isSkinned)
+            Skinning::Request(object.SkinnedMesh, paletteBase + object.BoneOffset);
         prepared.CastsShadows = object.CastsShadows;
         PreparedObjects.push_back(prepared);
     }
@@ -255,6 +265,7 @@ int Renderer::End()
     Executor->Wait();
     Readback::Shutdown();
     MipGenerator::Shutdown();
+    Skinning::Shutdown();
     Graph->Clear();
     delete Graph;
     Graph = nullptr;

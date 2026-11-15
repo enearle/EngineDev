@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include <string>
 #include <map>
@@ -25,7 +25,9 @@ enum class ENGINE_API ResourceType : uint32_t {
     Material,
     Mesh,
     MeshSkinned,
-    SceneNode
+    SceneNode,
+    Skeleton,
+    AnimationClip
 };
 
 struct ENGINE_API AssetRegistry {

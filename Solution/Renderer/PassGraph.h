@@ -9,6 +9,7 @@ class PipelineExecutor;
 class PipelineLayout;
 
 using GraphImageID = uint32_t;
+using GraphBufferID = uint32_t;
 using PassID = uint32_t;
 
 enum class GraphImageSize : uint8_t
@@ -53,6 +54,13 @@ struct PassInput
     RHIStructures::SubresourceRange Range = {};
 };
 
+// A buffer read and the state it is wanted in (shader read, vertex buffer, copy source).
+struct PassBufferRead
+{
+    GraphBufferID Buffer = 0;
+    RHIStructures::BufferState State = RHIStructures::BufferState::ShaderRead;
+};
+
 struct PassContext
 {
     PipelineExecutor* Executor = nullptr;
@@ -74,6 +82,8 @@ struct PassDesc
     PassAttachment DepthWrite;
     std::vector<PassInput> SampledReads;
     std::vector<PassInput> StorageWrites;
+    std::vector<GraphBufferID> BufferWrites;        // Written by shaders
+    std::vector<PassBufferRead> BufferReads;
     PipelineLayout* InputLayout = nullptr;
     uint32_t InputSetIndex = 0;
     int Order = 0;                  // Breaks ties between passes the declarations leave unordered: lowest first
@@ -81,8 +91,9 @@ struct PassDesc
 };
 
 // Retained: passes and images persist across frames, and the order is recomputed only when passes
-// are added or removed. Scope is ordering, attachments, barriers and resize. Buffers are not tracked;
-// a pass that writes one transitions it itself.
+// are added or removed. Scope is ordering, attachments, barriers and resize. Buffers are imported,
+// never owned; writers run before readers, and every buffer is treated as undefined at the start of
+// a frame, since D3D12 buffers return to COMMON after each submission.
 class RENDERER_API PassGraph
 {
 public:
@@ -99,6 +110,13 @@ private:
         bool IsImported = false;
     };
 
+    struct BufferEntry
+    {
+        RHIStructures::BufferHandle Buffer = {};
+        RHIStructures::BufferState State = RHIStructures::BufferState::Undefined;
+        bool IsLive = false;
+    };
+
     struct PassEntry
     {
         PassID ID = 0;
@@ -107,6 +125,7 @@ private:
     };
 
     std::vector<ImageEntry> Images;
+    std::vector<BufferEntry> Buffers;
     std::vector<PassEntry> Passes;
     std::vector<uint32_t> ExecutionOrder;
     PassID NextPassID = 0;
@@ -120,6 +139,7 @@ private:
     void AllocateInputSet(PassEntry& pass);
     std::vector<RHIStructures::DescriptorSetBinding> InputBindings(const PassEntry& pass) const;
     void Transition(GraphImageID image, RHIStructures::ImageLayout layout, std::vector<RHIStructures::ImageTransition>& out);
+    void TransitionBuffer(GraphBufferID buffer, RHIStructures::BufferState state, std::vector<RHIStructures::BufferTransition>& out);
 
 public:
     PassGraph();
@@ -130,6 +150,12 @@ public:
     GraphImageID ImportImage(RHIStructures::ImageHandle image, RHIStructures::ImageLayout restingLayout);
     void DestroyImage(GraphImageID image);
     RHIStructures::ImageHandle GetImage(GraphImageID image) const;
+
+    // The handle may be invalid until SetBuffer gives one; passes then see no transitions for it.
+    GraphBufferID ImportBuffer(RHIStructures::BufferHandle buffer);
+    void SetBuffer(GraphBufferID buffer, RHIStructures::BufferHandle handle);
+    void ReleaseBuffer(GraphBufferID buffer);
+    RHIStructures::BufferHandle GetBuffer(GraphBufferID buffer) const;
 
     PassID AddPass(PassDesc desc);
     void RemovePass(PassID pass);

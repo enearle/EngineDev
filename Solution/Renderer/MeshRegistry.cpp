@@ -23,6 +23,7 @@ MeshHandle MeshRegistry::Enlist(const void* vertices, uint32_t vertexCount, Vert
     record.Layout = layout;
     record.VertexStride = GetVertexStride(layout);
     record.IndexCount = indexCount;
+    record.VertexCount = vertexCount;
 
     const uint8_t* vertexBytes = static_cast<const uint8_t*>(vertices);
     XMVECTOR minimum = XMVectorReplicate(FLT_MAX);
@@ -49,6 +50,7 @@ MeshHandle MeshRegistry::Enlist(const void* vertices, uint32_t vertexCount, Vert
     BufferDesc vertexDesc = RHIConstants::DefaultVertexBufferDesc;
     vertexDesc.Size = static_cast<uint64_t>(vertexCount) * record.VertexStride;
     vertexDesc.InitialData = vertices;
+    vertexDesc.Usage.Storage = layout == VertexLayout::Skinned;
     record.VertexBuffer = allocator->CreateBuffer(vertexDesc);
 
     BufferDesc indexDesc = RHIConstants::DefaultIndexBufferDesc;

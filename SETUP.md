@@ -158,8 +158,10 @@ or `Solution\Editor`:
 overrides either. The Editor runs the game when you press Play, or at once with `-play`. `-stress`
 adds 10,000 objects, `-freeze-animation` holds the animated mesh still, `-novsync` turns vsync
 off (it is on by default), and `-compute-test` runs the Phase 2 gate test, which prints
-`Compute test: N readbacks matched, latency A to B frames` on exit. The game also prints the last
-frame's statistics and GPU times per pass on exit.
+`Compute test: N readbacks matched, latency A to B frames` on exit. `-animation-test` runs the
+Phase 3 checks (the bind pose and GPU skinning against the CPU), and `-crowd N` adds N animated
+copies of the character, 100 when N is left out. The game also prints the last frame's statistics,
+GPU times per pass and animation figures on exit.
 
 **Validation.** Debug builds enable the Vulkan validation layer and the Direct3D 12 debug layer; both
 print to stderr. `Tools/RunAndCapture.ps1` runs an executable for a few seconds and saves stdout,

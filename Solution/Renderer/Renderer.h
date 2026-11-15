@@ -49,7 +49,7 @@ struct FrameStats
     bool IsVSyncOn = true;
 };
 
-// The scene set (set 1) holds the frame constants, the instance buffer and the bone buffer; the
+// The scene set (set 1) holds the frame constants and the instance buffer; the
 // material set (set 2) holds a material's textures. Both belong to GetSceneLayout. Passes with a
 // different layout can still bind the scene set if their set 1 is GetSceneSetBindings().
 class RENDERER_API Renderer

@@ -1,14 +1,16 @@
-﻿#pragma once
+#pragma once
 #include <stdexcept>
 #include <vector>
 #include "Field.h"
 #include "Assets/MeshAsset.h"
 
 class SceneNode;
+class AnimatorComponent;
 
 enum ENGINE_API SceneComponentType : uint32_t
 {
     MeshComponentType,
+    AnimatorComponentType,
     // RigidBody,
     // BoxCollider,
     // etc.
@@ -29,9 +31,10 @@ protected:
     std::vector<Field> Fields;
     SceneNode* Owner;
     SceneComponentBase(std::vector<Field> fields, SceneNode* owner) : Fields(std::move(fields)), Owner(owner) {}
-    virtual ~SceneComponentBase() = default;
-    
+
 public:
+    virtual ~SceneComponentBase() = default;
+    SceneNode* GetOwner() const { return Owner; }
     virtual SceneComponentType GetType() const = 0;
     virtual void Serialize(std::string& data);
     virtual void Deserialize(std::string& data, long& offset);
@@ -41,10 +44,13 @@ class ENGINE_API MeshComponent : public SceneComponentBase
 {
     MeshAsset* LoadedMesh = nullptr;
     std::vector<MaterialHandle> SubmeshMaterials;
-    std::vector<DirectX::XMFLOAT4X4> BonePalette;
+    std::vector<SkinnedMeshHandle> SkinnedMeshes;     // Per submesh; enlisted on first use
+    AnimatorComponent* Animator = nullptr;
+    bool IsAnimatorSearched = false;
 public:
     // Create single field for MeshAsset
     MeshComponent(SceneNode* owner) : SceneComponentBase({Field(ResourceType::Mesh, "MeshAsset")}, owner) { }
+    ~MeshComponent() override { FreeGPUResources(); }
 
     virtual SceneComponentType GetType() const override { return SceneComponentType::MeshComponentType; }
     virtual void Deserialize(std::string& data, long& offset) override;
@@ -56,8 +62,14 @@ public:
     void AssignMaterials(const std::vector<MaterialHandle>& materialsByLocalIndex);
     MaterialHandle GetSubmeshMaterial(uint32_t submesh) const { return submesh < SubmeshMaterials.size() ? SubmeshMaterials[submesh] : MaterialHandle{}; }
 
-    // Model-space skinning matrices for a skinned mesh, written by animation each frame.
-    std::vector<DirectX::XMFLOAT4X4>& GetBonePalette() { return BonePalette; }
+    // The animator on this node or its nearest ancestor that has one, found on first use. Skinned
+    // meshes take their palette and world matrix from it.
+    AnimatorComponent* GetAnimator();
+
+    // This component's own skinned copy of a skinned submesh, enlisted with the renderer's skinning
+    // on first use. Copies of a character share the mesh asset but not these.
+    SkinnedMeshHandle GetSkinnedMesh(uint32_t submesh);
+    void FreeGPUResources();
 };
 
 // Scene components are responsible for managing their own resources and lifecycle
