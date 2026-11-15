@@ -475,7 +475,9 @@ namespace RHIStructures
         ShaderRead,
         ShaderWrite,
         CopySource,
-        CopyDestination
+        CopyDestination,
+        VertexBuffer,
+        IndexBuffer
     };
 
     // Upload and readback buffers keep their state on D3D12 and need no transitions there.

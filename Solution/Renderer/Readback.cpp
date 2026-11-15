@@ -23,11 +23,21 @@ struct PendingRequest
     ReadbackCallback Callback;
 };
 
+struct PendingBufferRequest
+{
+    BufferHandle Buffer = {};
+    BufferState State = BufferState::Undefined;
+    uint64_t Offset = 0;
+    uint64_t Size = 0;
+    ReadbackCallback Callback;
+};
+
 struct InFlightCopy
 {
     uint64_t Frame = 0;
     size_t PoolIndex = 0;
     uint32_t RowPitch = 0;
+    uint64_t Size = 0;
     ImageRegion Region = {};
     ReadbackCallback Callback;
 };
@@ -35,6 +45,7 @@ struct InFlightCopy
 static std::vector<PooledBuffer> Pool;
 static std::vector<GraphImageID> WatchedImages;
 static std::vector<PendingRequest> Pending;
+static std::vector<PendingBufferRequest> PendingBuffers;
 static std::vector<InFlightCopy> InFlight;
 static PassID ReadbackPass = UINT32_MAX;
 
@@ -74,9 +85,23 @@ static void RecordCopies(const PassContext& context)
         ImageTransition back = { image, ImageLayout::TransferSrc, ImageLayout::ShaderReadOnly, range };
         executor->TransitionImages({ &back, 1 });
 
-        InFlight.push_back({ executor->GetFrameNumber(), poolIndex, rowPitch, request.Region, std::move(request.Callback) });
+        uint64_t size = static_cast<uint64_t>(rowPitch) * request.Region.Height;
+        InFlight.push_back({ executor->GetFrameNumber(), poolIndex, rowPitch, size, request.Region, std::move(request.Callback) });
     }
     Pending.clear();
+
+    for (PendingBufferRequest& request : PendingBuffers)
+    {
+        size_t poolIndex = ClaimBuffer(request.Size);
+        BufferTransition toCopy = { request.Buffer, request.State, BufferState::CopySource };
+        executor->TransitionBuffers({ &toCopy, 1 });
+        executor->CopyBuffer(request.Buffer, request.Offset, Pool[poolIndex].Buffer, 0, request.Size);
+        BufferTransition back = { request.Buffer, BufferState::CopySource, request.State };
+        executor->TransitionBuffers({ &back, 1 });
+
+        InFlight.push_back({ executor->GetFrameNumber(), poolIndex, 0, request.Size, {}, std::move(request.Callback) });
+    }
+    PendingBuffers.clear();
 }
 
 static void RebuildPass()
@@ -108,6 +133,7 @@ void Readback::Shutdown()
     Pool.clear();
     WatchedImages.clear();
     Pending.clear();
+    PendingBuffers.clear();
     InFlight.clear();
     ReadbackPass = UINT32_MAX;
 }
@@ -134,6 +160,13 @@ void Readback::Request(GraphImageID image, const ImageRegion& region, ReadbackCa
     Pending.push_back({ image, region, std::move(callback) });
 }
 
+void Readback::RequestBuffer(BufferHandle buffer, BufferState state, uint64_t offset, uint64_t size, ReadbackCallback callback)
+{
+    if (size == 0)
+        throw std::runtime_error("Readback::RequestBuffer with no bytes.");
+    PendingBuffers.push_back({ buffer, state, offset, size, std::move(callback) });
+}
+
 void Readback::DeliverCompleted()
 {
     PipelineExecutor* executor = Renderer::GetExecutor();
@@ -152,6 +185,7 @@ void Readback::DeliverCompleted()
         PooledBuffer& buffer = Pool[copy.PoolIndex];
         ReadbackResult result;
         result.Data = static_cast<const uint8_t*>(BufferAllocator::GetInstance()->GetBufferAllocation(buffer.Buffer).Address);
+        result.Size = copy.Size;
         result.RowPitch = copy.RowPitch;
         result.Width = copy.Region.Width;
         result.Height = copy.Region.Height;

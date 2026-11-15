@@ -222,6 +222,8 @@ static D3D12_RESOURCE_STATES D3DBufferState(BufferState state)
     case BufferState::ShaderWrite:     return D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
     case BufferState::CopySource:      return D3D12_RESOURCE_STATE_COPY_SOURCE;
     case BufferState::CopyDestination: return D3D12_RESOURCE_STATE_COPY_DEST;
+    case BufferState::VertexBuffer:    return D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER;
+    case BufferState::IndexBuffer:     return D3D12_RESOURCE_STATE_INDEX_BUFFER;
     default:                           return D3D12_RESOURCE_STATE_COMMON;
     }
 }
@@ -284,6 +286,13 @@ void D3DPipelineExecutor::CopyImageToBuffer(ImageHandle image, const ImageRegion
     D3D12_TEXTURE_COPY_LOCATION destination = D3DFootprint(DXBuffer(allocator->GetBufferAllocation(buffer))->Buffer.Get(), bufferOffset, rowPitch, imageAllocation.Desc, region);
     D3D12_BOX box = { region.X, region.Y, 0, region.X + region.Width, region.Y + region.Height, 1 };
     GetCommandList()->CopyTextureRegion(&destination, 0, 0, 0, &source, &box);
+}
+
+void D3DPipelineExecutor::CopyBuffer(BufferHandle source, uint64_t sourceOffset, BufferHandle destination, uint64_t destinationOffset, uint64_t size)
+{
+    BufferAllocator* allocator = BufferAllocator::GetInstance();
+    GetCommandList()->CopyBufferRegion(DXBuffer(allocator->GetBufferAllocation(destination))->Buffer.Get(), destinationOffset,
+        DXBuffer(allocator->GetBufferAllocation(source))->Buffer.Get(), sourceOffset, size);
 }
 
 void D3DPipelineExecutor::BeginRendering(const RenderingDesc& desc)
@@ -393,7 +402,7 @@ void D3DPipelineExecutor::PushConstants(const void* data, uint32_t size)
 }
 
 void D3DPipelineExecutor::DrawIndexed(BufferHandle vertexBuffer, uint32_t vertexStride, BufferHandle indexBuffer,
-                                      uint32_t indexCount, uint32_t instanceCount)
+                                      uint32_t indexCount, uint32_t instanceCount, uint32_t baseVertex)
 {
     ID3D12GraphicsCommandList* cmdList = GetCommandList();
     BufferAllocator* allocator = BufferAllocator::GetInstance();
@@ -414,7 +423,7 @@ void D3DPipelineExecutor::DrawIndexed(BufferHandle vertexBuffer, uint32_t vertex
         BoundIndexBuffer = indexBuffer;
     }
 
-    cmdList->DrawIndexedInstanced(indexCount, instanceCount, 0, 0, 0);
+    cmdList->DrawIndexedInstanced(indexCount, instanceCount, 0, static_cast<INT>(baseVertex), 0);
 }
 
 void D3DPipelineExecutor::Draw(uint32_t vertexCount, uint32_t instanceCount)
@@ -675,6 +684,8 @@ static VkAccessFlags VulkanBufferAccess(BufferState state)
     case BufferState::ShaderWrite:     return VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
     case BufferState::CopySource:      return VK_ACCESS_TRANSFER_READ_BIT;
     case BufferState::CopyDestination: return VK_ACCESS_TRANSFER_WRITE_BIT;
+    case BufferState::VertexBuffer:    return VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT;
+    case BufferState::IndexBuffer:     return VK_ACCESS_INDEX_READ_BIT;
     default:                           return 0;
     }
 }
@@ -733,6 +744,14 @@ void VulkanPipelineExecutor::CopyImageToBuffer(ImageHandle image, const ImageReg
     VkBufferImageCopy copy = VulkanCopyRegion(bufferOffset, rowPitch, imageAllocation.Desc, region);
     vkCmdCopyImageToBuffer(GetCommandBuffer(), static_cast<VulkanImageData*>(imageAllocation.Image)->ImageHandle, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
         static_cast<VulkanBufferData*>(allocator->GetBufferAllocation(buffer).Buffer)->Buffer, 1, &copy);
+}
+
+void VulkanPipelineExecutor::CopyBuffer(BufferHandle source, uint64_t sourceOffset, BufferHandle destination, uint64_t destinationOffset, uint64_t size)
+{
+    BufferAllocator* allocator = BufferAllocator::GetInstance();
+    VkBufferCopy copy = { sourceOffset, destinationOffset, size };
+    vkCmdCopyBuffer(GetCommandBuffer(), static_cast<VulkanBufferData*>(allocator->GetBufferAllocation(source).Buffer)->Buffer,
+        static_cast<VulkanBufferData*>(allocator->GetBufferAllocation(destination).Buffer)->Buffer, 1, &copy);
 }
 
 static VkAttachmentLoadOp VulkanLoadOp(AttachmentLoadOp loadOp)
@@ -846,7 +865,7 @@ void VulkanPipelineExecutor::PushConstants(const void* data, uint32_t size)
 }
 
 void VulkanPipelineExecutor::DrawIndexed(BufferHandle vertexBuffer, uint32_t vertexStride, BufferHandle indexBuffer,
-                                         uint32_t indexCount, uint32_t instanceCount)
+                                         uint32_t indexCount, uint32_t instanceCount, uint32_t baseVertex)
 {
     VkCommandBuffer cmdBuffer = GetCommandBuffer();
     BufferAllocator* allocator = BufferAllocator::GetInstance();
@@ -866,7 +885,7 @@ void VulkanPipelineExecutor::DrawIndexed(BufferHandle vertexBuffer, uint32_t ver
         BoundIndexBuffer = indexBuffer;
     }
 
-    vkCmdDrawIndexed(cmdBuffer, indexCount, instanceCount, 0, 0, 0);
+    vkCmdDrawIndexed(cmdBuffer, indexCount, instanceCount, 0, static_cast<int32_t>(baseVertex), 0);
 }
 
 void VulkanPipelineExecutor::Draw(uint32_t vertexCount, uint32_t instanceCount)

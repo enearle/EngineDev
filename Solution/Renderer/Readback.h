@@ -5,7 +5,8 @@
 
 struct ReadbackResult
 {
-    const uint8_t* Data = nullptr;      // Rows of RowPitch bytes; the first Width texels of each row are valid
+    const uint8_t* Data = nullptr;      // Images: rows of RowPitch bytes, the first Width texels of each valid. Buffers: Size bytes
+    uint64_t Size = 0;
     uint32_t RowPitch = 0;
     uint32_t Width = 0;
     uint32_t Height = 0;
@@ -30,6 +31,9 @@ public:
     static void Watch(GraphImageID image);
     static void Unwatch(GraphImageID image);
     static void Request(GraphImageID image, const RHIStructures::ImageRegion& region, ReadbackCallback callback);
+    // state is the buffer's state when the readback pass runs; the copy returns it to that state.
+    static void RequestBuffer(RHIStructures::BufferHandle buffer, RHIStructures::BufferState state, uint64_t offset, uint64_t size,
+                              ReadbackCallback callback);
 
     // Fires the callbacks of every copy whose frame the GPU has finished. Called by the renderer at
     // the start of each frame.

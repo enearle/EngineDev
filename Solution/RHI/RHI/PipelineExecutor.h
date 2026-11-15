@@ -63,6 +63,8 @@ public:
     // CopyRowPitch and buffer offsets are multiples of CopyPlacementAlignment.
     virtual void CopyBufferToImage(BufferHandle buffer, uint64_t bufferOffset, uint32_t rowPitch, ImageHandle image, const ImageRegion& region) = 0;
     virtual void CopyImageToBuffer(ImageHandle image, const ImageRegion& region, BufferHandle buffer, uint64_t bufferOffset, uint32_t rowPitch) = 0;
+    // The source must be in CopySource and the destination in CopyDestination.
+    virtual void CopyBuffer(BufferHandle source, uint64_t sourceOffset, BufferHandle destination, uint64_t destinationOffset, uint64_t size) = 0;
 
     virtual void BeginRendering(const RenderingDesc& desc) = 0;
     virtual void EndRendering() = 0;
@@ -74,8 +76,9 @@ public:
     virtual void BindDescriptorSet(DescriptorSetHandle set, std::span<const uint32_t> dynamicOffsets = {}) = 0;
     virtual void PushConstants(const void* data, uint32_t size) = 0;
 
+    // baseVertex is added to every index before the vertex is fetched.
     virtual void DrawIndexed(BufferHandle vertexBuffer, uint32_t vertexStride, BufferHandle indexBuffer,
-                             uint32_t indexCount, uint32_t instanceCount) = 0;
+                             uint32_t indexCount, uint32_t instanceCount, uint32_t baseVertex = 0) = 0;
     virtual void Draw(uint32_t vertexCount, uint32_t instanceCount) = 0;
     // Outside rendering scopes, with a compute pipeline bound.
     virtual void Dispatch(uint32_t groupsX, uint32_t groupsY, uint32_t groupsZ) = 0;
@@ -108,6 +111,7 @@ public:
     void TransitionBuffers(std::span<const BufferTransition> transitions) override;
     void CopyBufferToImage(BufferHandle buffer, uint64_t bufferOffset, uint32_t rowPitch, ImageHandle image, const ImageRegion& region) override;
     void CopyImageToBuffer(ImageHandle image, const ImageRegion& region, BufferHandle buffer, uint64_t bufferOffset, uint32_t rowPitch) override;
+    void CopyBuffer(BufferHandle source, uint64_t sourceOffset, BufferHandle destination, uint64_t destinationOffset, uint64_t size) override;
     void BeginRendering(const RenderingDesc& desc) override;
     void EndRendering() override;
     void BindPipeline(Pipeline* pipeline) override;
@@ -115,7 +119,7 @@ public:
     void BindDescriptorSet(DescriptorSetHandle set, std::span<const uint32_t> dynamicOffsets) override;
     void PushConstants(const void* data, uint32_t size) override;
     void DrawIndexed(BufferHandle vertexBuffer, uint32_t vertexStride, BufferHandle indexBuffer,
-                     uint32_t indexCount, uint32_t instanceCount) override;
+                     uint32_t indexCount, uint32_t instanceCount, uint32_t baseVertex) override;
     void Draw(uint32_t vertexCount, uint32_t instanceCount) override;
     void Dispatch(uint32_t groupsX, uint32_t groupsY, uint32_t groupsZ) override;
     void BeginOverlayPass(uint32_t width, uint32_t height) override;
@@ -150,6 +154,7 @@ public:
     void TransitionBuffers(std::span<const BufferTransition> transitions) override;
     void CopyBufferToImage(BufferHandle buffer, uint64_t bufferOffset, uint32_t rowPitch, ImageHandle image, const ImageRegion& region) override;
     void CopyImageToBuffer(ImageHandle image, const ImageRegion& region, BufferHandle buffer, uint64_t bufferOffset, uint32_t rowPitch) override;
+    void CopyBuffer(BufferHandle source, uint64_t sourceOffset, BufferHandle destination, uint64_t destinationOffset, uint64_t size) override;
     void BeginRendering(const RenderingDesc& desc) override;
     void EndRendering() override;
     void BindPipeline(Pipeline* pipeline) override;
@@ -157,7 +162,7 @@ public:
     void BindDescriptorSet(DescriptorSetHandle set, std::span<const uint32_t> dynamicOffsets) override;
     void PushConstants(const void* data, uint32_t size) override;
     void DrawIndexed(BufferHandle vertexBuffer, uint32_t vertexStride, BufferHandle indexBuffer,
-                     uint32_t indexCount, uint32_t instanceCount) override;
+                     uint32_t indexCount, uint32_t instanceCount, uint32_t baseVertex) override;
     void Draw(uint32_t vertexCount, uint32_t instanceCount) override;
     void Dispatch(uint32_t groupsX, uint32_t groupsY, uint32_t groupsZ) override;
     void BeginOverlayPass(uint32_t width, uint32_t height) override;
