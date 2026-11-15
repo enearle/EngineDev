@@ -138,7 +138,7 @@ void ImGuiLayer::Start(bool isLayoutSavedToDisk)
     else
         StartVulkanBackend();
 
-    ExternalPassID = Renderer::EnlistExternalPass({ .Prepare = BuildFrame, .Render = RecordDrawData, .Order = OverlayPassOrder });
+    ExternalPassID = Renderer::EnlistExternalPass({ .Prepare = BuildFrame, .Render = RecordDrawData, .Order = OverlayPassOrder, .Name = "ImGui" });
     HasStarted = true;
 }
 

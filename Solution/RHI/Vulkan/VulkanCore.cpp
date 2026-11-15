@@ -593,6 +593,7 @@ void VulkanCore::CreateSynchronizationPrimitives()
     ImageAvailableSemaphores.resize(SwapChainImageCount);
     RenderFinishedSemaphores.resize(SwapChainImageCount);
     InFlightFences.resize(SwapChainImageCount);
+    SlotFrameNumbers.assign(SwapChainImageCount, 0);
 
     VkSemaphoreCreateInfo semaphoreInfo{};
     semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
@@ -989,7 +990,9 @@ bool VulkanCore::BeginFrame()
     else if (result != VK_SUCCESS)
         throw std::runtime_error("Failed to acquire swapchain image");
 
-    // Reset only once an image is acquired, so a skipped frame leaves the fence signalled.
+    // Reset only once an image is acquired, so a skipped frame leaves the fence signalled. The reset
+    // hides that this slot's frame is done, so remember it.
+    KnownCompletedFrame = (std::max)(KnownCompletedFrame, SlotFrameNumbers[CurrentFrameIndex]);
     vkResetFences(Device, 1, &InFlightFences[CurrentFrameIndex]);
     FrameNumber++;
 
@@ -1021,8 +1024,9 @@ void VulkanCore::EndFrame()
     submitInfo.pWaitDstStageMask = waitStages;
 
     submitInfo.signalSemaphoreCount = 1;
-    submitInfo.pSignalSemaphores = &RenderFinishedSemaphores[CurrentFrameIndex];
+    submitInfo.pSignalSemaphores = &RenderFinishedSemaphores[CurrentSwapchainImageIndex];
 
+    SlotFrameNumbers[CurrentFrameIndex] = FrameNumber;
     result = vkQueueSubmit(
         GraphicsQueue,
         1,
@@ -1037,7 +1041,7 @@ void VulkanCore::EndFrame()
     VkPresentInfoKHR presentInfo{};
     presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
     presentInfo.waitSemaphoreCount = 1;
-    presentInfo.pWaitSemaphores = &RenderFinishedSemaphores[CurrentFrameIndex];
+    presentInfo.pWaitSemaphores = &RenderFinishedSemaphores[CurrentSwapchainImageIndex];
     presentInfo.swapchainCount = 1;
     presentInfo.pSwapchains = &Swapchain;
     presentInfo.pImageIndices = &CurrentSwapchainImageIndex;
@@ -1097,4 +1101,20 @@ void VulkanCore::ResetWindow()
     CreateOverlayFramebuffers();
     IsSwapchainRecreateNeeded = false;
 
+}
+
+uint64_t VulkanCore::GetCompletedFrameNumber() const
+{
+    uint64_t completed = KnownCompletedFrame;
+    for (uint32_t i = 0; i < InFlightFences.size(); i++)
+        if (SlotFrameNumbers[i] != 0 && vkGetFenceStatus(Device, InFlightFences[i]) == VK_SUCCESS)
+            completed = (std::max)(completed, SlotFrameNumbers[i]);
+    return completed;
+}
+
+float VulkanCore::GetTimestampPeriod() const
+{
+    VkPhysicalDeviceProperties properties;
+    vkGetPhysicalDeviceProperties(PhysicalDevice, &properties);
+    return properties.limits.timestampPeriod;
 }

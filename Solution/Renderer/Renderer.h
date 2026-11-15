@@ -21,6 +21,7 @@ struct ExternalPass
     std::function<void()> Prepare;
     std::function<void()> Render;
     int Order = 0;
+    std::string Name = "External";
 };
 
 struct PassStats
@@ -31,6 +32,12 @@ struct PassStats
     uint32_t DrawCalls = 0;
 };
 
+struct GpuPassTime
+{
+    std::string Name;
+    double Milliseconds = 0.0;
+};
+
 struct FrameStats
 {
     uint64_t FrameNumber = 0;
@@ -38,6 +45,8 @@ struct FrameStats
     uint32_t Objects = 0;
     uint32_t DrawCalls = 0;
     std::vector<PassStats> Passes;
+    std::vector<GpuPassTime> GpuPasses;     // From a frame a few frames earlier; see PipelineExecutor timers
+    bool IsVSyncOn = true;
 };
 
 // The scene set (set 1) holds the frame constants, the instance buffer and the bone buffer; the
@@ -70,6 +79,7 @@ public:
     static std::vector<RHIStructures::DescriptorBinding> GetSceneSetBindings();
     static RHIStructures::ShaderStageMask GetSceneVisibleStages();
     static void BindSceneSet(PipelineExecutor* executor);
+    static PipelineExecutor* GetExecutor();
     static RHIStructures::Format GetBackBufferFormat();
 
     static const std::vector<PreparedObject>& GetPreparedObjects();

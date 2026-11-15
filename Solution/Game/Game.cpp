@@ -13,11 +13,13 @@
 #include "GameTime.h"
 #include "Light.h"
 #include "MaterialRegistry.h"
+#include "MipGenerator.h"
 #include "MeshRegistry.h"
 #include "Renderer.h"
 #include "Window.h"
 #include "Geometry/GeometryImport.h"
 #include "Input/InputEventSystem.h"
+#include "Passes/ComputeTestPass.h"
 #include "Passes/DeferredPasses.h"
 #include "Scene/SceneExtraction.h"
 #include "Scene/SceneNode.h"
@@ -90,16 +92,25 @@ static void BuildStressScene(SceneNode* templateRoot, const std::vector<Material
     sCamera->LookAtFloat3({ 0.0f, 0.0f, 0.0f });
 }
 
+static double GpuMilliseconds(const FrameStats& stats, const std::string& passName)
+{
+    for (const GpuPassTime& time : stats.GpuPasses)
+        if (time.Name == passName)
+            return time.Milliseconds;
+    return 0.0;
+}
+
 static void DrawRendererPanel()
 {
     const FrameStats& stats = Renderer::GetFrameStats();
-    ImGui::Text("Objects %u", stats.Objects);
-    if (ImGui::BeginTable("##Passes", 4, ImGuiTableFlags_SizingFixedFit))
+    ImGui::Text("Objects %u, vsync %s, mip queue %u", stats.Objects, stats.IsVSyncOn ? "on" : "off", MipGenerator::GetQueueLength());
+    if (ImGui::BeginTable("##Passes", 5, ImGuiTableFlags_SizingFixedFit))
     {
         ImGui::TableSetupColumn("Pass");
         ImGui::TableSetupColumn("Instances");
         ImGui::TableSetupColumn("Batches");
         ImGui::TableSetupColumn("Draws");
+        ImGui::TableSetupColumn("GPU ms");
         ImGui::TableHeadersRow();
         for (const PassStats& pass : stats.Passes)
         {
@@ -108,6 +119,19 @@ static void DrawRendererPanel()
             ImGui::TableNextColumn(); ImGui::Text("%u", pass.Instances);
             ImGui::TableNextColumn(); ImGui::Text("%u", pass.Batches);
             ImGui::TableNextColumn(); ImGui::Text("%u", pass.DrawCalls);
+            ImGui::TableNextColumn(); ImGui::Text("%.3f", GpuMilliseconds(stats, pass.Name));
+        }
+        for (const GpuPassTime& time : stats.GpuPasses)
+        {
+            bool isListed = false;
+            for (const PassStats& pass : stats.Passes)
+                isListed |= pass.Name == time.Name;
+            if (isListed)
+                continue;
+            ImGui::TableNextRow();
+            ImGui::TableNextColumn(); ImGui::TextUnformatted(time.Name.c_str());
+            ImGui::TableNextColumn(); ImGui::TableNextColumn(); ImGui::TableNextColumn();
+            ImGui::TableNextColumn(); ImGui::Text("%.3f", time.Milliseconds);
         }
         ImGui::EndTable();
     }
@@ -117,6 +141,8 @@ void GameInit()
 {
     NoesisUILayer::Instance().NoesisInit();
     DeferredPasses::Enlist();
+    if (IsSwitchPresent(L" -compute-test"))
+        ComputeTestPass::Enlist();
 
     sCamera = new Camera(90, 1280.0f / 720.0f, { 0, 10, -8 });
     Camera::ActiveCamera = sCamera;
@@ -168,13 +194,18 @@ void GameShutdown()
 {
     const FrameStats& stats = Renderer::GetFrameStats();
     std::cout << "Last frame: " << stats.Objects << " objects, " << stats.DrawCalls << " draw calls, "
-              << stats.FrameTimeMilliseconds << " ms" << std::endl;
+              << stats.FrameTimeMilliseconds << " ms, " << MipGenerator::GetGeneratedCount() << " mip chains generated" << std::endl;
     for (const PassStats& pass : stats.Passes)
         std::cout << "  " << pass.Name << ": " << pass.Instances << " instances, " << pass.Batches << " batches, "
                   << pass.DrawCalls << " draws" << std::endl;
+    std::cout << "  GPU ms:";
+    for (const GpuPassTime& time : stats.GpuPasses)
+        std::cout << " " << time.Name << " " << time.Milliseconds << ";";
+    std::cout << std::endl;
 
     Renderer::WaitForGpu();
     DebugOverlay::RetirePanel(sStatsPanel);
+    ComputeTestPass::Retire();
     DeferredPasses::Retire();
     Renderer::GetRenderScene().Clear();
 

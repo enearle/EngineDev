@@ -25,26 +25,32 @@ struct GraphImageDesc
     uint32_t Width = 0;
     uint32_t Height = 0;
     uint32_t ArrayLayers = 1;
+    uint32_t MipLevels = 1;
+    bool IsStorage = false;         // Can be written by compute passes
     DirectX::XMFLOAT4 ClearColour = { 0.0f, 0.0f, 0.0f, 1.0f };
     float ClearDepth = 1.0f;
 };
 
 enum class PassKind : uint8_t
 {
-    Raster,
-    Overlay         // Records into the back buffer through PipelineExecutor::BeginOverlayPass, after every raster pass
+    Raster,         // Runs inside a rendering scope over its attachments
+    Compute,        // Runs outside any rendering scope
+    Overlay         // Records into the back buffer through PipelineExecutor::BeginOverlayPass, after every other pass
 };
 
 struct PassAttachment
 {
     GraphImageID Image = 0;
     RHIStructures::AttachmentLoadOp LoadOp = RHIStructures::AttachmentLoadOp::Clear;
+    RHIStructures::SubresourceRange Range = {};
 };
 
+// A sampled read or a storage write, bound at Binding of the pass's input set.
 struct PassInput
 {
     GraphImageID Image = 0;
     uint32_t Binding = 0;
+    RHIStructures::SubresourceRange Range = {};
 };
 
 struct PassContext
@@ -56,7 +62,9 @@ struct PassContext
 };
 
 // A pass declares what it writes and samples. The graph orders passes, creates the images, places
-// barriers, and allocates the descriptor set for the sampled inputs at InputSetIndex of InputLayout.
+// barriers, and allocates the descriptor set for its inputs at InputSetIndex of InputLayout.
+// A pass may transition parts of an image itself through the executor, provided the whole image is
+// back in the layout the graph gave it when Execute returns.
 struct PassDesc
 {
     std::string Name;
@@ -65,15 +73,16 @@ struct PassDesc
     bool HasDepthWrite = false;
     PassAttachment DepthWrite;
     std::vector<PassInput> SampledReads;
+    std::vector<PassInput> StorageWrites;
     PipelineLayout* InputLayout = nullptr;
     uint32_t InputSetIndex = 0;
-    uint32_t ViewMask = 0;
-    int Order = 0;                  // Orders overlay passes among themselves
+    int Order = 0;                  // Breaks ties between passes the declarations leave unordered: lowest first
     std::function<void(const PassContext&)> Execute;
 };
 
 // Retained: passes and images persist across frames, and the order is recomputed only when passes
-// are added or removed. Scope is ordering, attachments, barriers and resize.
+// are added or removed. Scope is ordering, attachments, barriers and resize. Buffers are not tracked;
+// a pass that writes one transitions it itself.
 class RENDERER_API PassGraph
 {
 public:
@@ -85,7 +94,9 @@ private:
         GraphImageDesc Desc;
         RHIStructures::ImageHandle Image = {};
         RHIStructures::ImageLayout Layout = RHIStructures::ImageLayout::Undefined;
+        RHIStructures::ImageLayout RestingLayout = RHIStructures::ImageLayout::Undefined;
         bool IsLive = false;
+        bool IsImported = false;
     };
 
     struct PassEntry
@@ -103,6 +114,7 @@ private:
     uint32_t ViewportWidth = 0;
     uint32_t ViewportHeight = 0;
 
+    GraphImageID ClaimImageSlot();
     void SortPasses();
     void CreateImage(ImageEntry& entry);
     void AllocateInputSet(PassEntry& pass);
@@ -113,6 +125,9 @@ public:
     PassGraph();
 
     GraphImageID CreateImage(const GraphImageDesc& desc);
+    // An image the graph does not own: never resized or destroyed by it. It is expected in
+    // restingLayout when the frame starts and is returned to it when the frame ends.
+    GraphImageID ImportImage(RHIStructures::ImageHandle image, RHIStructures::ImageLayout restingLayout);
     void DestroyImage(GraphImageID image);
     RHIStructures::ImageHandle GetImage(GraphImageID image) const;
 

@@ -3,9 +3,12 @@
 #include <chrono>
 #include <iostream>
 #include "Window.h"
+#include "GraphicsSettings.h"
 #include "DrawList.h"
 #include "MeshRegistry.h"
 #include "PassGraph.h"
+#include "Readback.h"
+#include "MipGenerator.h"
 #include "RHI/BufferAllocator.h"
 #include "RHI/PipelineExecutor.h"
 #include "RHI/PipelineLayout.h"
@@ -49,6 +52,7 @@ RenderScene& Renderer::GetRenderScene() { return Scene; }
 PipelineLayout* Renderer::GetSceneLayout() { return SceneLayout; }
 const std::vector<PreparedObject>& Renderer::GetPreparedObjects() { return PreparedObjects; }
 Format Renderer::GetBackBufferFormat() { return Executor->GetBackBufferFormat(); }
+PipelineExecutor* Renderer::GetExecutor() { return Executor; }
 
 void Renderer::SetGameViewport(uint32_t x, uint32_t y, uint32_t w, uint32_t h)
 {
@@ -94,7 +98,7 @@ Renderer::ExternalPassID Renderer::EnlistExternalPass(ExternalPass pass)
     ExternalPassID id = NextExternalPassID++;
 
     PassDesc desc;
-    desc.Name = "External";
+    desc.Name = pass.Name;
     desc.Kind = PassKind::Overlay;
     desc.Order = pass.Order;
     desc.Execute = [render = pass.Render](const PassContext&) { if (render) render(); };
@@ -123,6 +127,8 @@ void Renderer::Start(Window* mainWindow)
     Allocator = BufferAllocator::GetInstance();
     Allocator->CreateFrameRing(FrameRingBytesPerFrame);
     Graph = new PassGraph();
+    Readback::Start();
+    MipGenerator::Start();
 
     ResourceLayout sceneResources;
     sceneResources.VisibleStages = GetSceneVisibleStages();
@@ -220,6 +226,11 @@ void Renderer::DrawFrame()
     if (!Executor->BeginFrame())
         return;
     StatsInProgress.FrameNumber = Executor->GetFrameNumber();
+    StatsInProgress.IsVSyncOn = GRAPHICS_SETTINGS.VSync;
+    for (const TimerResult& timer : Executor->GetCompletedTimers())
+        StatsInProgress.GpuPasses.push_back({ timer.Name, timer.Milliseconds });
+
+    Readback::DeliverCompleted();
 
     for (EnlistedExternalPass& external : ExternalPasses)
         if (external.Pass.Prepare)
@@ -242,6 +253,8 @@ void Renderer::WaitForGpu()
 int Renderer::End()
 {
     Executor->Wait();
+    Readback::Shutdown();
+    MipGenerator::Shutdown();
     Graph->Clear();
     delete Graph;
     Graph = nullptr;

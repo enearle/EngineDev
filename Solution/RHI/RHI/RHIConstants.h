@@ -42,10 +42,9 @@ namespace RHIConstants
 
     inline constexpr BufferUsage DefaultDynamicBufferUsage
     {
+        .Uniform = true,
         .TransferSource = true,
-        .TransferDestination = false,
         .Access = UploadMemory,
-        .Type = BufferType::Constant,
     };
 
     inline constexpr BufferDesc DefaultDynamicBufferDesc
@@ -55,27 +54,11 @@ namespace RHIConstants
         .InitialData = nullptr
     };
 
-    inline constexpr BufferUsage DefaultStaticUploadBufferUsage
-    {
-        .TransferSource = false,
-        .TransferDestination = true,
-        .Access = DeviceLocalMemory,
-        .Type = BufferType::Constant,
-    };
-
-    inline constexpr BufferDesc DefaultStaticUploadBufferDesc
-    {
-        .Size = 0,
-        .Usage = DefaultStaticUploadBufferUsage,
-        .InitialData = nullptr
-    };
-
     inline constexpr BufferUsage DefaultVertexBufferUsage
     {
-        .TransferSource = false,
+        .Vertex = true,
         .TransferDestination = true,
         .Access = DeviceLocalMemory,
-        .Type = BufferType::Vertex
     };
 
     inline constexpr BufferDesc DefaultVertexBufferDesc
@@ -87,10 +70,9 @@ namespace RHIConstants
 
     inline constexpr BufferUsage DefaultIndexBufferUsage
     {
-        .TransferSource = false,
+        .Index = true,
         .TransferDestination = true,
         .Access = DeviceLocalMemory,
-        .Type = BufferType::Index
     };
 
     inline constexpr BufferDesc DefaultIndexBufferDesc

@@ -106,6 +106,12 @@ namespace RHIStructures
         R16G16_UNORM = 19,
         R32_FLOAT = 20,
         B8G8R8A8_UNORM = 21,
+        R8_UNORM = 22,
+        R16_UNORM = 23,
+        R16_FLOAT = 24,
+        R16G16_FLOAT = 25,
+        R16_UINT = 26,
+        R32_UINT = 27,
     };
     VkFormat VulkanFormat(Format format);
     DXGI_FORMAT DXFormat(Format format);
@@ -278,7 +284,8 @@ namespace RHIStructures
         StorageBuffer = 1,          // SRV buffer in D3D12, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER in Vulkan
         StorageImage = 2,           // UAV in D3D12, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE in Vulkan
         SampledImage = 3,           // SRV in D3D12, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE in Vulkan; samplers come from set 0
-        DynamicUniformBuffer = 4
+        DynamicUniformBuffer = 4,
+        ReadWriteStorageBuffer = 5  // UAV in D3D12, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER in Vulkan
     };
     VkDescriptorType VulkanDescriptorType(DescriptorType descriptorType);
     D3D12_DESCRIPTOR_HEAP_TYPE DXDescriptorType(DescriptorType descriptorType);
@@ -354,7 +361,8 @@ namespace RHIStructures
         ShaderReadOnly = 5,
         TransferSrc = 6,
         TransferDst = 7,
-        Present = 8
+        Present = 8,
+        Storage = 9                 // GENERAL in Vulkan, UNORDERED_ACCESS in D3D12
     };
     D3D12_RESOURCE_STATES ConvertLayoutToResourceState(ImageLayout layout);
     VkImageLayout VulkanImageLayout(ImageLayout layout);
@@ -402,7 +410,6 @@ namespace RHIStructures
         std::vector<BlendAttachmentState> BlendAttachmentStates = {};
         std::vector<Format> RenderTargetFormats = {};
         Format DepthStencilFormat = Format::Unknown;
-        uint32_t ViewMask = 0;
 
         const void* CachedPipelineData = nullptr;
         size_t CachedPipelineDataSize = 0;
@@ -413,6 +420,19 @@ namespace RHIStructures
     //  ---------  Rendering  ----------  //
     //====================================//
 
+    // Mips and array layers of one image. A count of zero means every mip or layer from the base on.
+    struct SubresourceRange
+    {
+        uint32_t BaseMip = 0;
+        uint32_t MipCount = 0;
+        uint32_t BaseLayer = 0;
+        uint32_t LayerCount = 0;
+
+        static SubresourceRange Mip(uint32_t mip) { return { mip, 1, 0, 0 }; }
+        static SubresourceRange Layer(uint32_t layer) { return { 0, 0, layer, 1 }; }
+        bool operator==(const SubresourceRange& other) const = default;
+    };
+
     // Clear values come from the image's ImageDesc, which is also its optimized clear value on D3D12,
     // unless HasClearColour overrides it.
     struct ColorAttachment
@@ -421,12 +441,14 @@ namespace RHIStructures
         AttachmentLoadOp LoadOp = AttachmentLoadOp::Load;
         bool HasClearColour = false;
         DirectX::XMFLOAT4 ClearColour = {};
+        SubresourceRange Range = {};
     };
 
     struct DepthAttachment
     {
         ImageHandle Image = {};
         AttachmentLoadOp LoadOp = AttachmentLoadOp::Load;
+        SubresourceRange Range = {};
     };
 
     struct RenderingDesc
@@ -435,30 +457,53 @@ namespace RHIStructures
         DepthAttachment Depth;
         uint32_t Width = 0;
         uint32_t Height = 0;
-        uint32_t ViewMask = 0;
     };
 
-    // Stages and access masks are derived from the two layouts by the backend.
+    // Stages and access masks are derived from the two layouts by the backend. A Storage to Storage
+    // transition orders writes before later reads and writes.
     struct ImageTransition
     {
         ImageHandle Image = {};
         ImageLayout From = ImageLayout::Undefined;
         ImageLayout To = ImageLayout::Undefined;
+        SubresourceRange Range = {};
     };
+
+    enum class BufferState : uint8_t
+    {
+        Undefined,          // As created; COMMON on D3D12
+        ShaderRead,
+        ShaderWrite,
+        CopySource,
+        CopyDestination
+    };
+
+    // Upload and readback buffers keep their state on D3D12 and need no transitions there.
+    struct BufferTransition
+    {
+        BufferHandle Buffer = {};
+        BufferState From = BufferState::Undefined;
+        BufferState To = BufferState::Undefined;
+    };
+
+    struct ImageRegion
+    {
+        uint32_t Mip = 0;
+        uint32_t Layer = 0;
+        uint32_t X = 0;
+        uint32_t Y = 0;
+        uint32_t Width = 0;
+        uint32_t Height = 0;
+    };
+
+    // Buffer-image copies address the buffer in rows of this many bytes. D3D12 needs a multiple of
+    // 256, so both backends use it. Copy offsets into a buffer must be multiples of CopyPlacementAlignment.
+    RHI_API uint32_t CopyRowPitch(Format format, uint32_t width);
+    inline constexpr uint64_t CopyPlacementAlignment = 512;
 
     //===================================//
     //  ---------  Resorces  ----------  //
     //===================================//
-
-    enum class BufferType : uint8_t
-    {
-        Vertex,
-        Index,
-        Constant,
-        ShaderStorage,
-        Upload,
-        FrameData       // Uniform and storage use, host visible: the per-frame ring
-    };
 
     struct ImageUsage
     {
@@ -471,6 +516,11 @@ namespace RHIStructures
     };
     VkImageUsageFlags VulkanImageUsage(ImageUsage usage);
     D3D12_RESOURCE_FLAGS DXImageUsage(ImageUsage usage);
+
+    // Resolves zero counts against the image and packs the result into a cache key.
+    SubresourceRange ResolveRange(const struct ImageDesc& desc, SubresourceRange range);
+    uint64_t RangeKey(const SubresourceRange& resolved);
+    bool IsWholeImage(const struct ImageDesc& desc, const SubresourceRange& resolved);
 
     namespace AccessFlag
     {
@@ -507,10 +557,13 @@ namespace RHIStructures
 
     struct BufferUsage
     {
+        bool Vertex = false;
+        bool Index = false;
+        bool Uniform = false;
+        bool Storage = false;           // Shader read, and shader write in device-local memory
         bool TransferSource = false;
         bool TransferDestination = false;
-        MemoryAccess Access = MemoryAccess(AccessFlag::GPURead);
-        BufferType Type = BufferType::Constant;
+        MemoryAccess Access = DeviceLocalMemory;
     };
     VkBufferUsageFlags VulkanBufferUsage(BufferUsage usage);
     
@@ -573,15 +626,16 @@ namespace RHIStructures
         uint32_t Binding = 0;
         BufferHandle Buffer = {};
         ImageHandle Image = {};
+        SubresourceRange Range = {};
 
         static DescriptorSetBinding ForBuffer(uint32_t binding, BufferHandle buffer)
         {
             return DescriptorSetBinding{ .Binding = binding, .Buffer = buffer };
         }
 
-        static DescriptorSetBinding ForImage(uint32_t binding, ImageHandle image)
+        static DescriptorSetBinding ForImage(uint32_t binding, ImageHandle image, SubresourceRange range = {})
         {
-            return DescriptorSetBinding{ .Binding = binding, .Image = image };
+            return DescriptorSetBinding{ .Binding = binding, .Image = image, .Range = range };
         }
     };
     

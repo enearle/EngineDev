@@ -103,7 +103,8 @@ void BufferAllocator::CreateFrameRing(uint64_t bytesPerFrame)
     BufferDesc desc = {};
     desc.Size = bytesPerFrame * FramesInFlight;
     desc.Usage.Access = UploadMemory;
-    desc.Usage.Type = BufferType::FrameData;
+    desc.Usage.Uniform = true;
+    desc.Usage.Storage = true;
     FrameRing = CreateBuffer(desc);
 
     const BufferAllocation& allocation = Buffers.Get(FrameRing);
@@ -240,7 +241,7 @@ ImageHandle VulkanBufferAllocator::CreateImage(const ImageDesc& imageDesc)
         vkFreeMemory(device, stagingMemory, nullptr);
     }
 
-    vulkanImageData->ImageView = CreateVulkanImageView(vulkanImageData->ImageHandle, imageDesc);
+    vulkanImageData->ImageView = CreateVulkanImageView(vulkanImageData->ImageHandle, imageDesc, ResolveRange(imageDesc, {}));
 
     ImageAllocation allocation;
     allocation.Image = vulkanImageData;
@@ -309,6 +310,19 @@ VkImage VulkanBufferAllocator::CreateVulkanImage(const ImageDesc& imageDesc, VkD
 {
     VkDevice device = VulkanCore::Instance().GetDevice();
 
+    VkFormatProperties formatProperties;
+    vkGetPhysicalDeviceFormatProperties(VulkanCore::Instance().GetPhysicalDevice(), VulkanFormat(imageDesc.Format), &formatProperties);
+    VkFormatFeatureFlags features = formatProperties.optimalTilingFeatures;
+    auto require = [&](bool isRequested, VkFormatFeatureFlags feature, const char* use)
+    {
+        if (isRequested && !(features & feature))
+            throw std::runtime_error("Format " + std::to_string(static_cast<int>(imageDesc.Format)) + " cannot be used as " + use + " on this device.");
+    };
+    require(imageDesc.Usage.Sampled, VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT, "a sampled image");
+    require(imageDesc.Usage.RenderTarget, VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT, "a render target");
+    require(imageDesc.Usage.DepthStencil, VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT, "a depth target");
+    require(imageDesc.Usage.Storage, VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT, "a storage image");
+
     ImageUsage usage = imageDesc.Usage;
     if (imageDesc.InitialData)
         usage.TransferDestination = true;
@@ -346,7 +360,7 @@ VkImage VulkanBufferAllocator::CreateVulkanImage(const ImageDesc& imageDesc, VkD
     return image;
 }
 
-VkImageView VulkanBufferAllocator::CreateVulkanImageView(VkImage image, const ImageDesc& imageDesc)
+VkImageView VulkanBufferAllocator::CreateVulkanImageView(VkImage image, const ImageDesc& imageDesc, const SubresourceRange& resolved)
 {
     VkImageViewCreateInfo viewInfo = {};
     viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
@@ -354,15 +368,41 @@ VkImageView VulkanBufferAllocator::CreateVulkanImageView(VkImage image, const Im
     viewInfo.viewType = VulkanImageViewType(imageDesc);
     viewInfo.format = VulkanFormat(imageDesc.Format);
     viewInfo.subresourceRange.aspectMask = IsDepthFormat(imageDesc.Format) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
-    viewInfo.subresourceRange.baseMipLevel = 0;
-    viewInfo.subresourceRange.levelCount = (std::max)(imageDesc.MipLevels, 1u);
-    viewInfo.subresourceRange.baseArrayLayer = 0;
-    viewInfo.subresourceRange.layerCount = (std::max)(imageDesc.ArrayLayers, 1u);
+    viewInfo.subresourceRange.baseMipLevel = resolved.BaseMip;
+    viewInfo.subresourceRange.levelCount = resolved.MipCount;
+    viewInfo.subresourceRange.baseArrayLayer = resolved.BaseLayer;
+    viewInfo.subresourceRange.layerCount = resolved.LayerCount;
 
     VkImageView imageView = VK_NULL_HANDLE;
     if (vkCreateImageView(VulkanCore::Instance().GetDevice(), &viewInfo, nullptr, &imageView) != VK_SUCCESS)
         throw std::runtime_error("Failed to create image view.");
     return imageView;
+}
+
+VkImageView VulkanBufferAllocator::GetImageView(ImageHandle image, SubresourceRange range)
+{
+    ImageAllocation& allocation = Images.Get(image);
+    VulkanImageData* imageData = static_cast<VulkanImageData*>(allocation.Image);
+    SubresourceRange resolved = ResolveRange(allocation.Desc, range);
+    if (IsWholeImage(allocation.Desc, resolved))
+        return imageData->ImageView;
+
+    uint64_t key = RangeKey(resolved);
+    for (const VulkanRangeView& view : imageData->RangeViews)
+        if (view.Key == key)
+            return view.View;
+
+    VkImageView view = CreateVulkanImageView(imageData->ImageHandle, allocation.Desc, resolved);
+    imageData->RangeViews.push_back({ key, view });
+    return view;
+}
+
+void VulkanBufferAllocator::DestroyRangeViews(void* vulkanImageData)
+{
+    VulkanImageData* imageData = static_cast<VulkanImageData*>(vulkanImageData);
+    for (const VulkanRangeView& view : imageData->RangeViews)
+        vkDestroyImageView(VulkanCore::Instance().GetDevice(), view.View, nullptr);
+    imageData->RangeViews.clear();
 }
 
 void VulkanBufferAllocator::RegisterDescriptorSetLayout(uint32_t layoutID, const ResourceLayout& layout, uint32_t maxSetIndex)
@@ -453,10 +493,8 @@ void VulkanBufferAllocator::WriteDescriptors(VkDescriptorSet descriptorSet, cons
 
         if (layoutBinding.Type == DescriptorType::SampledImage || layoutBinding.Type == DescriptorType::StorageImage)
         {
-            const VulkanImageData* imageData = static_cast<VulkanImageData*>(GetImageAllocation(bindingIt->Image).Image);
-
             VkDescriptorImageInfo imageInfo{};
-            imageInfo.imageView = imageData->ImageView;
+            imageInfo.imageView = GetImageView(bindingIt->Image, bindingIt->Range);
             imageInfo.imageLayout = layoutBinding.Type == DescriptorType::StorageImage
                 ? VK_IMAGE_LAYOUT_GENERAL : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
             imageInfos.push_back(imageInfo);
@@ -596,6 +634,7 @@ void VulkanBufferAllocator::ReleaseImage(ImageAllocation& allocation)
     if (!imageData)
         return;
 
+    DestroyRangeViews(imageData);
     vkDestroyImageView(device, imageData->ImageView, nullptr);
     vkDestroyImage(device, imageData->ImageHandle, nullptr);
     vkFreeMemory(device, imageData->Memory, nullptr);
@@ -607,7 +646,9 @@ void VulkanBufferAllocator::EvictImage(ImageHandle image)
 {
     if (!Images.IsLive(image))
         return;
-    delete static_cast<VulkanImageData*>(Images.Get(image).Image);
+    VulkanImageData* imageData = static_cast<VulkanImageData*>(Images.Get(image).Image);
+    DestroyRangeViews(imageData);
+    delete imageData;
     Images.Release(image);
 }
 
@@ -619,11 +660,6 @@ BufferHandle VulkanBufferAllocator::CreateBuffer(const BufferDesc& bufferDesc)
     VkDevice device = VulkanCore::Instance().GetDevice();
     VkPhysicalDevice physicalDevice = VulkanCore::Instance().GetPhysicalDevice();
 
-    bool needsDeviceAddress = (bufferDesc.Usage.Type == BufferType::Constant || bufferDesc.Usage.Type == BufferType::ShaderStorage);
-    if (needsDeviceAddress)
-    {
-        bufferFlags |= VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
-    }
 
     VkBufferCreateInfo bufferInfo = {};
     bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -641,15 +677,10 @@ BufferHandle VulkanBufferAllocator::CreateBuffer(const BufferDesc& bufferDesc)
     VkPhysicalDeviceMemoryProperties memoryProperties;
     vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memoryProperties);
 
-    VkMemoryAllocateFlagsInfo allocFlags = {};
-    allocFlags.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO;
-    allocFlags.flags = needsDeviceAddress ? VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT : 0;
-
     VkMemoryAllocateInfo allocInfo = {};
     allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     allocInfo.allocationSize = memoryRequirements.size;
     allocInfo.memoryTypeIndex = FindMemoryType(memoryRequirements.memoryTypeBits, memoryFlags);
-    allocInfo.pNext = needsDeviceAddress ? &allocFlags : nullptr;
 
     result = vkAllocateMemory(device, &allocInfo, nullptr, &vulkanBufferData->Memory);
     if (result != VK_SUCCESS)
@@ -736,7 +767,9 @@ BufferHandle DirectX12BufferAllocator::CreateBuffer(const BufferDesc& bufferDesc
 
     uint64_t size = (bufferDesc.Size + 255) & ~255ull;
     CD3DX12_HEAP_PROPERTIES heapProperties(heapType);
-    CD3DX12_RESOURCE_DESC resourceDesc = CD3DX12_RESOURCE_DESC::Buffer(size);
+    D3D12_RESOURCE_FLAGS flags = heapType == D3D12_HEAP_TYPE_DEFAULT && bufferDesc.Usage.Storage
+        ? D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS : D3D12_RESOURCE_FLAG_NONE;
+    CD3DX12_RESOURCE_DESC resourceDesc = CD3DX12_RESOURCE_DESC::Buffer(size, flags);
 
     ComPtr<ID3D12Resource> buffer;
     device->CreateCommittedResource(&heapProperties, D3D12_HEAP_FLAG_NONE, &resourceDesc, initialState, nullptr,
@@ -753,8 +786,9 @@ BufferHandle DirectX12BufferAllocator::CreateBuffer(const BufferDesc& bufferDesc
     else if (bufferDesc.InitialData)
     {
         CD3DX12_HEAP_PROPERTIES uploadHeapProperties(D3D12_HEAP_TYPE_UPLOAD);
+        CD3DX12_RESOURCE_DESC uploadDesc = CD3DX12_RESOURCE_DESC::Buffer(size);
         ComPtr<ID3D12Resource> uploadBuffer;
-        device->CreateCommittedResource(&uploadHeapProperties, D3D12_HEAP_FLAG_NONE, &resourceDesc,
+        device->CreateCommittedResource(&uploadHeapProperties, D3D12_HEAP_FLAG_NONE, &uploadDesc,
             D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(uploadBuffer.GetAddressOf())) >> ERROR_HANDLER;
 
         void* uploadAddress = nullptr;
@@ -936,6 +970,22 @@ ImageHandle DirectX12BufferAllocator::CreateImage(const ImageDesc& imageDesc)
     bool isDepth = IsDepthFormat(imageDesc.Format);
     uint32_t arrayLayers = (std::max)(imageDesc.ArrayLayers, 1u);
 
+    D3D12_FEATURE_DATA_FORMAT_SUPPORT support = {};
+    support.Format = isDepth && imageDesc.Usage.Sampled ? SampledDepthFormat(imageDesc.Format) : DXFormat(imageDesc.Format);
+    device->CheckFeatureSupport(D3D12_FEATURE_FORMAT_SUPPORT, &support, sizeof(support)) >> ERROR_HANDLER;
+    D3D12_FEATURE_DATA_FORMAT_SUPPORT targetSupport = { DXFormat(imageDesc.Format) };
+    device->CheckFeatureSupport(D3D12_FEATURE_FORMAT_SUPPORT, &targetSupport, sizeof(targetSupport)) >> ERROR_HANDLER;
+    auto require = [&](bool isRequested, bool isSupported, const char* use)
+    {
+        if (isRequested && !isSupported)
+            throw std::runtime_error("Format " + std::to_string(static_cast<int>(imageDesc.Format)) + " cannot be used as " + use + " on this device.");
+    };
+    require(imageDesc.Usage.Sampled, support.Support1 & D3D12_FORMAT_SUPPORT1_SHADER_SAMPLE, "a sampled image");
+    require(imageDesc.Usage.RenderTarget, targetSupport.Support1 & D3D12_FORMAT_SUPPORT1_RENDER_TARGET, "a render target");
+    require(imageDesc.Usage.DepthStencil, targetSupport.Support1 & D3D12_FORMAT_SUPPORT1_DEPTH_STENCIL, "a depth target");
+    require(imageDesc.Usage.Storage, (targetSupport.Support1 & D3D12_FORMAT_SUPPORT1_TYPED_UNORDERED_ACCESS_VIEW)
+        && (targetSupport.Support2 & D3D12_FORMAT_SUPPORT2_UAV_TYPED_STORE), "a storage image");
+
     D3D12_RESOURCE_DESC textureDesc = {};
     textureDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
     textureDesc.Width = imageDesc.Width;
@@ -971,8 +1021,8 @@ ImageHandle DirectX12BufferAllocator::CreateImage(const ImageDesc& imageDesc)
 
     if (imageDesc.InitialData)
     {
-        if (arrayLayers != 1 || textureDesc.MipLevels != 1)
-            throw std::runtime_error("Image upload supports one layer and one mip.");
+        if (arrayLayers != 1)
+            throw std::runtime_error("Image upload supports one layer; it fills mip 0.");
 
 
         const UINT64 uploadBufferSize = GetRequiredIntermediateSize(imageResource.Get(), 0, 1);
@@ -995,7 +1045,8 @@ ImageHandle DirectX12BufferAllocator::CreateImage(const ImageDesc& imageDesc)
         UpdateSubresources(cmdList, imageResource.Get(), uploadBuffer.Get(), 0, 0, 1, &subresource);
 
         CD3DX12_RESOURCE_BARRIER toShaderRead = CD3DX12_RESOURCE_BARRIER::Transition(imageResource.Get(),
-            D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+            D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
+            D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES);
         cmdList->ResourceBarrier(1, &toShaderRead);
         SubmitUploadAndWait();
     }
@@ -1046,6 +1097,83 @@ ImageHandle DirectX12BufferAllocator::CreateImage(const ImageDesc& imageDesc)
     return Images.Claim(allocation);
 }
 
+D3D12_CPU_DESCRIPTOR_HANDLE DirectX12BufferAllocator::GetRenderTargetView(ImageHandle image, SubresourceRange range)
+{
+    ImageAllocation& allocation = Images.Get(image);
+    DX12ImageData* imageData = static_cast<DX12ImageData*>(allocation.Image);
+    SubresourceRange resolved = ResolveRange(allocation.Desc, range);
+    if (resolved.BaseMip == 0 && resolved.BaseLayer == 0 && resolved.LayerCount == (std::max)(allocation.Desc.ArrayLayers, 1u))
+        return imageData->RenderTargetView;
+
+    uint64_t key = RangeKey(resolved);
+    for (const DX12RangeView& view : imageData->RangeViews)
+        if (!view.IsDepth && view.Key == key)
+            return view.Handle;
+
+    D3D12_RENDER_TARGET_VIEW_DESC rtvDesc = {};
+    rtvDesc.Format = DXFormat(allocation.Desc.Format);
+    if (allocation.Desc.ArrayLayers > 1)
+    {
+        rtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2DARRAY;
+        rtvDesc.Texture2DArray.MipSlice = resolved.BaseMip;
+        rtvDesc.Texture2DArray.FirstArraySlice = resolved.BaseLayer;
+        rtvDesc.Texture2DArray.ArraySize = resolved.LayerCount;
+    }
+    else
+    {
+        rtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
+        rtvDesc.Texture2D.MipSlice = resolved.BaseMip;
+    }
+
+    DX12RangeView view;
+    view.Key = key;
+    view.Slot = RenderTargetSlots.Claim(1);
+    view.Handle = RenderTargetHeap->GetCPUDescriptorHandleForHeapStart();
+    view.Handle.ptr += static_cast<SIZE_T>(view.Slot) * RenderTargetIncrement;
+    D3DCore::Instance().GetDevice()->CreateRenderTargetView(imageData->Image.Get(), &rtvDesc, view.Handle);
+    imageData->RangeViews.push_back(view);
+    return view.Handle;
+}
+
+D3D12_CPU_DESCRIPTOR_HANDLE DirectX12BufferAllocator::GetDepthStencilView(ImageHandle image, SubresourceRange range)
+{
+    ImageAllocation& allocation = Images.Get(image);
+    DX12ImageData* imageData = static_cast<DX12ImageData*>(allocation.Image);
+    SubresourceRange resolved = ResolveRange(allocation.Desc, range);
+    if (resolved.BaseMip == 0 && resolved.BaseLayer == 0 && resolved.LayerCount == (std::max)(allocation.Desc.ArrayLayers, 1u))
+        return imageData->DepthStencilView;
+
+    uint64_t key = RangeKey(resolved);
+    for (const DX12RangeView& view : imageData->RangeViews)
+        if (view.IsDepth && view.Key == key)
+            return view.Handle;
+
+    D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc = {};
+    dsvDesc.Format = DXFormat(allocation.Desc.Format);
+    if (allocation.Desc.ArrayLayers > 1)
+    {
+        dsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2DARRAY;
+        dsvDesc.Texture2DArray.MipSlice = resolved.BaseMip;
+        dsvDesc.Texture2DArray.FirstArraySlice = resolved.BaseLayer;
+        dsvDesc.Texture2DArray.ArraySize = resolved.LayerCount;
+    }
+    else
+    {
+        dsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
+        dsvDesc.Texture2D.MipSlice = resolved.BaseMip;
+    }
+
+    DX12RangeView view;
+    view.Key = key;
+    view.IsDepth = true;
+    view.Slot = DepthStencilSlots.Claim(1);
+    view.Handle = DepthStencilHeap->GetCPUDescriptorHandleForHeapStart();
+    view.Handle.ptr += static_cast<SIZE_T>(view.Slot) * DepthStencilIncrement;
+    D3DCore::Instance().GetDevice()->CreateDepthStencilView(imageData->Image.Get(), &dsvDesc, view.Handle);
+    imageData->RangeViews.push_back(view);
+    return view.Handle;
+}
+
 void DirectX12BufferAllocator::ReleaseBuffer(BufferAllocation& allocation)
 {
     delete static_cast<DX12BufferData*>(allocation.Buffer);
@@ -1062,6 +1190,8 @@ void DirectX12BufferAllocator::ReleaseImage(ImageAllocation& allocation)
         RenderTargetSlots.Release(imageData->RenderTargetSlot, 1);
     if (imageData->DepthStencilSlot != UINT32_MAX)
         DepthStencilSlots.Release(imageData->DepthStencilSlot, 1);
+    for (const DX12RangeView& view : imageData->RangeViews)
+        (view.IsDepth ? DepthStencilSlots : RenderTargetSlots).Release(view.Slot, 1);
     delete imageData;
     allocation.Image = nullptr;
 }
@@ -1125,6 +1255,7 @@ void DirectX12BufferAllocator::WriteDescriptor(const DescriptorBinding& layoutBi
     {
         const ImageAllocation& imageAllocation = GetImageAllocation(binding.Image);
         const ImageDesc& desc = imageAllocation.Desc;
+        SubresourceRange range = ResolveRange(desc, binding.Range);
 
         D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{};
         srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
@@ -1132,31 +1263,72 @@ void DirectX12BufferAllocator::WriteDescriptor(const DescriptorBinding& layoutBi
         if (desc.ArrayLayers > 1)
         {
             srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2DARRAY;
-            srvDesc.Texture2DArray.MipLevels = (std::max)(desc.MipLevels, 1u);
-            srvDesc.Texture2DArray.ArraySize = desc.ArrayLayers;
+            srvDesc.Texture2DArray.MostDetailedMip = range.BaseMip;
+            srvDesc.Texture2DArray.MipLevels = range.MipCount;
+            srvDesc.Texture2DArray.FirstArraySlice = range.BaseLayer;
+            srvDesc.Texture2DArray.ArraySize = range.LayerCount;
         }
         else
         {
             srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-            srvDesc.Texture2D.MipLevels = (std::max)(desc.MipLevels, 1u);
+            srvDesc.Texture2D.MostDetailedMip = range.BaseMip;
+            srvDesc.Texture2D.MipLevels = range.MipCount;
         }
         device->CreateShaderResourceView(static_cast<DX12ImageData*>(imageAllocation.Image)->Image.Get(), &srvDesc, destination);
         break;
     }
+    case DescriptorType::StorageImage:
+    {
+        const ImageAllocation& imageAllocation = GetImageAllocation(binding.Image);
+        const ImageDesc& desc = imageAllocation.Desc;
+        SubresourceRange range = ResolveRange(desc, binding.Range);
+
+        D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc{};
+        uavDesc.Format = DXFormat(desc.Format);
+        if (desc.ArrayLayers > 1)
+        {
+            uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2DARRAY;
+            uavDesc.Texture2DArray.MipSlice = range.BaseMip;
+            uavDesc.Texture2DArray.FirstArraySlice = range.BaseLayer;
+            uavDesc.Texture2DArray.ArraySize = range.LayerCount;
+        }
+        else
+        {
+            uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
+            uavDesc.Texture2D.MipSlice = range.BaseMip;
+        }
+        device->CreateUnorderedAccessView(static_cast<DX12ImageData*>(imageAllocation.Image)->Image.Get(), nullptr, &uavDesc, destination);
+        break;
+    }
     case DescriptorType::StorageBuffer:
+    case DescriptorType::ReadWriteStorageBuffer:
     {
         if (layoutBinding.Stride == 0)
             throw std::runtime_error("A storage buffer binding needs a Stride.");
 
         const BufferAllocation& bufferAllocation = GetBufferAllocation(binding.Buffer);
-        D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{};
-        srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-        srvDesc.Format = DXGI_FORMAT_UNKNOWN;
-        srvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
-        srvDesc.Buffer.FirstElement = 0;
-        srvDesc.Buffer.NumElements = static_cast<UINT>(bufferAllocation.Size / layoutBinding.Stride);
-        srvDesc.Buffer.StructureByteStride = layoutBinding.Stride;
-        device->CreateShaderResourceView(DXBuffer(bufferAllocation)->Buffer.Get(), &srvDesc, destination);
+        UINT elementCount = static_cast<UINT>(bufferAllocation.Size / layoutBinding.Stride);
+        ID3D12Resource* resource = DXBuffer(bufferAllocation)->Buffer.Get();
+
+        if (layoutBinding.Type == DescriptorType::StorageBuffer)
+        {
+            D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{};
+            srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+            srvDesc.Format = DXGI_FORMAT_UNKNOWN;
+            srvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+            srvDesc.Buffer.NumElements = elementCount;
+            srvDesc.Buffer.StructureByteStride = layoutBinding.Stride;
+            device->CreateShaderResourceView(resource, &srvDesc, destination);
+        }
+        else
+        {
+            D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc{};
+            uavDesc.Format = DXGI_FORMAT_UNKNOWN;
+            uavDesc.ViewDimension = D3D12_UAV_DIMENSION_BUFFER;
+            uavDesc.Buffer.NumElements = elementCount;
+            uavDesc.Buffer.StructureByteStride = layoutBinding.Stride;
+            device->CreateUnorderedAccessView(resource, nullptr, &uavDesc, destination);
+        }
         break;
     }
     case DescriptorType::UniformBuffer:
@@ -1166,15 +1338,6 @@ void DirectX12BufferAllocator::WriteDescriptor(const DescriptorBinding& layoutBi
         cbvDesc.BufferLocation = DXBuffer(bufferAllocation)->GPUAddress;
         cbvDesc.SizeInBytes = static_cast<UINT>((bufferAllocation.Size + 255) & ~255ull);
         device->CreateConstantBufferView(&cbvDesc, destination);
-        break;
-    }
-    case DescriptorType::StorageImage:
-    {
-        const ImageAllocation& imageAllocation = GetImageAllocation(binding.Image);
-        D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc{};
-        uavDesc.Format = DXFormat(imageAllocation.Desc.Format);
-        uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
-        device->CreateUnorderedAccessView(static_cast<DX12ImageData*>(imageAllocation.Image)->Image.Get(), nullptr, &uavDesc, destination);
         break;
     }
     default:

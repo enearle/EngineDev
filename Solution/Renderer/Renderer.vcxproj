@@ -53,8 +53,11 @@
     <ClCompile Include="Material.cpp" />
     <ClCompile Include="MaterialRegistry.cpp" />
     <ClCompile Include="MeshRegistry.cpp" />
+    <ClCompile Include="MipGenerator.cpp" />
+    <ClCompile Include="Passes\ComputeTestPass.cpp" />
     <ClCompile Include="Passes\DeferredPasses.cpp" />
     <ClCompile Include="PassGraph.cpp" />
+    <ClCompile Include="Readback.cpp" />
     <ClCompile Include="Renderer.cpp" />
     <ClCompile Include="ShaderLibrary.cpp" />
   </ItemGroup>
@@ -65,14 +68,26 @@
     <ClInclude Include="Material.h" />
     <ClInclude Include="MaterialRegistry.h" />
     <ClInclude Include="MeshRegistry.h" />
+    <ClInclude Include="MipGenerator.h" />
+    <ClInclude Include="Passes\ComputeTestPass.h" />
     <ClInclude Include="Passes\DeferredPasses.h" />
     <ClInclude Include="PassGraph.h" />
+    <ClInclude Include="Readback.h" />
     <ClInclude Include="Renderer.h" />
     <ClInclude Include="RENDERER_API_Macro.h" />
     <ClInclude Include="RenderScene.h" />
     <ClInclude Include="ShaderLibrary.h" />
   </ItemGroup>
   <ItemGroup>
+    <ShaderSource Include="Shaders\cs_compute_test.hlsl">
+      <Profile>cs_6_1</Profile>
+    </ShaderSource>
+    <ShaderSource Include="Shaders\cs_downsample.hlsl">
+      <Profile>cs_6_1</Profile>
+    </ShaderSource>
+    <ShaderSource Include="Shaders\ps_compute_test.hlsl">
+      <Profile>ps_6_1</Profile>
+    </ShaderSource>
     <ShaderSource Include="Shaders\ps_lighting.hlsl">
       <Profile>ps_6_1</Profile>
     </ShaderSource>

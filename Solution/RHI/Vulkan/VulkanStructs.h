@@ -15,11 +15,18 @@ namespace VulkanStructs
         }
     };
 
+    struct VulkanRangeView
+    {
+        uint64_t Key = 0;
+        VkImageView View = VK_NULL_HANDLE;
+    };
+
     struct VulkanImageData
     {
         VkImage ImageHandle =   VK_NULL_HANDLE;     // Handle to image.
-        VkImageView ImageView = VK_NULL_HANDLE;     // ImageView is an interface for working with image.
-        VkDeviceMemory Memory = VK_NULL_HANDLE;    
+        VkImageView ImageView = VK_NULL_HANDLE;     // View of the whole image.
+        VkDeviceMemory Memory = VK_NULL_HANDLE;
+        std::vector<VulkanRangeView> RangeViews;    // Views of parts of the image, made on first use.
     };
 
     struct QueueFamilyIndicesData

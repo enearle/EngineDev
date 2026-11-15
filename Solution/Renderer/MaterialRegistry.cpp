@@ -2,6 +2,7 @@
 
 #include <unordered_map>
 #include "Material.h"
+#include "MipGenerator.h"
 #include "Renderer.h"
 #include "RHI/BufferAllocator.h"
 #include "RHI/PipelineLayout.h"
@@ -47,7 +48,10 @@ void MaterialRegistry::Retire(MaterialHandle material)
     BufferAllocator* allocator = BufferAllocator::GetInstance();
     allocator->FreeDescriptorSet(record.Loaded.Set);
     for (ImageHandle image : record.Loaded.Images)
+    {
+        MipGenerator::Cancel(image);
         allocator->DestroyImage(image);
+    }
 
     MaterialsByName.erase(record.Name);
     Materials.Release(material);

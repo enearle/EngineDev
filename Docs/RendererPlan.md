@@ -9,7 +9,7 @@ maintained copy and is updated as each phase lands.
 | --- | --- | --- |
 | 0. Stabilize and restructure | Done | Branch `Dev-2`, 14 November 2026. See "Phase 0 outcome" |
 | 1. Frame structure | Done | Branch `Dev-2`, 14 November 2026. See "Phase 1 outcome" |
-| 2. Compute and GPU data | Not started | Plan and review findings in `Docs/Handoff-Phase2.md` |
+| 2. Compute and GPU data | Done | Branch `Dev-2`, 14 November 2026. See "Phase 2 outcome" |
 | 3. Skeleton and animation | Not started | |
 | 4. Materials and paging | Not started | |
 | 5. Procedural skin on the character | Not started | |
@@ -43,7 +43,7 @@ restructure, validation output empty apart from one third-party message, frame t
 
 Open items carried forward:
 
-- **D3D12 multiview.** Direct3D 12 has no view instancing set up, so the multiview shadow pass fills
+- **D3D12 multiview** (closed in Phase 2, shadows render one layer per pass). Direct3D 12 has no view instancing set up, so the multiview shadow pass fills
   only layer 0 there (`SV_ViewID` is 0). Only one light is used today, so the image matches. Either
   add `D3D12_VIEW_INSTANCING_DESC` or render one view per layer when more lights cast shadows.
 - **Noesis debug message.** On Direct3D 12 the debug layer reports that one of Noesis's own offscreen
@@ -154,12 +154,92 @@ delete it in the next step.
   phase. Compare runs in the same state: Vulkan and D3D12 then differ by a mean of 0.39 out of 255.
 
 The Release frame times above are not comparable: D3D12 was vsync-capped and Vulkan was not.
+Phase 2 re-measured them.
+
+Open items: carried into "Phase 2 outcome". The D3D12 view-instancing gap is closed there.
+
+## Phase 2 outcome
+
+Finished 14 November 2026 on `Dev-2`, following `Docs/Handoff-Phase2.md`, steps 1 to 9 including the
+optional step 9. The gate holds on both backends with validation clean: with `-compute-test` a
+compute pass writes a 256 x 256 image from the frame number, a raster pass draws it into a corner of
+the back buffer, and a row read back each frame matches the same function on the CPU. Latency is
+measured, not fixed: 1 to 3 frames, never waiting.
+
+**RHI**
+
+- Formats `R8_UNORM`, `R16_UNORM`, `R16_FLOAT`, `R16G16_FLOAT`, `R16_UINT`, `R32_UINT`. `CreateImage`
+  checks the format supports each requested use and throws a clear error if not.
+- `BufferUsage` is flags (vertex, index, uniform, storage, transfer); `BufferType` is gone.
+- Subresource ranges (base mip, mip count, base layer, layer count; zero counts mean all) on
+  descriptor bindings, attachments and transitions. Vulkan caches a view per range on the image;
+  D3D12 writes SRVs and UAVs with the range and claims RTV and DSV slots per range, released with
+  the image. Array images always get array views, so shaders declare `Texture2DArray` for them.
+- `ImageLayout::Storage` (`GENERAL` / `UNORDERED_ACCESS`); a Storage to Storage transition is a UAV
+  or memory barrier. Compute is in the `ShaderReadOnly` stage mask.
+- `DescriptorType::ReadWriteStorageBuffer` (structured UAV on D3D12) and `TransitionBuffers`.
+- `CopyBufferToImage` and `CopyImageToBuffer` by mip, layer and rectangle, with `CopyRowPitch` for
+  the 256-byte D3D12 row pitch and `CopyPlacementAlignment` for buffer offsets.
+- Compute pipelines (`Pipeline::CreateCompute`), compute bind points, `Dispatch`.
+- `GetCompletedFrameNumber` without blocking. On Vulkan the frame of the slot being reused is
+  remembered when its fence wait succeeds, because the fence is reset straight after; without that
+  the query could stall for hundreds of frames.
+- Timestamp queries, one set per frame slot, read when the slot begins again (results are a few
+  frames old). Passes and their GPU milliseconds show in the Renderer panel and the shutdown printout.
+- One render-finished semaphore per swapchain image instead of per frame slot. With vsync on, the
+  validation layer reported a semaphore still in use by the swapchain.
+- `ViewMask` is gone from `PipelineDesc`, `RenderingDesc` and `PassDesc`.
+
+**Renderer**
+
+- Pass graph: `PassKind::Compute`; `StorageWrites` beside `SampledReads`, ordered like colour
+  writes; `GraphImageDesc::MipLevels` and `IsStorage`; `ImportImage` for images the graph does not
+  own; `Order` breaks ties for every kind of pass; a GPU timer around each pass. Buffers stay out of
+  the graph; Phase 3's compute skinning will shape their declarations.
+- `Readback`: `Watch` an image once, then `Request` a region; copies run in one compute pass placed
+  after every other non-overlay pass, and callbacks fire at the start of the frame in which the GPU
+  is seen to have finished. `Watch` is an addition to the handoff's API: the pass declares watched
+  images as reads, and adding one in the middle of a frame would change the graph while it runs.
+- `MipGenerator`: material textures are created with a full mip chain and storage usage, the upload
+  fills mip 0, and an early compute pass (`Order` lowest) fills the rest with a 2 x 2 box filter, four
+  textures a frame. The previous mip is read through an SRV, the next written through a UAV.
+- Shadows: one raster pass per shadow-map layer, each with its own culled draw list and the light
+  index in the draw constants. This closes the D3D12 view-instancing gap and removes the three
+  wasted multiview views on Vulkan.
+- `ComputeTestPass` (`-compute-test`), the gate test, uses only the public graph and readback API.
+
+**Checked**
+
+- Debug: Standalone Vulkan and D3D12, Editor `-play` on both, `-stress` and `-compute-test` on both,
+  `-novsync` and window resize on both. Every run exits 0; stderr holds only "DirectX debugging
+  enabled." and the known Noesis message.
+- Gate: Vulkan "1007 readbacks matched, latency 2 to 3 frames" with vsync; D3D12 "852 readbacks
+  matched, latency 1 to 3 frames". Release `-compute-test`: 909 readbacks matched, latency 1 to 3 frames (Vulkan).
+- 9 mip chains generated (3 materials x 3 textures). Frozen frames of Vulkan and D3D12 in the same
+  run state differ by a mean of 0.23 out of 255; step 9 left the image unchanged (0.57 / 0.58
+  against step 8).
+- Release `-stress -novsync`, last frame: Vulkan 31 to 33 ms (GPU: G-buffer 16.9 to 17.6, shadow 13.9); D3D12 30 to 32 ms (GPU: G-buffer 16.4, shadow 13.8). Both are GPU-bound on the high-poly shells. Before step 9 Vulkan was 54 ms
+  (shadow 36 GPU ms against D3D12's 14). These replace the Phase 1 numbers, which mixed a
+  vsync-capped D3D12 with an uncapped Vulkan.
 
 Open items:
 
-- D3D12 still has no view instancing (shadow layer 0 only). On Vulkan the view mask is fixed at four
-  layers even with one light.
 - The material set is a convention: set 2 of `Renderer::GetSceneLayout()`. Phase 4 replaces this.
+- Shadow passes for missing lights still clear their layer (about 2 microseconds each).
+- `UpdateDescriptorSet` rewrites in place and is only safe after `WaitForGpu`, which resize does. New
+  code allocates a new set and frees the old one instead.
+- Frozen captures vary between two states from run to run, probably a UI animation phase; compare
+  runs in the same state.
+
+Carried, not part of Phase 2:
+
+- Colour space: textures and the back buffer are `UNORM`, the lighting shader clamps and there is no
+  tone mapping, so mips are filtered on stored values. sRGB formats cannot be storage targets without
+  typeless or mutable formats. Phase 4 decides.
+- Every buffer and image is its own device allocation.
+- The lighting pass squeezes the full-window G-buffer into the Editor's game viewport.
+- `RHIStructures.h` exposes `d3d12.h` and Vulkan types to every layer.
+- `D3DPipelineExecutor::GetBackBuffer` uses its own frame counter, not `GetCurrentBackBufferIndex`.
 
 ## Verdict
 

@@ -50,7 +50,8 @@ public:
     void Build(std::span<const Frustum> frusta, bool isShadowCastersOnly);
 
     // pipelines is indexed by VertexLayout; a null entry skips that layout.
-    void Record(PipelineExecutor* executor, std::span<Pipeline* const> pipelines, bool isMaterialBound, const std::string& passName) const;
+    void Record(PipelineExecutor* executor, std::span<Pipeline* const> pipelines, bool isMaterialBound, const std::string& passName,
+                uint32_t viewIndex = 0) const;
 
     const std::vector<DrawBatch>& GetBatches() const { return Batches; }
     uint32_t GetInstanceCount() const { return InstanceCount; }

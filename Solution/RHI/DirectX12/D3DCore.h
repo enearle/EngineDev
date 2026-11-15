@@ -41,6 +41,7 @@ class D3DCore
     std::array<ComPtr<ID3D12CommandAllocator>, SwapChainBufferCount> CommandAllocators;
     std::array<ComPtr<ID3D12GraphicsCommandList>, SwapChainBufferCount> CommandLists;
     std::array<UINT64, SwapChainBufferCount> FrameFences;
+    std::array<uint64_t, SwapChainBufferCount> SlotFrameNumbers = {};
 
     bool IsTearingSupported = false;
 
@@ -74,6 +75,7 @@ public:
 
     Window* GetWindow() const { return RendererWindow; }
     uint64_t GetFrameNumber() const { return FrameNumber; }
+    uint64_t GetCompletedFrameNumber() const;
     ComPtr<ID3D12Device> GetDevice() const { return Device; }
     ComPtr<ID3D12CommandQueue> GetCommandQueue() const { return CommandQueue; }
     ComPtr<ID3D12GraphicsCommandList> GetCommandList() const { return CommandLists[CurrentFrameIndex]; }

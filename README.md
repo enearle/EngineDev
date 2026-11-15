@@ -9,7 +9,7 @@ status are in [Docs/RendererPlan.md](Docs/RendererPlan.md). Machine setup in det
 | Project | Output | Holds |
 | --- | --- | --- |
 | `RHI` | DLL | Device, resources, pipelines, command recording, both backends |
-| `Renderer` | DLL | Pass graph, standard passes, mesh and material registries, draw lists, HLSL |
+| `Renderer` | DLL | Pass graph, standard passes, registries, draw lists, readback, mip generation, HLSL |
 | `Engine` | DLL | Scene, assets, input, UI layers (NoesisGUI, Dear ImGui) |
 | `Game` | DLL | Game code and its assets |
 | `Editor` | EXE | Dear ImGui editor |
@@ -48,5 +48,6 @@ because runtime paths are relative to it.
 | `-stress` | Add a grid of 10,000 objects; batch counts show in the Renderer panel |
 | `-freeze-animation` | Hold the animated test mesh still, for comparing captures |
 | `-novsync` | Present without waiting for vertical blank, on both backends |
+| `-compute-test` | Run the Phase 2 gate test; prints `Compute test: ...` on exit |
 
 In Debug builds the Vulkan validation layer and the Direct3D 12 debug layer print to stderr.

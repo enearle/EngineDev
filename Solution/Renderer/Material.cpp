@@ -3,6 +3,7 @@
 #include "RHI/BufferAllocator.h"
 #include "RHI/RHIConstants.h"
 #include "Image/ImageImport.h"
+#include "MipGenerator.h"
 
 using namespace RHIStructures;
 using namespace RHIConstants;
@@ -113,7 +114,11 @@ LoadedMaterial Material::LoadMaterial(uint32_t layoutID, uint32_t setIndex)
     bindings.reserve(CachedTextures.size());
     for (uint32_t i = 0; i < CachedTextures.size(); ++i)
     {
-        ImageHandle image = bufferAllocator->CreateImage(*CachedTextures[i]->Desc);
+        ImageDesc desc = *CachedTextures[i]->Desc;
+        desc.MipLevels = MipGenerator::FullMipCount(desc.Width, desc.Height);
+        desc.Usage.Storage = true;
+        ImageHandle image = bufferAllocator->CreateImage(desc);
+        MipGenerator::Enqueue(image);
         loaded.Images.push_back(image);
         bindings.push_back(DescriptorSetBinding::ForImage(i, image));
         delete CachedTextures[i];

@@ -1,6 +1,7 @@
 #include "DeferredPasses.h"
 
 #include <array>
+#include <string>
 #include "../DrawList.h"
 #include "../MaterialRegistry.h"
 #include "../PassGraph.h"
@@ -14,7 +15,6 @@ using namespace RHIStructures;
 using namespace RHIConstants;
 
 static constexpr uint32_t ShadowMapSize = 1024;
-static constexpr uint32_t ShadowViewMask = 0xF;
 static constexpr uint32_t LightingInputSetIndex = 3;
 
 using LayoutPipelines = std::array<Pipeline*, static_cast<size_t>(VertexLayout::Count)>;
@@ -33,7 +33,7 @@ static LayoutPipelines GBufferPipelines = {};
 static Pipeline* LightingPipeline = nullptr;
 static PipelineLayout* LightingLayout = nullptr;
 
-static DrawList ShadowDraws;
+static DrawList ShadowDraws[MaxLights];
 static DrawList GBufferDraws;
 
 static std::vector<VertexAttribute> StaticAttributes(bool isPositionOnly)
@@ -101,7 +101,6 @@ static void CreatePipelines()
     shadow.BlendAttachmentStates = { DisabledBlendAttachmentState };
     shadow.RenderTargetFormats = { Format::R32G32_FLOAT };
     shadow.DepthStencilFormat = Format::D32_FLOAT;
-    shadow.ViewMask = ShadowViewMask;
     ShadowPipelines = CreateMeshPipelines(shadow, "vs_vsm", "vs_vsm_skinned", true);
 
     PipelineDesc gBuffer;
@@ -134,18 +133,17 @@ static void CreatePipelines()
     ReleaseShader(lighting.FragmentShader);
 }
 
-static void ExecuteShadowPass(const PassContext& context)
+// One pass per shadow map layer, so each light gets its own culled draw list and no backend needs
+// multiview. A layer whose light is missing or casts no shadow is only cleared.
+static void ExecuteShadowPass(const PassContext& context, uint32_t layer)
 {
-    std::vector<Frustum> frusta;
-    for (const RenderLight& light : Renderer::GetRenderScene().Lights)
-        if (light.CastsShadows && light.Data.Type != 0 && frusta.size() < MaxLights)
-            frusta.push_back(Frustum::FromViewProjection(light.ViewProjection));
-
-    if (frusta.empty())
+    const std::vector<RenderLight>& lights = Renderer::GetRenderScene().Lights;
+    if (layer >= lights.size() || !lights[layer].CastsShadows || lights[layer].Data.Type == 0)
         return;
 
-    ShadowDraws.Build(frusta, true);
-    ShadowDraws.Record(context.Executor, ShadowPipelines, false, "Shadow");
+    Frustum frustum = Frustum::FromViewProjection(lights[layer].ViewProjection);
+    ShadowDraws[layer].Build({ &frustum, 1 }, true);
+    ShadowDraws[layer].Record(context.Executor, ShadowPipelines, false, "Shadow " + std::to_string(layer), layer);
 }
 
 static void ExecuteGBufferPass(const PassContext& context)
@@ -195,13 +193,6 @@ void DeferredPasses::Enlist()
     Material = graph.CreateImage({ .Name = "Material", .Format = Format::R8G8B8A8_UNORM });
     Depth = graph.CreateImage({ .Name = "Depth", .Format = Format::D32_FLOAT });
 
-    PassDesc shadow;
-    shadow.Name = "Shadow";
-    shadow.ColorWrites = { { ShadowMap, AttachmentLoadOp::Clear } };
-    shadow.HasDepthWrite = true;
-    shadow.DepthWrite = { ShadowDepth, AttachmentLoadOp::Clear };
-    shadow.ViewMask = ShadowViewMask;
-    shadow.Execute = ExecuteShadowPass;
 
     PassDesc gBuffer;
     gBuffer.Name = "G-buffer";
@@ -218,7 +209,17 @@ void DeferredPasses::Enlist()
     lighting.InputSetIndex = LightingInputSetIndex;
     lighting.Execute = ExecuteLightingPass;
 
-    Passes = { graph.AddPass(std::move(lighting)), graph.AddPass(std::move(gBuffer)), graph.AddPass(std::move(shadow)) };
+    Passes = { graph.AddPass(std::move(lighting)), graph.AddPass(std::move(gBuffer)) };
+    for (uint32_t layer = 0; layer < MaxLights; layer++)
+    {
+        PassDesc shadow;
+        shadow.Name = "Shadow " + std::to_string(layer);
+        shadow.ColorWrites = { { ShadowMap, AttachmentLoadOp::Clear, SubresourceRange::Layer(layer) } };
+        shadow.HasDepthWrite = true;
+        shadow.DepthWrite = { ShadowDepth, AttachmentLoadOp::Clear, SubresourceRange::Layer(layer) };
+        shadow.Execute = [layer](const PassContext& context) { ExecuteShadowPass(context, layer); };
+        Passes.push_back(graph.AddPass(std::move(shadow)));
+    }
     IsEnlisted = true;
 }
 

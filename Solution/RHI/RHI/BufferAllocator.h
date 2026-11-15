@@ -124,6 +124,7 @@ public:
     void EvictImage(ImageHandle image) override;
 
     VkDescriptorSetLayout GetRegisteredDescriptorSetLayout(uint32_t layoutID, uint32_t setIndex);
+    VkImageView GetImageView(ImageHandle image, SubresourceRange range);
     static uint32_t FindMemoryType(uint32_t allowdTypes, VkMemoryPropertyFlags flags);
 
 protected:
@@ -159,7 +160,8 @@ private:
                           const std::vector<DescriptorSetBinding>& bindings, bool requireEveryBinding);
 
     static VkImage CreateVulkanImage(const ImageDesc& imageDesc, VkDeviceMemory* imageMemory);
-    static VkImageView CreateVulkanImageView(VkImage image, const ImageDesc& imageDesc);
+    static VkImageView CreateVulkanImageView(VkImage image, const ImageDesc& imageDesc, const SubresourceRange& resolved);
+    static void DestroyRangeViews(void* vulkanImageData);
 
     void CopyToDeviceLocalBuffer(VkBuffer dstBuffer, const void* srcData, VkDeviceSize size);
 };
@@ -198,6 +200,8 @@ public:
     void EvictImage(ImageHandle image) override;
 
     ID3D12DescriptorHeap* GetShaderResourceHeap() const { return ShaderResourceHeap.Get(); }
+    D3D12_CPU_DESCRIPTOR_HANDLE GetRenderTargetView(ImageHandle image, SubresourceRange range);
+    D3D12_CPU_DESCRIPTOR_HANDLE GetDepthStencilView(ImageHandle image, SubresourceRange range);
 
     // Bindings of one set sorted by slot. Dynamic uniform buffers become root CBVs; everything else
     // sits in one descriptor table at TableOffsets[i] from its start.

@@ -13,16 +13,19 @@ class RHI_API Pipeline
 protected:
     PipelineLayout* Layout = nullptr;
     bool OwnsLayout = false;
-    uint32_t ViewMask = 0;
+    bool IsComputePipeline = false;
 
     explicit Pipeline(const PipelineDesc& desc);
+    explicit Pipeline(PipelineLayout* layout);
 
 public:
     static Pipeline* Create(const PipelineDesc& desc);
+    // The layout is shared, not owned, and must include the compute stage in its visible stages.
+    static Pipeline* CreateCompute(PipelineLayout* layout, const ShaderStage& computeShader);
     virtual ~Pipeline();
 
     PipelineLayout* GetLayout() const { return Layout; }
-    uint32_t GetViewMask() const { return ViewMask; }
+    bool IsCompute() const { return IsComputePipeline; }
 };
 
 class D3DPipeline : public Pipeline
@@ -32,6 +35,7 @@ class D3DPipeline : public Pipeline
 
 public:
     explicit D3DPipeline(const PipelineDesc& desc);
+    D3DPipeline(PipelineLayout* layout, const ShaderStage& computeShader);
 
     ID3D12PipelineState* GetPipelineState() const { return PipelineState.Get(); }
     D3D12_PRIMITIVE_TOPOLOGY GetTopology() const { return Topology; }
@@ -44,6 +48,7 @@ class VulkanPipeline : public Pipeline
 
 public:
     explicit VulkanPipeline(const PipelineDesc& desc);
+    VulkanPipeline(PipelineLayout* layout, const ShaderStage& computeShader);
     ~VulkanPipeline() override;
 
     VkPipeline GetVulkanPipeline() const { return PipelineHandle; }

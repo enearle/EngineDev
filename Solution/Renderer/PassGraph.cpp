@@ -14,27 +14,42 @@ PassGraph::PassGraph()
     backBuffer.Desc.Name = "BackBuffer";
     backBuffer.Desc.ClearColour = { 0.1f, 0.1f, 0.1f, 1.0f };
     backBuffer.IsLive = true;
+    backBuffer.IsImported = true;
     Images.push_back(backBuffer);
+}
+
+GraphImageID PassGraph::ClaimImageSlot()
+{
+    for (GraphImageID i = 1; i < Images.size(); i++)
+        if (!Images[i].IsLive)
+            return i;
+    Images.emplace_back();
+    return static_cast<GraphImageID>(Images.size() - 1);
 }
 
 GraphImageID PassGraph::CreateImage(const GraphImageDesc& desc)
 {
-    GraphImageID id = 0;
-    for (GraphImageID i = 1; i < Images.size() && id == 0; i++)
-        if (!Images[i].IsLive)
-            id = i;
-    if (id == 0)
-    {
-        id = static_cast<GraphImageID>(Images.size());
-        Images.emplace_back();
-    }
-
+    GraphImageID id = ClaimImageSlot();
     ImageEntry& entry = Images[id];
     entry = {};
     entry.Desc = desc;
     entry.IsLive = true;
     if (desc.Size == GraphImageSize::Fixed || ViewportWidth > 0)
         CreateImage(entry);
+    return id;
+}
+
+GraphImageID PassGraph::ImportImage(ImageHandle image, ImageLayout restingLayout)
+{
+    GraphImageID id = ClaimImageSlot();
+    ImageEntry& entry = Images[id];
+    entry = {};
+    entry.Desc.Format = BufferAllocator::GetInstance()->GetImageAllocation(image).Desc.Format;
+    entry.Image = image;
+    entry.RestingLayout = restingLayout;
+    entry.Layout = restingLayout;
+    entry.IsLive = true;
+    entry.IsImported = true;
     return id;
 }
 
@@ -46,10 +61,13 @@ void PassGraph::CreateImage(ImageEntry& entry)
     desc.Width = entry.Desc.Size == GraphImageSize::Viewport ? ViewportWidth : entry.Desc.Width;
     desc.Height = entry.Desc.Size == GraphImageSize::Viewport ? ViewportHeight : entry.Desc.Height;
     desc.ArrayLayers = entry.Desc.ArrayLayers;
+    desc.MipLevels = entry.Desc.MipLevels;
     desc.Format = entry.Desc.Format;
     desc.Usage.Sampled = true;
     desc.Usage.RenderTarget = !isDepth;
     desc.Usage.DepthStencil = isDepth;
+    desc.Usage.Storage = entry.Desc.IsStorage;
+    desc.Usage.TransferSource = true;
     desc.ClearColour = entry.Desc.ClearColour;
     desc.ClearDepth = entry.Desc.ClearDepth;
 
@@ -62,7 +80,7 @@ void PassGraph::DestroyImage(GraphImageID image)
     if (image == BackBuffer || image >= Images.size() || !Images[image].IsLive)
         return;
 
-    if (Images[image].Image.IsValid())
+    if (Images[image].Image.IsValid() && !Images[image].IsImported)
         BufferAllocator::GetInstance()->DestroyImage(Images[image].Image);
     Images[image] = {};
 }
@@ -95,6 +113,17 @@ void PassGraph::RemovePass(PassID pass)
         }
 }
 
+static bool IsWriting(const PassDesc& pass, GraphImageID image)
+{
+    for (const PassAttachment& attachment : pass.ColorWrites)
+        if (attachment.Image == image)
+            return true;
+    for (const PassInput& storage : pass.StorageWrites)
+        if (storage.Image == image)
+            return true;
+    return pass.HasDepthWrite && pass.DepthWrite.Image == image;
+}
+
 void PassGraph::SortPasses()
 {
     size_t passCount = Passes.size();
@@ -109,21 +138,14 @@ void PassGraph::SortPasses()
         dependencyCount[after]++;
     };
 
-    auto writes = [](const PassDesc& pass, GraphImageID image)
-    {
-        for (const PassAttachment& attachment : pass.ColorWrites)
-            if (attachment.Image == image)
-                return true;
-        return pass.HasDepthWrite && pass.DepthWrite.Image == image;
-    };
-
-    std::vector<uint32_t> overlays;
     for (uint32_t i = 0; i < passCount; i++)
     {
         const PassDesc& pass = Passes[i].Desc;
         if (pass.Kind == PassKind::Overlay)
         {
-            overlays.push_back(i);
+            for (uint32_t j = 0; j < passCount; j++)
+                if (Passes[j].Desc.Kind != PassKind::Overlay)
+                    addEdge(j, i);
             continue;
         }
 
@@ -134,36 +156,39 @@ void PassGraph::SortPasses()
                 continue;
 
             for (const PassInput& input : pass.SampledReads)
-                if (writes(other, input.Image))
+                if (IsWriting(other, input.Image))
                     addEdge(j, i);
 
-            if (j < i)
-                for (const PassAttachment& attachment : pass.ColorWrites)
-                    if (writes(other, attachment.Image))
-                        addEdge(j, i);
-            if (j < i && pass.HasDepthWrite && writes(other, pass.DepthWrite.Image))
+            if (j >= i)
+                continue;
+            for (const PassAttachment& attachment : pass.ColorWrites)
+                if (IsWriting(other, attachment.Image))
+                    addEdge(j, i);
+            for (const PassInput& storage : pass.StorageWrites)
+                if (IsWriting(other, storage.Image))
+                    addEdge(j, i);
+            if (pass.HasDepthWrite && IsWriting(other, pass.DepthWrite.Image))
                 addEdge(j, i);
         }
     }
 
+    // Overlays among themselves follow Order, then declaration.
+    std::vector<uint32_t> overlays;
+    for (uint32_t i = 0; i < passCount; i++)
+        if (Passes[i].Desc.Kind == PassKind::Overlay)
+            overlays.push_back(i);
     std::stable_sort(overlays.begin(), overlays.end(),
         [&](uint32_t a, uint32_t b) { return Passes[a].Desc.Order < Passes[b].Desc.Order; });
-    for (size_t k = 0; k < overlays.size(); k++)
-    {
-        for (uint32_t i = 0; i < passCount; i++)
-            if (Passes[i].Desc.Kind == PassKind::Raster)
-                addEdge(i, overlays[k]);
-        if (k > 0)
-            addEdge(overlays[k - 1], overlays[k]);
-    }
+    for (size_t k = 1; k < overlays.size(); k++)
+        addEdge(overlays[k - 1], overlays[k]);
 
     ExecutionOrder.clear();
     std::vector<bool> isScheduled(passCount, false);
     while (ExecutionOrder.size() < passCount)
     {
         uint32_t next = UINT32_MAX;
-        for (uint32_t i = 0; i < passCount && next == UINT32_MAX; i++)
-            if (!isScheduled[i] && dependencyCount[i] == 0)
+        for (uint32_t i = 0; i < passCount; i++)
+            if (!isScheduled[i] && dependencyCount[i] == 0 && (next == UINT32_MAX || Passes[i].Desc.Order < Passes[next].Desc.Order))
                 next = i;
 
         if (next == UINT32_MAX)
@@ -182,13 +207,21 @@ std::vector<DescriptorSetBinding> PassGraph::InputBindings(const PassEntry& pass
 {
     std::vector<DescriptorSetBinding> bindings;
     for (const PassInput& input : pass.Desc.SampledReads)
-        bindings.push_back(DescriptorSetBinding::ForImage(input.Binding, Images[input.Image].Image));
+        bindings.push_back(DescriptorSetBinding::ForImage(input.Binding, Images[input.Image].Image, input.Range));
+    for (const PassInput& storage : pass.Desc.StorageWrites)
+    {
+        SubresourceRange range = storage.Range;
+        if (range.MipCount == 0)
+            range.MipCount = 1;
+        bindings.push_back(DescriptorSetBinding::ForImage(storage.Binding, Images[storage.Image].Image, range));
+    }
     return bindings;
 }
 
 void PassGraph::AllocateInputSet(PassEntry& pass)
 {
-    if (pass.InputSet.IsValid() || pass.Desc.SampledReads.empty() || !pass.Desc.InputLayout)
+    bool hasInputs = !pass.Desc.SampledReads.empty() || !pass.Desc.StorageWrites.empty();
+    if (pass.InputSet.IsValid() || !hasInputs || !pass.Desc.InputLayout)
         return;
 
     pass.InputSet = BufferAllocator::GetInstance()->AllocateDescriptorSet(
@@ -198,7 +231,7 @@ void PassGraph::AllocateInputSet(PassEntry& pass)
 void PassGraph::Transition(GraphImageID image, ImageLayout layout, std::vector<ImageTransition>& out)
 {
     ImageEntry& entry = Images[image];
-    if (entry.Layout == layout)
+    if (entry.Layout == layout && layout != ImageLayout::Storage)
         return;
     out.push_back({ entry.Image, entry.Layout, layout });
     entry.Layout = layout;
@@ -213,7 +246,7 @@ void PassGraph::Execute(PipelineExecutor* executor, uint32_t width, uint32_t hei
     }
 
     for (GraphImageID i = 1; i < Images.size(); i++)
-        if (Images[i].IsLive && !Images[i].Image.IsValid())
+        if (Images[i].IsLive && !Images[i].IsImported && !Images[i].Image.IsValid())
             CreateImage(Images[i]);
 
     if (IsOrderDirty)
@@ -246,6 +279,8 @@ void PassGraph::Execute(PipelineExecutor* executor, uint32_t width, uint32_t hei
         transitions.clear();
         for (const PassInput& input : desc.SampledReads)
             Transition(input.Image, ImageLayout::ShaderReadOnly, transitions);
+        for (const PassInput& storage : desc.StorageWrites)
+            Transition(storage.Image, ImageLayout::Storage, transitions);
         for (const PassAttachment& attachment : desc.ColorWrites)
             Transition(attachment.Image, ImageLayout::ColorAttachment, transitions);
         if (desc.HasDepthWrite)
@@ -266,9 +301,25 @@ void PassGraph::Execute(PipelineExecutor* executor, uint32_t width, uint32_t hei
 
             context.Width = width;
             context.Height = height;
+            uint32_t timer = executor->BeginTimer(desc.Name);
             executor->BeginOverlayPass(width, height);
             desc.Execute(context);
             executor->EndOverlayPass();
+            executor->EndTimer(timer);
+            continue;
+        }
+
+        if (desc.Kind == PassKind::Compute)
+        {
+            if (!desc.StorageWrites.empty())
+            {
+                const ImageDesc& sizeDesc = allocator->GetImageAllocation(Images[desc.StorageWrites[0].Image].Image).Desc;
+                context.Width = sizeDesc.Width;
+                context.Height = sizeDesc.Height;
+            }
+            uint32_t timer = executor->BeginTimer(desc.Name);
+            desc.Execute(context);
+            executor->EndTimer(timer);
             continue;
         }
 
@@ -278,20 +329,23 @@ void PassGraph::Execute(PipelineExecutor* executor, uint32_t width, uint32_t hei
         RenderingDesc rendering;
         rendering.Width = sizeDesc.Width;
         rendering.Height = sizeDesc.Height;
-        rendering.ViewMask = desc.ViewMask;
         for (const PassAttachment& attachment : desc.ColorWrites)
         {
-            rendering.ColorAttachments.push_back({ Images[attachment.Image].Image, attachment.LoadOp });
+            ColorAttachment color = { Images[attachment.Image].Image, attachment.LoadOp };
+            color.Range = attachment.Range;
+            rendering.ColorAttachments.push_back(color);
             isBackBufferWritten |= attachment.Image == BackBuffer;
         }
         if (desc.HasDepthWrite)
-            rendering.Depth = { Images[desc.DepthWrite.Image].Image, desc.DepthWrite.LoadOp };
+            rendering.Depth = { Images[desc.DepthWrite.Image].Image, desc.DepthWrite.LoadOp, desc.DepthWrite.Range };
 
         context.Width = rendering.Width;
         context.Height = rendering.Height;
+        uint32_t timer = executor->BeginTimer(desc.Name);
         executor->BeginRendering(rendering);
         desc.Execute(context);
         executor->EndRendering();
+        executor->EndTimer(timer);
     }
 
     transitions.clear();
@@ -303,6 +357,9 @@ void PassGraph::Execute(PipelineExecutor* executor, uint32_t width, uint32_t hei
         transitions.clear();
     }
     Transition(BackBuffer, ImageLayout::Present, transitions);
+    for (GraphImageID i = 1; i < Images.size(); i++)
+        if (Images[i].IsLive && Images[i].IsImported && Images[i].Layout != Images[i].RestingLayout)
+            Transition(i, Images[i].RestingLayout, transitions);
     executor->TransitionImages(transitions);
 }
 
@@ -315,7 +372,7 @@ void PassGraph::Resize(uint32_t width, uint32_t height)
     for (GraphImageID i = 1; i < Images.size(); i++)
     {
         ImageEntry& entry = Images[i];
-        if (!entry.IsLive || entry.Desc.Size != GraphImageSize::Viewport || !entry.Image.IsValid())
+        if (!entry.IsLive || entry.IsImported || entry.Desc.Size != GraphImageSize::Viewport || !entry.Image.IsValid())
             continue;
         allocator->DestroyImage(entry.Image);
         CreateImage(entry);

@@ -90,7 +90,8 @@ void DrawList::Build(std::span<const Frustum> frusta, bool isShadowCastersOnly)
     InstanceCount = static_cast<uint32_t>(SortKeys.size());
 }
 
-void DrawList::Record(PipelineExecutor* executor, std::span<Pipeline* const> pipelines, bool isMaterialBound, const std::string& passName) const
+void DrawList::Record(PipelineExecutor* executor, std::span<Pipeline* const> pipelines, bool isMaterialBound, const std::string& passName,
+                      uint32_t viewIndex) const
 {
     Pipeline* boundPipeline = nullptr;
     MaterialHandle boundMaterial = {};
@@ -118,7 +119,7 @@ void DrawList::Record(PipelineExecutor* executor, std::span<Pipeline* const> pip
             boundMaterial = batch.Material;
         }
 
-        DrawConstants constants = { batch.FirstInstance, { 0, 0, 0 } };
+        DrawConstants constants = { batch.FirstInstance, viewIndex, { 0, 0 } };
         executor->PushConstants(&constants, sizeof(constants));
 
         const MeshRecord& mesh = MeshRegistry::Get(batch.Mesh);

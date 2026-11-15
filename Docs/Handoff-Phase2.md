@@ -235,3 +235,9 @@ land cleanly; otherwise leave it as an open item.
 - Vsync defaults to on. Say so if the default should be off.
 - Step 9 is in or out.
 - The sampler table has four fixed entries. Phase 4's atlas needs point clamp, which is `s1`.
+
+## Status
+
+Done on 14 November 2026: "Phase 1 corrections" and "Phase 2" are committed on `Dev-2`, steps 1 to 9.
+See "Phase 2 outcome" in `Docs/RendererPlan.md`. Vsync stays on by default, step 9 is in, and the
+sampler table has the four entries above.

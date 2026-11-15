@@ -20,7 +20,7 @@ namespace RHIStructures
     //====================================//
     
     // Format Mappings
-    constexpr std::array<VkFormat, 22> VULKAN_FORMATS = {
+    constexpr std::array<VkFormat, 28> VULKAN_FORMATS = {
         VK_FORMAT_UNDEFINED,
         VK_FORMAT_R8G8B8A8_UNORM,
         VK_FORMAT_R8G8B8A8_SRGB,
@@ -43,9 +43,15 @@ namespace RHIStructures
         VK_FORMAT_R16G16_UNORM,
         VK_FORMAT_R32_SFLOAT,
         VK_FORMAT_B8G8R8A8_UNORM,
+        VK_FORMAT_R8_UNORM,
+        VK_FORMAT_R16_UNORM,
+        VK_FORMAT_R16_SFLOAT,
+        VK_FORMAT_R16G16_SFLOAT,
+        VK_FORMAT_R16_UINT,
+        VK_FORMAT_R32_UINT,
     };
 
-    constexpr std::array<DXGI_FORMAT, 22> DX_FORMATS = {
+    constexpr std::array<DXGI_FORMAT, 28> DX_FORMATS = {
         DXGI_FORMAT_UNKNOWN,
         DXGI_FORMAT_R8G8B8A8_UNORM,
         DXGI_FORMAT_R8G8B8A8_UNORM_SRGB,
@@ -68,6 +74,12 @@ namespace RHIStructures
         DXGI_FORMAT_R16G16_UNORM,
         DXGI_FORMAT_R32_FLOAT,
         DXGI_FORMAT_B8G8R8A8_UNORM,
+        DXGI_FORMAT_R8_UNORM,
+        DXGI_FORMAT_R16_UNORM,
+        DXGI_FORMAT_R16_FLOAT,
+        DXGI_FORMAT_R16G16_FLOAT,
+        DXGI_FORMAT_R16_UINT,
+        DXGI_FORMAT_R32_UINT,
     };
 
     VkFormat VulkanFormat(Format format)
@@ -117,8 +129,16 @@ namespace RHIStructures
     {
         switch (format)
         {
+        case Format::R8_UNORM:
+            return 1;
         case Format::D16_UNORM:
+        case Format::R16_UNORM:
+        case Format::R16_FLOAT:
+        case Format::R16_UINT:
             return 2;
+        case Format::R16G16_FLOAT:
+        case Format::R32_UINT:
+            return 4;
         case Format::D32_FLOAT:
         case Format::D24_UNORM_S8_UINT:
         case Format::R8G8B8A8_UNORM:
@@ -139,6 +159,38 @@ namespace RHIStructures
         default:
             return 8;
         }
+    }
+
+    uint32_t CopyRowPitch(Format format, uint32_t width)
+    {
+        uint32_t bytes = static_cast<uint32_t>(width * FormatSize(format));
+        return (bytes + D3D12_TEXTURE_DATA_PITCH_ALIGNMENT - 1) / D3D12_TEXTURE_DATA_PITCH_ALIGNMENT * D3D12_TEXTURE_DATA_PITCH_ALIGNMENT;
+    }
+
+    SubresourceRange ResolveRange(const ImageDesc& desc, SubresourceRange range)
+    {
+        uint32_t mips = desc.MipLevels > 0 ? desc.MipLevels : 1;
+        uint32_t layers = desc.ArrayLayers > 0 ? desc.ArrayLayers : 1;
+        if (range.MipCount == 0)
+            range.MipCount = mips - range.BaseMip;
+        if (range.LayerCount == 0)
+            range.LayerCount = layers - range.BaseLayer;
+        if (range.BaseMip + range.MipCount > mips || range.BaseLayer + range.LayerCount > layers)
+            throw std::runtime_error("Subresource range is outside the image.");
+        return range;
+    }
+
+    uint64_t RangeKey(const SubresourceRange& resolved)
+    {
+        return (static_cast<uint64_t>(resolved.BaseMip) << 48) | (static_cast<uint64_t>(resolved.MipCount) << 32)
+            | (static_cast<uint64_t>(resolved.BaseLayer) << 16) | resolved.LayerCount;
+    }
+
+    bool IsWholeImage(const ImageDesc& desc, const SubresourceRange& resolved)
+    {
+        uint32_t mips = desc.MipLevels > 0 ? desc.MipLevels : 1;
+        uint32_t layers = desc.ArrayLayers > 0 ? desc.ArrayLayers : 1;
+        return resolved.BaseMip == 0 && resolved.MipCount == mips && resolved.BaseLayer == 0 && resolved.LayerCount == layers;
     }
 
     bool IsDepthFormat(Format format)
@@ -553,6 +605,7 @@ namespace RHIStructures
         case DescriptorType::UniformBuffer: return VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
         case DescriptorType::DynamicUniformBuffer: return VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
         case DescriptorType::StorageBuffer: return VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        case DescriptorType::ReadWriteStorageBuffer: return VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         case DescriptorType::StorageImage: return VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
         case DescriptorType::SampledImage: return VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
         }
@@ -619,6 +672,7 @@ namespace RHIStructures
         case ImageLayout::TransferSrc: return D3D12_RESOURCE_STATE_COPY_SOURCE;
         case ImageLayout::TransferDst: return D3D12_RESOURCE_STATE_COPY_DEST;
         case ImageLayout::Present: return D3D12_RESOURCE_STATE_PRESENT;
+        case ImageLayout::Storage: return D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
         default: return D3D12_RESOURCE_STATE_COMMON;
         }
     }
@@ -645,6 +699,7 @@ namespace RHIStructures
         case ImageLayout::TransferSrc: return VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
         case ImageLayout::TransferDst: return VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
         case ImageLayout::Present: return VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+        case ImageLayout::Storage: return VK_IMAGE_LAYOUT_GENERAL;
         default: return VK_IMAGE_LAYOUT_UNDEFINED;
         }
     }
@@ -654,27 +709,10 @@ namespace RHIStructures
         VkBufferUsageFlags flags = 0;
         if (usage.TransferDestination) flags |= VK_BUFFER_USAGE_TRANSFER_DST_BIT;
         if (usage.TransferSource) flags |= VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-        switch (usage.Type)
-        {
-        case BufferType::Vertex:
-            flags |= VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
-            break;
-        case BufferType::Index:
-            flags |= VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
-            break;
-        case BufferType::Constant:
-            flags |= VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
-            break;
-        case BufferType::ShaderStorage:
-            flags |= VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
-            break;
-        case BufferType::FrameData:
-            flags |= VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
-            break;
-        default:
-            break;
-        }
-        
+        if (usage.Vertex) flags |= VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+        if (usage.Index) flags |= VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+        if (usage.Uniform) flags |= VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+        if (usage.Storage) flags |= VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
         return flags;
     }
 
@@ -734,6 +772,7 @@ namespace RHIStructures
         return handle;
     }
 
+    // Array images always get array views, so a shader declares Texture2DArray for them on both backends.
     VkImageViewType VulkanImageViewType(ImageDesc desc)
     {
         VkImageViewType type = VK_IMAGE_VIEW_TYPE_2D;

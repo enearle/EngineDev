@@ -27,6 +27,8 @@ class VulkanCore
     std::vector<VkSemaphore> ImageAvailableSemaphores;
     std::vector<VkSemaphore> RenderFinishedSemaphores;
     std::vector<VkFence> InFlightFences;
+    std::vector<uint64_t> SlotFrameNumbers;
+    uint64_t KnownCompletedFrame = 0;
 
     uint32_t SwapChainImageCount = 3;                                       // Maximum number of frames == swapchain size
 
@@ -87,6 +89,8 @@ public:
     // Getters
     Window* GetWindow() const { return RenderWindow; }
     uint64_t GetFrameNumber() const { return FrameNumber; }
+    uint64_t GetCompletedFrameNumber() const;
+    float GetTimestampPeriod() const;
     VkFormat GetOverlayStencilFormat() const { return OverlayStencilFormat; }
     VkDevice GetDevice() const { return Device; }
     VkPhysicalDevice GetPhysicalDevice() const { return PhysicalDevice; }

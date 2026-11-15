@@ -141,7 +141,10 @@ D3DPipelineLayout::D3DPipelineLayout(const ResourceLayout& resources, const std:
             switch (binding.Type)
             {
             case DescriptorType::UniformBuffer: range.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV; break;
-            case DescriptorType::StorageImage:  range.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV; break;
+            case DescriptorType::StorageImage:
+            case DescriptorType::ReadWriteStorageBuffer:
+                range.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
+                break;
             default:                            range.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV; break;
             }
             range.NumDescriptors = (std::max)(binding.Count, 1u);

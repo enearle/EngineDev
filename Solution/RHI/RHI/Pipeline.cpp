@@ -8,7 +8,7 @@
 
 using namespace Win32ErrorHandler;
 
-Pipeline::Pipeline(const PipelineDesc& desc) : ViewMask(desc.ViewMask)
+Pipeline::Pipeline(const PipelineDesc& desc)
 {
     if (desc.Layout)
         Layout = desc.Layout;
@@ -17,6 +17,21 @@ Pipeline::Pipeline(const PipelineDesc& desc) : ViewMask(desc.ViewMask)
         Layout = PipelineLayout::Create(desc.ResourceLayout, desc.Constants);
         OwnsLayout = true;
     }
+}
+
+Pipeline::Pipeline(PipelineLayout* layout) : Layout(layout), IsComputePipeline(true)
+{
+    if (!layout)
+        throw std::runtime_error("A compute pipeline needs a layout.");
+}
+
+Pipeline* Pipeline::CreateCompute(PipelineLayout* layout, const ShaderStage& computeShader)
+{
+    if (GRAPHICS_SETTINGS.APIToUse == Vulkan)
+        return new VulkanPipeline(layout, computeShader);
+    if (GRAPHICS_SETTINGS.APIToUse == DirectX12)
+        return new D3DPipeline(layout, computeShader);
+    throw std::runtime_error("Invalid graphics API selected.");
 }
 
 Pipeline::~Pipeline()
@@ -140,9 +155,36 @@ D3DPipeline::D3DPipeline(const PipelineDesc& desc) : Pipeline(desc)
     D3DCore::Instance().GetDevice()->CreateGraphicsPipelineState(&pipelineStateDesc, IID_PPV_ARGS(&PipelineState)) >> ERROR_HANDLER;
 }
 
+D3DPipeline::D3DPipeline(PipelineLayout* layout, const ShaderStage& computeShader) : Pipeline(layout)
+{
+    Topology = D3D_PRIMITIVE_TOPOLOGY_UNDEFINED;
+    D3D12_COMPUTE_PIPELINE_STATE_DESC desc = {};
+    desc.pRootSignature = static_cast<D3DPipelineLayout*>(Layout)->GetRootSignature();
+    desc.CS = DXShaderBytecode(computeShader);
+    D3DCore::Instance().GetDevice()->CreateComputePipelineState(&desc, IID_PPV_ARGS(&PipelineState)) >> ERROR_HANDLER;
+}
+
 //================================================//
 // Vulkan                                         //
 //================================================//
+
+VulkanPipeline::VulkanPipeline(PipelineLayout* layout, const ShaderStage& computeShader) : Pipeline(layout)
+{
+    VkDevice device = VulkanCore::Instance().GetDevice();
+
+    VkComputePipelineCreateInfo pipelineInfo{};
+    pipelineInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+    pipelineInfo.stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    pipelineInfo.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+    pipelineInfo.stage.module = VulkanShaderModule(computeShader);
+    pipelineInfo.stage.pName = computeShader.EntryPoint ? computeShader.EntryPoint : "main";
+    pipelineInfo.layout = static_cast<VulkanPipelineLayout*>(Layout)->GetLayout();
+
+    VkResult result = vkCreateComputePipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &PipelineHandle);
+    vkDestroyShaderModule(device, pipelineInfo.stage.module, nullptr);
+    if (result != VK_SUCCESS)
+        throw std::runtime_error("Failed to create Vulkan compute pipeline!");
+}
 
 VulkanPipeline::VulkanPipeline(const PipelineDesc& desc) : Pipeline(desc)
 {
@@ -265,7 +307,6 @@ VulkanPipeline::VulkanPipeline(const PipelineDesc& desc) : Pipeline(desc)
 
     VkPipelineRenderingCreateInfo renderingInfo{};
     renderingInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
-    renderingInfo.viewMask = desc.ViewMask;
     renderingInfo.colorAttachmentCount = static_cast<uint32_t>(colorFormats.size());
     renderingInfo.pColorAttachmentFormats = colorFormats.empty() ? nullptr : colorFormats.data();
     renderingInfo.depthAttachmentFormat = VulkanFormat(desc.DepthStencilFormat);

@@ -106,6 +106,7 @@ void D3DCore::EndFrame()
 
     CurrentFence++;
     FrameFences[CurrentFrameIndex] = CurrentFence;
+    SlotFrameNumbers[CurrentFrameIndex] = FrameNumber;
     CommandQueue->Signal(Fence.Get(), CurrentFence) >> ERROR_HANDLER;
 
     bool isTearing = !GRAPHICS_SETTINGS.VSync && IsTearingSupported;
@@ -444,4 +445,14 @@ D3D12_CPU_DESCRIPTOR_HANDLE D3DCore::GetOverlayDepthStencilDescriptor()
 UINT D3DCore::SwapChainFlags() const
 {
     return DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH | (IsTearingSupported ? DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING : 0);
+}
+
+uint64_t D3DCore::GetCompletedFrameNumber() const
+{
+    UINT64 completedFence = Fence->GetCompletedValue();
+    uint64_t completed = 0;
+    for (int i = 0; i < SwapChainBufferCount; i++)
+        if (FrameFences[i] != 0 && FrameFences[i] <= completedFence)
+            completed = (std::max)(completed, SlotFrameNumbers[i]);
+    return completed;
 }

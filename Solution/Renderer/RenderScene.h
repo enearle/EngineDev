@@ -80,5 +80,6 @@ static_assert(sizeof(InstanceData) == 144);
 struct DrawConstants
 {
     uint32_t FirstInstance;
-    uint32_t Padding[3];
+    uint32_t ViewIndex;         // Which light a shadow draw renders for
+    uint32_t Padding[2];
 };

@@ -114,7 +114,8 @@ void NoesisUILayer::NoesisInit()
     ExternalPassID = Renderer::EnlistExternalPass({
         .Prepare = [this]() { NoesisRenderOffscreen(); },
         .Render = [this]() { NoesisRenderOnscreen(); },
-        .Order = 0
+        .Order = 0,
+        .Name = "Noesis"
     });
     ResizeHandle = Renderer::EventOnResize().Subscribe([this](uint32_t width, uint32_t height) { this->OnResize(width, height); });
 }

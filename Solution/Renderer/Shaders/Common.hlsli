@@ -45,7 +45,8 @@ StructuredBuffer<BoneData> Bones : register(t2, space1);
 struct DrawConstantsData
 {
     uint FirstInstance;
-    uint3 Padding;
+    uint ViewIndex;
+    uint2 Padding;
 };
 
 [[vk::push_constant]]
