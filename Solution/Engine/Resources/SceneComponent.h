@@ -44,6 +44,7 @@ class ENGINE_API MeshComponent : public SceneComponentBase
 {
     MeshAsset* LoadedMesh = nullptr;
     std::vector<MaterialHandle> SubmeshMaterials;
+    std::vector<MaterialHandle> EnlistedMaterials;  // Held by this component; retired with its GPU resources
     std::vector<SkinnedMeshHandle> SkinnedMeshes;     // Per submesh; enlisted on first use
     AnimatorComponent* Animator = nullptr;
     bool IsAnimatorSearched = false;
@@ -60,6 +61,9 @@ public:
 
     // Materials are listed by the mesh's local material index and stored per submesh.
     void AssignMaterials(const std::vector<MaterialHandle>& materialsByLocalIndex);
+    // Each submesh gets the material named by its mesh, enlisted here and retired with this component.
+    void AssignMaterialsByName();
+    bool IsAssignedByName() const { return !EnlistedMaterials.empty(); }
     MaterialHandle GetSubmeshMaterial(uint32_t submesh) const { return submesh < SubmeshMaterials.size() ? SubmeshMaterials[submesh] : MaterialHandle{}; }
 
     // The animator on this node or its nearest ancestor that has one, found on first use. Skinned

@@ -50,8 +50,9 @@ struct FrameStats
 };
 
 // The scene set (set 1) holds the frame constants and the instance buffer; the
-// material set (set 2) holds a material's textures. Both belong to GetSceneLayout. Passes with a
-// different layout can still bind the scene set if their set 1 is GetSceneSetBindings().
+// material set (set 2) holds a material's parameters and textures (see MaterialRegistry). Both belong
+// to GetSceneLayout. Passes with a different layout can still bind the scene set if their set 1 is
+// GetSceneSetBindings().
 class RENDERER_API Renderer
 {
 public:

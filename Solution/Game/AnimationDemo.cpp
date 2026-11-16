@@ -269,7 +269,10 @@ static SceneNode* CopyHierarchy(SceneNode* source, SceneNode* parent, const XMMA
     {
         MeshComponent* copyMesh = static_cast<MeshComponent*>(copy->AddComponent(MeshComponentType));
         copyMesh->SetMeshAsset(mesh->GetMeshAsset());
-        copyMesh->AssignMaterials(materials);
+        if (mesh->IsAssignedByName())
+            copyMesh->AssignMaterialsByName();
+        else
+            copyMesh->AssignMaterials(materials);
     }
     for (SceneNode* child : source->GetChildren())
         CopyHierarchy(child, copy, child->GetLocalMatrix(), materials);

@@ -42,6 +42,8 @@ public:
     uint32_t GetVertexCount() const                     { return VertexCount; }
     uint32_t GetIndexCount() const                      { return IndexCount; }
     uint32_t GetLocalMaterialIndex() const              { return LocalMaterialIndex; }
+    const std::string& GetMaterialName() const          { return MaterialName; }
+    void SetMaterialName(const std::string& name)       { MaterialName = name; }
     bool IsSkinned() const                              { return bIsSkinned; }
     MeshHandle GetGPUMesh() const                       { return GPUMesh; }
     void UploadToGPU();
@@ -52,6 +54,7 @@ private:
     uint32_t VertexCount;
     uint32_t IndexCount;
     uint32_t LocalMaterialIndex;
+    std::string MaterialName;
 
     MeshHandle GPUMesh = {};
     VertexCache* TempVertexCache = nullptr;

@@ -95,6 +95,14 @@ static void AssignMaterials(SceneNode* node, const std::vector<MaterialHandle>& 
         AssignMaterials(child, materials);
 }
 
+static void AssignMaterialsByName(SceneNode* node)
+{
+    if (MeshComponent* component = static_cast<MeshComponent*>(node->GetComponent(MeshComponentType)))
+        component->AssignMaterialsByName();
+    for (SceneNode* child : node->GetChildren())
+        AssignMaterialsByName(child);
+}
+
 static void CollectMeshComponents(SceneNode* node, std::vector<MeshComponent*>& out)
 {
     if (MeshComponent* component = static_cast<MeshComponent*>(node->GetComponent(MeshComponentType)))
@@ -219,14 +227,13 @@ void GameInit()
     if (IsSwitchPresent(L" -animation-test") && std::filesystem::exists(L"../../TempAssets/CharBlendClips.fbx"))
         defaultCharacter = L"../../TempAssets/CharBlendClips.fbx";
     std::filesystem::path characterPath = SwitchText(L" -character", defaultCharacter);
-    std::vector<MaterialHandle> characterMaterials(32, derpMaterials[0]);
     if (std::filesystem::exists(characterPath))
     {
         try
         {
             SceneNode* character = GeometryImport::CreateMeshGroup(characterPath.string(), "character", XMMatrixIdentity(), true);
             PlaceCharacter(character, derp);
-            AssignMaterials(character, characterMaterials);
+            AssignMaterialsByName(character);
             characters.push_back(character);
         }
         catch (const std::exception& error)
@@ -236,7 +243,7 @@ void GameInit()
     }
 
     // The demo copies source vertices for the skinning check before the upload drops them.
-    AnimationDemo::Start(characters, characterMaterials, SwitchNumber(L" -crowd", 100), IsSwitchPresent(L" -animation-test"));
+    AnimationDemo::Start(characters, derpMaterials, SwitchNumber(L" -crowd", 100), IsSwitchPresent(L" -animation-test"));
     for (SceneNode* character : characters)
         character->UploadToGPU();
 

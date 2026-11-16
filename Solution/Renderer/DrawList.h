@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 #include "RENDERER_API_Macro.h"
+#include "MaterialType.h"
 #include "RenderScene.h"
 
 class Pipeline;
@@ -16,6 +17,7 @@ struct PreparedObject
     uint64_t BatchKey = 0;              // Objects with equal keys draw in one instanced call
     MeshHandle Mesh = {};
     MaterialHandle Material = {};
+    MaterialTypeID MaterialType = 0;
     SkinnedMeshHandle SkinnedMesh = {};
     bool CastsShadows = true;
 };
@@ -31,6 +33,7 @@ struct Frustum
 // A skinned mesh draws alone, from its range of the skinning pool.
 struct DrawBatch
 {
+    MaterialTypeID MaterialType = 0;
     MaterialHandle Material = {};
     MeshHandle Mesh = {};
     SkinnedMeshHandle SkinnedMesh = {};
@@ -50,7 +53,9 @@ public:
     // An object is kept when it intersects any of the frusta. No frusta keeps everything.
     void Build(std::span<const Frustum> frusta, bool isShadowCastersOnly);
 
-    void Record(PipelineExecutor* executor, Pipeline* pipeline, bool isMaterialBound, const std::string& passName,
+    // With materials bound, pipelines holds one pipeline per material type; without, every batch
+    // draws with pipelines[0].
+    void Record(PipelineExecutor* executor, std::span<Pipeline* const> pipelines, bool isMaterialBound, const std::string& passName,
                 uint32_t viewIndex = 0) const;
 
     const std::vector<DrawBatch>& GetBatches() const { return Batches; }

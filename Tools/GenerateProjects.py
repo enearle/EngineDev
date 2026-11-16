@@ -21,11 +21,11 @@ IMGUI_SOURCES = [
     r"$(ImGuiDir)backends\imgui_impl_vulkan.cpp",
 ]
 
-SHADER_TARGET = r"""  <Target Name="CompileShaders" BeforeTargets="ClCompile" Inputs="%(ShaderSource.FullPath);@(ShaderInclude)" Outputs="$(ShaderOutDir)DXIL\%(ShaderSource.Filename).cso;$(ShaderOutDir)SPIRV\%(ShaderSource.Filename).spv">
+SHADER_TARGET = r"""  <Target Name="CompileShaders" BeforeTargets="ClCompile" Inputs="%(ShaderSource.FullPath);@(ShaderInclude)" Outputs="$(ShaderOutDir)DXIL\%(ShaderSource.OutputName).cso;$(ShaderOutDir)SPIRV\%(ShaderSource.OutputName).spv">
     <MakeDir Directories="$(ShaderOutDir)DXIL;$(ShaderOutDir)SPIRV" />
-    <Message Importance="high" Text="dxc %(ShaderSource.Filename)%(ShaderSource.Extension)" />
-    <Exec Command="&quot;$(DxcExe)&quot; -nologo -T %(ShaderSource.Profile) -E main -Fo &quot;$(ShaderOutDir)DXIL\%(ShaderSource.Filename).cso&quot; &quot;%(ShaderSource.FullPath)&quot;" />
-    <Exec Command="&quot;$(DxcExe)&quot; -nologo -T %(ShaderSource.Profile) -E main -spirv -fspv-target-env=vulkan1.1 -Fo &quot;$(ShaderOutDir)SPIRV\%(ShaderSource.Filename).spv&quot; &quot;%(ShaderSource.FullPath)&quot;" />
+    <Message Importance="high" Text="dxc %(ShaderSource.OutputName)" />
+    <Exec Command="&quot;$(DxcExe)&quot; -nologo -T %(ShaderSource.Profile) -E main %(ShaderSource.Arguments) -Fo &quot;$(ShaderOutDir)DXIL\%(ShaderSource.OutputName).cso&quot; &quot;%(ShaderSource.FullPath)&quot;" />
+    <Exec Command="&quot;$(DxcExe)&quot; -nologo -T %(ShaderSource.Profile) -E main %(ShaderSource.Arguments) -spirv -fspv-target-env=vulkan1.1 -Fo &quot;$(ShaderOutDir)SPIRV\%(ShaderSource.OutputName).spv&quot; &quot;%(ShaderSource.FullPath)&quot;" />
   </Target>
   <Target Name="CleanShaders" AfterTargets="Clean">
     <RemoveDir Directories="$(ShaderOutDir)" />
@@ -154,12 +154,18 @@ def gen(p):
     w('  </ItemGroup>')
     if p.get("shaders"):
         w('  <ItemGroup>')
+        surfaces = [os.path.splitext(os.path.basename(f))[0] for f in rel_files(pdir, os.path.join("Surfaces", "*.hlsli"))]
         for s in rel_files(pdir, "*.hlsl"):
-            base = os.path.basename(s)
+            base = os.path.splitext(os.path.basename(s))[0]
             profile = {"vs": "vs_6_1", "ps": "ps_6_1", "cs": "cs_6_1"}[base[:2]]
-            w(f'    <ShaderSource Include="{s}">')
-            w(f'      <Profile>{profile}</Profile>')
-            w('    </ShaderSource>')
+            # ps_gbuffer is compiled once per material type's surface file.
+            variants = [(f"{base}_{name}", f"-D SURFACE={name}") for name in surfaces] if base == "ps_gbuffer" else [(base, "")]
+            for output, arguments in variants:
+                w(f'    <ShaderSource Include="{s}">')
+                w(f'      <Profile>{profile}</Profile>')
+                w(f'      <OutputName>{output}</OutputName>')
+                w(f'      <Arguments>{arguments}</Arguments>')
+                w('    </ShaderSource>')
         for s in rel_files(pdir, "*.hlsli"):
             w(f'    <ShaderInclude Include="{s}" />')
         w('  </ItemGroup>')

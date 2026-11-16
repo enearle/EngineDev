@@ -19,16 +19,23 @@ struct DownsampleConstants
 {
     uint32_t DestinationWidth;
     uint32_t DestinationHeight;
-    uint32_t Padding[2];
+    uint32_t IsColour;
+    uint32_t Padding;
 };
 
-static std::deque<ImageHandle> Queue;
+struct QueuedImage
+{
+    ImageHandle Image = {};
+    bool IsColour = false;
+};
+
+static std::deque<QueuedImage> Queue;
 static PipelineLayout* DownsampleLayout = nullptr;
 static Pipeline* DownsamplePipeline = nullptr;
 static PassID GeneratorPass = UINT32_MAX;
 static uint32_t GeneratedCount = 0;
 
-static void GenerateMips(PipelineExecutor* executor, ImageHandle image)
+static void GenerateMips(PipelineExecutor* executor, ImageHandle image, bool isColour)
 {
     BufferAllocator* allocator = BufferAllocator::GetInstance();
     const ImageDesc& desc = allocator->GetImageAllocation(image).Desc;
@@ -47,7 +54,7 @@ static void GenerateMips(PipelineExecutor* executor, ImageHandle image)
             DescriptorSetBinding::ForImage(1, image, SubresourceRange::Mip(mip)),
         });
         executor->BindDescriptorSet(set);
-        DownsampleConstants constants = { width, height, { 0, 0 } };
+        DownsampleConstants constants = { width, height, isColour, 0 };
         executor->PushConstants(&constants, sizeof(constants));
         executor->Dispatch((width + GroupSize - 1) / GroupSize, (height + GroupSize - 1) / GroupSize, 1);
         allocator->FreeDescriptorSet(set);
@@ -61,11 +68,11 @@ static void ExecuteGenerator(const PassContext& context)
 {
     for (uint32_t i = 0; i < MipGenerator::TexturesPerFrame && !Queue.empty(); i++)
     {
-        ImageHandle image = Queue.front();
+        QueuedImage queued = Queue.front();
         Queue.pop_front();
-        if (!BufferAllocator::GetInstance()->IsImageLive(image))
+        if (!BufferAllocator::GetInstance()->IsImageLive(queued.Image))
             continue;
-        GenerateMips(context.Executor, image);
+        GenerateMips(context.Executor, queued.Image, queued.IsColour);
         GeneratedCount++;
     }
 }
@@ -113,15 +120,15 @@ uint32_t MipGenerator::FullMipCount(uint32_t width, uint32_t height)
     return count;
 }
 
-void MipGenerator::Enqueue(ImageHandle image)
+void MipGenerator::Enqueue(ImageHandle image, bool isColour)
 {
     if (BufferAllocator::GetInstance()->GetImageAllocation(image).Desc.MipLevels > 1)
-        Queue.push_back(image);
+        Queue.push_back({ image, isColour });
 }
 
 void MipGenerator::Cancel(ImageHandle image)
 {
-    std::erase(Queue, image);
+    std::erase_if(Queue, [image](const QueuedImage& queued) { return queued.Image == image; });
 }
 
 uint32_t MipGenerator::GetGeneratedCount()

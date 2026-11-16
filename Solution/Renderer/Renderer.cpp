@@ -5,6 +5,7 @@
 #include "Window.h"
 #include "GraphicsSettings.h"
 #include "DrawList.h"
+#include "MaterialRegistry.h"
 #include "MeshRegistry.h"
 #include "PassGraph.h"
 #include "Readback.h"
@@ -131,11 +132,12 @@ void Renderer::Start(Window* mainWindow)
     MipGenerator::Start();
     Skinning::Start();
 
+    MaterialTypes::RegisterBuiltInTypes();
     ResourceLayout sceneResources;
     sceneResources.VisibleStages = GetSceneVisibleStages();
     sceneResources.Bindings = GetSceneSetBindings();
-    for (uint32_t slot = 0; slot < 3; slot++)
-        sceneResources.Bindings.push_back({ .Type = DescriptorType::SampledImage, .Slot = slot, .Set = 2, .Count = 1 });
+    for (const DescriptorBinding& binding : MaterialRegistry::GetMaterialSetBindings())
+        sceneResources.Bindings.push_back(binding);
 
     ShaderStageMask constantStages(0);
     constantStages.SetVertex(true);
@@ -146,6 +148,7 @@ void Renderer::Start(Window* mainWindow)
         DescriptorSetBinding::ForBuffer(0, ring),
         DescriptorSetBinding::ForBuffer(1, ring),
     });
+    MaterialRegistry::Start();
 
     MainWindow->Show();
 }
@@ -208,10 +211,13 @@ static void PrepareFrameData()
             XMStoreFloat4(&prepared.Sphere, XMVectorSetW(center, mesh.BoundsRadius * scale));
         }
 
-        // A skinned object has its own vertices, so its key is unique and it draws alone.
+        // Batches sort by material type first, so a pass changes pipeline once per type. A skinned
+        // object has its own vertices, so its key is unique and it draws alone.
+        prepared.MaterialType = MaterialRegistry::IsLive(object.Material) ? MaterialRegistry::GetType(object.Material) : 0;
         uint64_t materialIndex = object.Material.Index & 0xFFFFF;
         uint64_t meshIndex = (isSkinned ? object.SkinnedMesh.Index : object.Mesh.Index) & 0xFFFFF;
-        prepared.BatchKey = (static_cast<uint64_t>(isSkinned) << 60) | (materialIndex << 40) | (meshIndex << 20);
+        prepared.BatchKey = (static_cast<uint64_t>(prepared.MaterialType) << 61) | (static_cast<uint64_t>(isSkinned) << 60) |
+                            (materialIndex << 40) | (meshIndex << 20);
         prepared.Mesh = object.Mesh;
         prepared.Material = object.Material;
         prepared.SkinnedMesh = object.SkinnedMesh;
@@ -266,6 +272,8 @@ int Renderer::End()
     Readback::Shutdown();
     MipGenerator::Shutdown();
     Skinning::Shutdown();
+    MaterialRegistry::Shutdown();
+    MaterialTypes::Clear();
     Graph->Clear();
     delete Graph;
     Graph = nullptr;

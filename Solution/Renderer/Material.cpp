@@ -1,130 +1,66 @@
 #include "Material.h"
 
-#include "RHI/BufferAllocator.h"
-#include "RHI/RHIConstants.h"
-#include "Image/ImageImport.h"
-#include "MipGenerator.h"
+#include <filesystem>
+#include <fstream>
+#include <sstream>
+#include <stdexcept>
 
-using namespace RHIStructures;
-using namespace RHIConstants;
+static const std::string MaterialDirectory = "../Engine/Materials/";
+static const std::string TextureDirectory = "../Engine/Textures/";
 
-PreBufferCache::~PreBufferCache()
+static std::string Trim(const std::string& text)
 {
-    delete ImportHandle;
-    delete Desc;
+    size_t first = text.find_first_not_of(" \t\r");
+    size_t last = text.find_last_not_of(" \t\r");
+    return first == std::string::npos ? std::string() : text.substr(first, last - first + 1);
 }
 
-Material::Material(std::string name, MaterialFormat materialFormat) : Name(name), Format(materialFormat)
+bool MaterialFiles::Read(const std::string& name, MaterialDesc& desc)
 {
-    PreBufferCache* diffuseAlphaCache = nullptr;
-    PreBufferCache* normalCache = nullptr;
-    PreBufferCache* metallnessRoughnessAOCache = nullptr;
-    PreBufferCache* emissiveCache = nullptr;
-    std::vector<std::string> metalRoughAOMaskPaths;
+    std::string path = MaterialDirectory + name + ".material";
+    std::ifstream file(path);
+    if (!file)
+        return false;
 
-    std::string texturePath = "Textures/" + name;
-    switch (materialFormat)
+    desc = {};
+    std::string line;
+    for (uint32_t lineNumber = 1; std::getline(file, line); lineNumber++)
     {
-    case PBR:
+        line = Trim(line.substr(0, line.find('#')));
+        if (line.empty())
+            continue;
 
-        diffuseAlphaCache = new PreBufferCache();
-        diffuseAlphaCache->ImportHandle = new ImageImport(texturePath + "_diff");
-        diffuseAlphaCache->Desc = new ImageDesc(DefaultTextureDesc);
-        diffuseAlphaCache->Desc->Width = diffuseAlphaCache->ImportHandle->GetData()->Width;
-        diffuseAlphaCache->Desc->Height = diffuseAlphaCache->ImportHandle->GetData()->Height;
-        diffuseAlphaCache->Desc->Size = diffuseAlphaCache->ImportHandle->GetData()->TotalSize;
-        diffuseAlphaCache->Desc->InitialData = diffuseAlphaCache->ImportHandle->GetData()->Pixels;
-        CachedTextures.push_back(diffuseAlphaCache);
+        size_t equals = line.find('=');
+        if (equals == std::string::npos)
+            throw std::runtime_error(path + "(" + std::to_string(lineNumber) + "): expected key = value");
+        std::string key = Trim(line.substr(0, equals));
+        std::istringstream value(line.substr(equals + 1));
 
-        normalCache = new PreBufferCache();
-        normalCache->ImportHandle = new ImageImport(texturePath + "_norm");
-        normalCache->Desc = new ImageDesc(DefaultTextureDesc);
-        normalCache->Desc->Width = normalCache->ImportHandle->GetData()->Width;
-        normalCache->Desc->Height = normalCache->ImportHandle->GetData()->Height;
-        normalCache->Desc->Size = normalCache->ImportHandle->GetData()->TotalSize;
-        normalCache->Desc->InitialData = normalCache->ImportHandle->GetData()->Pixels;
-        CachedTextures.push_back(normalCache);
+        std::vector<std::string> words;
+        for (std::string word; value >> word;)
+            words.push_back(word);
+        if (key.empty() || words.empty())
+            throw std::runtime_error(path + "(" + std::to_string(lineNumber) + "): expected key = value");
 
-        metalRoughAOMaskPaths = { texturePath + "_metal", texturePath + "_rough", texturePath + "_ao" };
-
-        metallnessRoughnessAOCache = new PreBufferCache();
-        metallnessRoughnessAOCache->ImportHandle = new ImageImport(metalRoughAOMaskPaths, DefaultMetalnessRoughnessOcclusion);
-        metallnessRoughnessAOCache->Desc = new ImageDesc(DefaultTextureDesc);
-        metallnessRoughnessAOCache->Desc->Width = metallnessRoughnessAOCache->ImportHandle->GetData()->Width;
-        metallnessRoughnessAOCache->Desc->Height = metallnessRoughnessAOCache->ImportHandle->GetData()->Height;
-        metallnessRoughnessAOCache->Desc->Size = metallnessRoughnessAOCache->ImportHandle->GetData()->TotalSize;
-        metallnessRoughnessAOCache->Desc->InitialData = metallnessRoughnessAOCache->ImportHandle->GetData()->Pixels;
-        CachedTextures.push_back(metallnessRoughnessAOCache);
-
-        break;
-
-    case PBREmissive:
-
-        diffuseAlphaCache = new PreBufferCache();
-        diffuseAlphaCache->ImportHandle = new ImageImport(texturePath + "_diff");
-        diffuseAlphaCache->Desc = new ImageDesc(DefaultTextureDesc);
-        diffuseAlphaCache->Desc->Width = diffuseAlphaCache->ImportHandle->GetData()->Width;
-        diffuseAlphaCache->Desc->Height = diffuseAlphaCache->ImportHandle->GetData()->Height;
-        diffuseAlphaCache->Desc->Size = diffuseAlphaCache->ImportHandle->GetData()->TotalSize;
-        diffuseAlphaCache->Desc->InitialData = diffuseAlphaCache->ImportHandle->GetData()->Pixels;
-        CachedTextures.push_back(diffuseAlphaCache);
-
-        normalCache = new PreBufferCache();
-        normalCache->ImportHandle = new ImageImport(texturePath + "_norm");
-        normalCache->Desc = new ImageDesc(DefaultTextureDesc);
-        normalCache->Desc->Width = normalCache->ImportHandle->GetData()->Width;
-        normalCache->Desc->Height = normalCache->ImportHandle->GetData()->Height;
-        normalCache->Desc->Size = normalCache->ImportHandle->GetData()->TotalSize;
-        normalCache->Desc->InitialData = normalCache->ImportHandle->GetData()->Pixels;
-        CachedTextures.push_back(normalCache);
-
-        metalRoughAOMaskPaths = { texturePath + "_metal", texturePath + "_rough", texturePath + "_ao" };
-
-        metallnessRoughnessAOCache = new PreBufferCache();
-        metallnessRoughnessAOCache->ImportHandle = new ImageImport(metalRoughAOMaskPaths, DefaultMetalnessRoughnessOcclusion);
-        metallnessRoughnessAOCache->Desc = new ImageDesc(DefaultTextureDesc);
-        metallnessRoughnessAOCache->Desc->Width = metallnessRoughnessAOCache->ImportHandle->GetData()->Width;
-        metallnessRoughnessAOCache->Desc->Height = metallnessRoughnessAOCache->ImportHandle->GetData()->Height;
-        metallnessRoughnessAOCache->Desc->Size = metallnessRoughnessAOCache->ImportHandle->GetData()->TotalSize;
-        metallnessRoughnessAOCache->Desc->InitialData = metallnessRoughnessAOCache->ImportHandle->GetData()->Pixels;
-        CachedTextures.push_back(metallnessRoughnessAOCache);
-
-        emissiveCache = new PreBufferCache();
-        emissiveCache->ImportHandle = new ImageImport(texturePath + "_emissive");
-        emissiveCache->Desc = new ImageDesc(DefaultTextureDesc);
-        emissiveCache->Desc->Width = emissiveCache->ImportHandle->GetData()->Width;
-        emissiveCache->Desc->Height = emissiveCache->ImportHandle->GetData()->Height;
-        emissiveCache->Desc->Size = emissiveCache->ImportHandle->GetData()->TotalSize;
-        emissiveCache->Desc->InitialData = emissiveCache->ImportHandle->GetData()->Pixels;
-        CachedTextures.push_back(emissiveCache);
-
-        break;
-
-    default:
-        throw std::runtime_error("Invalid MaterialFormat");
+        if (key == "type")
+            desc.Type = words[0];
+        else
+            desc.Values[key] = std::move(words);
     }
+    if (desc.Type.empty())
+        throw std::runtime_error(path + ": no type");
+    return true;
 }
 
-LoadedMaterial Material::LoadMaterial(uint32_t layoutID, uint32_t setIndex)
+bool MaterialFiles::ReadConvention(const std::string& name, MaterialDesc& desc)
 {
-    BufferAllocator* bufferAllocator = BufferAllocator::GetInstance();
-    LoadedMaterial loaded;
-    std::vector<DescriptorSetBinding> bindings;
+    if (!std::filesystem::exists(TextureDirectory + name + "_diff.png"))
+        return false;
 
-    bindings.reserve(CachedTextures.size());
-    for (uint32_t i = 0; i < CachedTextures.size(); ++i)
-    {
-        ImageDesc desc = *CachedTextures[i]->Desc;
-        desc.MipLevels = MipGenerator::FullMipCount(desc.Width, desc.Height);
-        desc.Usage.Storage = true;
-        ImageHandle image = bufferAllocator->CreateImage(desc);
-        MipGenerator::Enqueue(image);
-        loaded.Images.push_back(image);
-        bindings.push_back(DescriptorSetBinding::ForImage(i, image));
-        delete CachedTextures[i];
-    }
-    CachedTextures.clear();
-
-    loaded.Set = bufferAllocator->AllocateDescriptorSet(layoutID, setIndex, bindings);
-    return loaded;
+    desc = {};
+    desc.Type = "textured_pbr";
+    desc.Values["albedo"] = { name + "_diff" };
+    desc.Values["normal"] = { name + "_norm" };
+    desc.Values["metallic_roughness_occlusion"] = { name + "_metal", name + "_rough", name + "_ao" };
+    return true;
 }

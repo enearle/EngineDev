@@ -16,6 +16,7 @@ struct VSOutput
     float3 tangent : TANGENT;
     float3 binormal : BINORMAL;
     float2 uv : TEXCOORD;
+    float3 worldPosition : TEXCOORD1;
 };
 
 VSOutput main(VSInput input, uint instanceID : SV_InstanceID)
@@ -31,5 +32,6 @@ VSOutput main(VSInput input, uint instanceID : SV_InstanceID)
     output.tangent = normalize(mul(normalMatrix, input.tangent));
     output.binormal = normalize(mul(normalMatrix, input.binormal));
     output.uv = input.uv;
+    output.worldPosition = worldPosition.xyz;
     return output;
 }

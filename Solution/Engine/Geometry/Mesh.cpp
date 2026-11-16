@@ -42,6 +42,7 @@ Mesh::Mesh(Mesh&& other) noexcept
       VertexCount(other.VertexCount),
       IndexCount(other.IndexCount),
       LocalMaterialIndex(other.LocalMaterialIndex),
+      MaterialName(std::move(other.MaterialName)),
       GPUMesh(other.GPUMesh),
       TempVertexCache(other.TempVertexCache),
       TempSkinnedVertexCache(other.TempSkinnedVertexCache)
@@ -60,6 +61,7 @@ Mesh& Mesh::operator=(Mesh&& other) noexcept
         VertexCount = other.VertexCount;
         IndexCount = other.IndexCount;
         LocalMaterialIndex = other.LocalMaterialIndex;
+        MaterialName = std::move(other.MaterialName);
         GPUMesh = other.GPUMesh;
         TempVertexCache = other.TempVertexCache;
         TempSkinnedVertexCache = other.TempSkinnedVertexCache;

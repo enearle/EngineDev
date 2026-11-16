@@ -4,6 +4,7 @@
 #include <string>
 #include "../DrawList.h"
 #include "../MaterialRegistry.h"
+#include "../MaterialType.h"
 #include "../PassGraph.h"
 #include "../Renderer.h"
 #include "../ShaderLibrary.h"
@@ -28,7 +29,7 @@ static GraphImageID Depth = 0;
 static std::vector<PassID> Passes;
 
 static Pipeline* ShadowPipeline = nullptr;
-static Pipeline* GBufferPipeline = nullptr;
+static std::vector<Pipeline*> GBufferPipelines;     // One per material type
 static Pipeline* LightingPipeline = nullptr;
 static PipelineLayout* LightingLayout = nullptr;
 
@@ -85,15 +86,18 @@ static void CreatePipelines()
     shadow.DepthStencilFormat = Format::D32_FLOAT;
     ShadowPipeline = CreateMeshPipeline(shadow, "vs_vsm", true);
 
-    PipelineDesc gBuffer;
-    gBuffer.Layout = Renderer::GetSceneLayout();
-    gBuffer.FragmentShader = LoadShader("ps_pbr");
-    gBuffer.RasterizerState = Rasterizer(CullMode::Back);
-    gBuffer.DepthStencilState = DepthState(true);
-    gBuffer.BlendAttachmentStates = { DisabledBlendAttachmentState, DisabledBlendAttachmentState, DisabledBlendAttachmentState };
-    gBuffer.RenderTargetFormats = { Format::R8G8B8A8_UNORM, Format::R16G16_UNORM, Format::R8G8B8A8_UNORM };
-    gBuffer.DepthStencilFormat = Format::D32_FLOAT;
-    GBufferPipeline = CreateMeshPipeline(gBuffer, "vs_pbr", false);
+    for (MaterialTypeID type = 0; type < MaterialTypes::GetCount(); type++)
+    {
+        PipelineDesc gBuffer;
+        gBuffer.Layout = Renderer::GetSceneLayout();
+        gBuffer.FragmentShader = LoadShader("ps_gbuffer_" + MaterialTypes::Get(type).Name);
+        gBuffer.RasterizerState = Rasterizer(CullMode::Back);
+        gBuffer.DepthStencilState = DepthState(true);
+        gBuffer.BlendAttachmentStates = { DisabledBlendAttachmentState, DisabledBlendAttachmentState, DisabledBlendAttachmentState };
+        gBuffer.RenderTargetFormats = { Format::R8G8B8A8_UNORM, Format::R16G16_UNORM, Format::R8G8B8A8_UNORM };
+        gBuffer.DepthStencilFormat = Format::D32_FLOAT;
+        GBufferPipelines.push_back(CreateMeshPipeline(gBuffer, "vs_pbr", false));
+    }
 
     ResourceLayout lightingResources;
     lightingResources.VisibleStages = Renderer::GetSceneVisibleStages();
@@ -125,7 +129,7 @@ static void ExecuteShadowPass(const PassContext& context, uint32_t layer)
 
     Frustum frustum = Frustum::FromViewProjection(lights[layer].ViewProjection);
     ShadowDraws[layer].Build({ &frustum, 1 }, true);
-    ShadowDraws[layer].Record(context.Executor, ShadowPipeline, false, "Shadow " + std::to_string(layer), layer);
+    ShadowDraws[layer].Record(context.Executor, { &ShadowPipeline, 1 }, false, "Shadow " + std::to_string(layer), layer);
 }
 
 static void ExecuteGBufferPass(const PassContext& context)
@@ -139,7 +143,7 @@ static void ExecuteGBufferPass(const PassContext& context)
     Frustum frustum = Frustum::FromViewProjection(viewProjection);
 
     GBufferDraws.Build({ &frustum, 1 }, false);
-    GBufferDraws.Record(context.Executor, GBufferPipeline, true, "G-buffer");
+    GBufferDraws.Record(context.Executor, GBufferPipelines, true, "G-buffer");
 }
 
 static void ExecuteLightingPass(const PassContext& context)
@@ -223,8 +227,9 @@ void DeferredPasses::Retire()
 
     delete ShadowPipeline;
     ShadowPipeline = nullptr;
-    delete GBufferPipeline;
-    GBufferPipeline = nullptr;
+    for (Pipeline* pipeline : GBufferPipelines)
+        delete pipeline;
+    GBufferPipelines.clear();
     delete LightingPipeline;
     LightingPipeline = nullptr;
     delete LightingLayout;

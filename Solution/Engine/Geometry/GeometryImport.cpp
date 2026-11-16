@@ -227,6 +227,7 @@ static SceneNode* LoadNode(const aiNode* node, const XMMATRIX& local, SceneNode*
                 std::cout << "Import warning: mesh below joint " << nodeName << " is attached to the model root at its bind position" << std::endl;
             meshes.emplace_back(GeometryImport::LoadMesh(assimpMesh));
         }
+        meshes.back().SetMaterialName(scene->mMaterials[assimpMesh->mMaterialIndex]->GetName().C_Str());
     }
 
     SceneNode* sceneNode = nullptr;

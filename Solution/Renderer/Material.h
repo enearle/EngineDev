@@ -1,57 +1,24 @@
 #pragma once
+#include <map>
 #include <string>
 #include <vector>
-#include "RENDERER_API_Macro.h"
-#include "RHI/RHIStructures.h"
 
-namespace RHIStructures
+// A material as written in Engine/Materials/<name>.material, a text file of "key = value" lines
+// where # starts a comment. "type" names the material type; every other key is a field of the type,
+// whose value is its numbers, or a texture slot, whose value is one image name in Engine/Textures, or
+// three whose first channels are packed into red, green and blue.
+struct MaterialDesc
 {
-    struct ImageDesc;
+    std::string Type;
+    std::map<std::string, std::vector<std::string>> Values;
+};
+
+namespace MaterialFiles
+{
+    // False when the file does not exist.
+    bool Read(const std::string& name, MaterialDesc& desc);
+
+    // The file-name convention that predates material files: Textures/<name>_diff, _norm, and
+    // _metal, _rough and _ao, as a textured_pbr material. False when <name>_diff does not exist.
+    bool ReadConvention(const std::string& name, MaterialDesc& desc);
 }
-
-class ImageImport;
-
-
-struct PreBufferCache
-{
-    ImageImport* ImportHandle;
-    RHIStructures::ImageDesc* Desc;
-
-    ~PreBufferCache();
-};
-
-struct LoadedMaterial
-{
-    RHIStructures::DescriptorSetHandle Set = {};
-    std::vector<RHIStructures::ImageHandle> Images;
-};
-
-class RENDERER_API Material
-{
-public:
-    enum MaterialFormat
-    {
-        PBR,
-        PBREmissive
-    };
-
-    enum TextureType
-    {
-        DiffuseAlpha,
-        Normal,
-        MetalnessRoughnessOcclusion,
-        Emissive
-    };
-
-private:
-
-    std::string Name;
-    MaterialFormat Format;
-    std::vector<PreBufferCache*> CachedTextures;
-
-public:
-
-    Material(std::string name, MaterialFormat materialFormat);
-    LoadedMaterial LoadMaterial(uint32_t layoutID, uint32_t setIndex);
-
-};

@@ -6,6 +6,7 @@ struct VSOutput
 
 #define PI 3.14159265358979323846
 
+#include "Colour.hlsli"
 #include "Common.hlsli"
 
 Texture2DArray shadowMaps           : register(t0, space3);
@@ -27,7 +28,7 @@ static float3 materialData;
 
 void init(VSOutput input, float depth)
 {
-    albedo = inAlbedo.Sample(pointClampSampler, input.uv).rgb;
+    albedo = DecodeSrgb(inAlbedo.Sample(pointClampSampler, input.uv).rgb);
     normal = DecodeNormal(inNormal.Sample(pointClampSampler, input.uv));
     materialData = inMetallicRoughnessAO.Sample(pointClampSampler, input.uv).rgb;
 
@@ -158,7 +159,5 @@ float4 main(VSOutput input) : SV_TARGET
     {
         if (Lights[i].Type == 1) outGoingLight += LightPBR(Lights[i]);
     }
-    outGoingLight = clamp(outGoingLight, 0, 1);
-    
-    return float4(outGoingLight, 1.0);
+    return float4(EncodeSrgb(outGoingLight), 1.0);
 }

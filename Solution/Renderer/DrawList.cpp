@@ -87,33 +87,37 @@ void DrawList::Build(std::span<const Frustum> frusta, bool isShadowCastersOnly)
         if (isSameBatch)
             Batches.back().InstanceCount++;
         else
-            Batches.push_back({ object.Material, object.Mesh, object.SkinnedMesh, firstInstance + static_cast<uint32_t>(i), 1 });
+            Batches.push_back({ object.MaterialType, object.Material, object.Mesh, object.SkinnedMesh, firstInstance + static_cast<uint32_t>(i), 1 });
     }
     InstanceCount = static_cast<uint32_t>(SortKeys.size());
 }
 
-void DrawList::Record(PipelineExecutor* executor, Pipeline* pipeline, bool isMaterialBound, const std::string& passName,
+void DrawList::Record(PipelineExecutor* executor, std::span<Pipeline* const> pipelines, bool isMaterialBound, const std::string& passName,
                       uint32_t viewIndex) const
 {
+    Pipeline* boundPipeline = nullptr;
     MaterialHandle boundMaterial = {};
     uint32_t drawCalls = 0;
-    if (!Batches.empty())
-    {
-        executor->BindPipeline(pipeline);
-        Renderer::BindSceneSet(executor);
-    }
     BufferHandle pool = Renderer::GetPassGraph().GetBuffer(Skinning::GetPool());
 
     for (const DrawBatch& batch : Batches)
     {
         if (!MeshRegistry::IsLive(batch.Mesh))
             continue;
-        if (isMaterialBound && !MaterialRegistry::IsLive(batch.Material))
+        if (isMaterialBound && (!MaterialRegistry::IsLive(batch.Material) || batch.MaterialType >= pipelines.size()))
             continue;
 
+        Pipeline* pipeline = isMaterialBound ? pipelines[batch.MaterialType] : pipelines[0];
+        if (pipeline != boundPipeline)
+        {
+            executor->BindPipeline(pipeline);
+            Renderer::BindSceneSet(executor);
+            boundPipeline = pipeline;
+            boundMaterial = {};
+        }
         if (isMaterialBound && batch.Material != boundMaterial)
         {
-            executor->BindDescriptorSet(MaterialRegistry::GetDescriptorSet(batch.Material));
+            MaterialRegistry::Bind(executor, batch.Material);
             boundMaterial = batch.Material;
         }
 

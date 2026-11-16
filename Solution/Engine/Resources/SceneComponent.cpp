@@ -3,6 +3,7 @@
 #include "AssetSerializer.h"
 #include "../Scene/SceneNode.h"
 #include "../Animation/AnimatorComponent.h"
+#include "MaterialRegistry.h"
 #include "Skinning.h"
 
 void SceneComponentBase::Serialize(std::string& data)
@@ -64,6 +65,21 @@ void MeshComponent::AssignMaterials(const std::vector<MaterialHandle>& materials
     }
 }
 
+void MeshComponent::AssignMaterialsByName()
+{
+    MeshAsset* meshAsset = GetMeshAsset();
+    for (MaterialHandle material : EnlistedMaterials)
+        MaterialRegistry::Retire(material);
+    EnlistedMaterials.clear();
+
+    SubmeshMaterials.resize(meshAsset->GetMeshCount());
+    for (uint32_t i = 0; i < meshAsset->GetMeshCount(); i++)
+    {
+        SubmeshMaterials[i] = MaterialRegistry::Enlist(meshAsset->GetMesh(i).GetMaterialName());
+        EnlistedMaterials.push_back(SubmeshMaterials[i]);
+    }
+}
+
 AnimatorComponent* MeshComponent::GetAnimator()
 {
     if (IsAnimatorSearched)
@@ -88,6 +104,10 @@ void MeshComponent::FreeGPUResources()
     for (SkinnedMeshHandle mesh : SkinnedMeshes)
         Skinning::Retire(mesh);
     SkinnedMeshes.clear();
+    for (MaterialHandle material : EnlistedMaterials)
+        MaterialRegistry::Retire(material);
+    EnlistedMaterials.clear();
+    SubmeshMaterials.clear();
 }
 
 bool SceneComponentFactory::SceneComponentExists(SceneComponentType sceneComponentType, SceneNode* owner)

@@ -27,6 +27,7 @@ void MeshAsset::Serialize(std::string& data)
     {
         AssetSerializer::Write<bool>(data, Meshes[i].IsSkinned());
         AssetSerializer::Write<uint32_t>(data, Meshes[i].GetLocalMaterialIndex());
+        AssetSerializer::WriteString(data, Meshes[i].GetMaterialName());
         AssetSerializer::Write<uint32_t>(data, Meshes[i].GetVertexCount());
         AssetSerializer::Write<uint32_t>(data, Meshes[i].GetIndexCount());
 
@@ -70,6 +71,7 @@ void MeshAsset::Deserialize(std::string& data, long& offset)
     {
         bool skinned    = AssetSerializer::Read<bool>(data, offset);
         uint32_t matIdx = AssetSerializer::Read<uint32_t>(data, offset);
+        std::string materialName = AssetSerializer::ReadString(data, offset);
         uint32_t vCount = AssetSerializer::Read<uint32_t>(data, offset);
         uint32_t iCount = AssetSerializer::Read<uint32_t>(data, offset);
 
@@ -95,6 +97,7 @@ void MeshAsset::Deserialize(std::string& data, long& offset)
                 iCount * sizeof(uint32_t));
             Meshes.emplace_back(cache, matIdx);
         }
+        Meshes.back().SetMaterialName(materialName);
     }
 }
 

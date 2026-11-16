@@ -52,6 +52,7 @@
     <ClCompile Include="Image\ImageImport.cpp" />
     <ClCompile Include="Material.cpp" />
     <ClCompile Include="MaterialRegistry.cpp" />
+    <ClCompile Include="MaterialType.cpp" />
     <ClCompile Include="MeshRegistry.cpp" />
     <ClCompile Include="MipGenerator.cpp" />
     <ClCompile Include="Passes\ComputeTestPass.cpp" />
@@ -68,6 +69,7 @@
     <ClInclude Include="Image\stb_image.h" />
     <ClInclude Include="Material.h" />
     <ClInclude Include="MaterialRegistry.h" />
+    <ClInclude Include="MaterialType.h" />
     <ClInclude Include="MeshRegistry.h" />
     <ClInclude Include="MipGenerator.h" />
     <ClInclude Include="Passes\ComputeTestPass.h" />
@@ -83,35 +85,64 @@
   <ItemGroup>
     <ShaderSource Include="Shaders\cs_compute_test.hlsl">
       <Profile>cs_6_1</Profile>
+      <OutputName>cs_compute_test</OutputName>
+      <Arguments></Arguments>
     </ShaderSource>
     <ShaderSource Include="Shaders\cs_downsample.hlsl">
       <Profile>cs_6_1</Profile>
+      <OutputName>cs_downsample</OutputName>
+      <Arguments></Arguments>
     </ShaderSource>
     <ShaderSource Include="Shaders\cs_skinning.hlsl">
       <Profile>cs_6_1</Profile>
+      <OutputName>cs_skinning</OutputName>
+      <Arguments></Arguments>
     </ShaderSource>
     <ShaderSource Include="Shaders\ps_compute_test.hlsl">
       <Profile>ps_6_1</Profile>
+      <OutputName>ps_compute_test</OutputName>
+      <Arguments></Arguments>
+    </ShaderSource>
+    <ShaderSource Include="Shaders\ps_gbuffer.hlsl">
+      <Profile>ps_6_1</Profile>
+      <OutputName>ps_gbuffer_flat</OutputName>
+      <Arguments>-D SURFACE=flat</Arguments>
+    </ShaderSource>
+    <ShaderSource Include="Shaders\ps_gbuffer.hlsl">
+      <Profile>ps_6_1</Profile>
+      <OutputName>ps_gbuffer_textured_pbr</OutputName>
+      <Arguments>-D SURFACE=textured_pbr</Arguments>
     </ShaderSource>
     <ShaderSource Include="Shaders\ps_lighting.hlsl">
       <Profile>ps_6_1</Profile>
-    </ShaderSource>
-    <ShaderSource Include="Shaders\ps_pbr.hlsl">
-      <Profile>ps_6_1</Profile>
+      <OutputName>ps_lighting</OutputName>
+      <Arguments></Arguments>
     </ShaderSource>
     <ShaderSource Include="Shaders\ps_vsm.hlsl">
       <Profile>ps_6_1</Profile>
+      <OutputName>ps_vsm</OutputName>
+      <Arguments></Arguments>
     </ShaderSource>
     <ShaderSource Include="Shaders\vs_lighting.hlsl">
       <Profile>vs_6_1</Profile>
+      <OutputName>vs_lighting</OutputName>
+      <Arguments></Arguments>
     </ShaderSource>
     <ShaderSource Include="Shaders\vs_pbr.hlsl">
       <Profile>vs_6_1</Profile>
+      <OutputName>vs_pbr</OutputName>
+      <Arguments></Arguments>
     </ShaderSource>
     <ShaderSource Include="Shaders\vs_vsm.hlsl">
       <Profile>vs_6_1</Profile>
+      <OutputName>vs_vsm</OutputName>
+      <Arguments></Arguments>
     </ShaderSource>
+    <ShaderInclude Include="Shaders\Colour.hlsli" />
     <ShaderInclude Include="Shaders\Common.hlsli" />
+    <ShaderInclude Include="Shaders\Surface.hlsli" />
+    <ShaderInclude Include="Shaders\Surfaces\flat.hlsli" />
+    <ShaderInclude Include="Shaders\Surfaces\textured_pbr.hlsli" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\RHI\RHI.vcxproj">
@@ -119,11 +150,11 @@
     </ProjectReference>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
-  <Target Name="CompileShaders" BeforeTargets="ClCompile" Inputs="%(ShaderSource.FullPath);@(ShaderInclude)" Outputs="$(ShaderOutDir)DXIL\%(ShaderSource.Filename).cso;$(ShaderOutDir)SPIRV\%(ShaderSource.Filename).spv">
+  <Target Name="CompileShaders" BeforeTargets="ClCompile" Inputs="%(ShaderSource.FullPath);@(ShaderInclude)" Outputs="$(ShaderOutDir)DXIL\%(ShaderSource.OutputName).cso;$(ShaderOutDir)SPIRV\%(ShaderSource.OutputName).spv">
     <MakeDir Directories="$(ShaderOutDir)DXIL;$(ShaderOutDir)SPIRV" />
-    <Message Importance="high" Text="dxc %(ShaderSource.Filename)%(ShaderSource.Extension)" />
-    <Exec Command="&quot;$(DxcExe)&quot; -nologo -T %(ShaderSource.Profile) -E main -Fo &quot;$(ShaderOutDir)DXIL\%(ShaderSource.Filename).cso&quot; &quot;%(ShaderSource.FullPath)&quot;" />
-    <Exec Command="&quot;$(DxcExe)&quot; -nologo -T %(ShaderSource.Profile) -E main -spirv -fspv-target-env=vulkan1.1 -Fo &quot;$(ShaderOutDir)SPIRV\%(ShaderSource.Filename).spv&quot; &quot;%(ShaderSource.FullPath)&quot;" />
+    <Message Importance="high" Text="dxc %(ShaderSource.OutputName)" />
+    <Exec Command="&quot;$(DxcExe)&quot; -nologo -T %(ShaderSource.Profile) -E main %(ShaderSource.Arguments) -Fo &quot;$(ShaderOutDir)DXIL\%(ShaderSource.OutputName).cso&quot; &quot;%(ShaderSource.FullPath)&quot;" />
+    <Exec Command="&quot;$(DxcExe)&quot; -nologo -T %(ShaderSource.Profile) -E main %(ShaderSource.Arguments) -spirv -fspv-target-env=vulkan1.1 -Fo &quot;$(ShaderOutDir)SPIRV\%(ShaderSource.OutputName).spv&quot; &quot;%(ShaderSource.FullPath)&quot;" />
   </Target>
   <Target Name="CleanShaders" AfterTargets="Clean">
     <RemoveDir Directories="$(ShaderOutDir)" />
