@@ -913,6 +913,7 @@ void VulkanPipelineExecutor::BeginOverlayPass(uint32_t width, uint32_t height)
     beginInfo.pClearValues = clearValues;
 
     vkCmdBeginRenderPass(GetCommandBuffer(), &beginInfo, VK_SUBPASS_CONTENTS_INLINE);
+    SetViewport(0, 0, width, height);
 }
 
 void VulkanPipelineExecutor::EndOverlayPass()

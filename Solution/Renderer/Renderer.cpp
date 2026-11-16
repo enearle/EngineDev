@@ -147,7 +147,7 @@ void Renderer::Start(Window* mainWindow)
         DescriptorSetBinding::ForBuffer(1, ring),
     });
 
-    ShowWindow(MainWindow->GetWindowHandle(), 5);
+    MainWindow->Show();
 }
 
 static void PrepareFrameData()

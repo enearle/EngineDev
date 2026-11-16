@@ -145,9 +145,10 @@ public:
     PassGraph();
 
     GraphImageID CreateImage(const GraphImageDesc& desc);
-    // An image the graph does not own: never resized or destroyed by it. It is expected in
-    // restingLayout when the frame starts and is returned to it when the frame ends.
-    GraphImageID ImportImage(RHIStructures::ImageHandle image, RHIStructures::ImageLayout restingLayout);
+    // An image the graph does not own: never resized or destroyed by it. It is in currentLayout now,
+    // and is returned to restingLayout at the end of every frame, so later frames find it there.
+    GraphImageID ImportImage(RHIStructures::ImageHandle image, RHIStructures::ImageLayout currentLayout,
+                             RHIStructures::ImageLayout restingLayout);
     void DestroyImage(GraphImageID image);
     RHIStructures::ImageHandle GetImage(GraphImageID image) const;
 

@@ -39,7 +39,7 @@ GraphImageID PassGraph::CreateImage(const GraphImageDesc& desc)
     return id;
 }
 
-GraphImageID PassGraph::ImportImage(ImageHandle image, ImageLayout restingLayout)
+GraphImageID PassGraph::ImportImage(ImageHandle image, ImageLayout currentLayout, ImageLayout restingLayout)
 {
     GraphImageID id = ClaimImageSlot();
     ImageEntry& entry = Images[id];
@@ -47,7 +47,7 @@ GraphImageID PassGraph::ImportImage(ImageHandle image, ImageLayout restingLayout
     entry.Desc.Format = BufferAllocator::GetInstance()->GetImageAllocation(image).Desc.Format;
     entry.Image = image;
     entry.RestingLayout = restingLayout;
-    entry.Layout = restingLayout;
+    entry.Layout = currentLayout;
     entry.IsLive = true;
     entry.IsImported = true;
     return id;

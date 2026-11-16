@@ -41,6 +41,7 @@ public:
     uint32_t GetHeight() const { return Height; }
     bool IsResizing() const { return Resizing; }
     bool PeekMessages();
+    void Show();    // Without taking focus when GRAPHICS_SETTINGS.CanTakeFocus is false
     void PollResize();  // For embedded mode: checks HWND client size and fires OnResize if changed
     
     Event<uint32_t, uint32_t> OnResize;

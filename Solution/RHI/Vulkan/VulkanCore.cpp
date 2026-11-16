@@ -176,6 +176,7 @@ void VulkanCore::CreateLogicalDevice()
     deviceFeatures.geometryShader = VK_TRUE;        // Enable geometry shader feature
     deviceFeatures.depthClamp = VK_TRUE;            // Enable depth clamp feature
     deviceFeatures.fillModeNonSolid = VK_TRUE;      // Enable wireframe/line polygon mode
+    deviceFeatures.fragmentStoresAndAtomics = VK_TRUE;
 
     // Enable dynamic rendering feature
     VkPhysicalDeviceDynamicRenderingFeatures dynamicRenderingFeature{};
@@ -820,7 +821,8 @@ bool VulkanCore::CheckDeviceSuitability(VkPhysicalDevice device)
     bool isDGPU = deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU;
 
     // TODO: make this work on APU/Integrated Graphics
-    return indicesValid && extensionsSupported && swapChainValid && isDGPU && deviceFeatures.samplerAnisotropy && deviceFeatures.geometryShader && deviceFeatures.depthClamp;
+    return indicesValid && extensionsSupported && swapChainValid && isDGPU && deviceFeatures.samplerAnisotropy && deviceFeatures.geometryShader && deviceFeatures.depthClamp &&
+           deviceFeatures.fragmentStoresAndAtomics;
 }
 
 bool VulkanCore::CheckValidationLayerSupport()

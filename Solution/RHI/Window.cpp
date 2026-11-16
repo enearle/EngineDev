@@ -1,5 +1,6 @@
 ﻿#include "Window.h"
 #include <stdexcept>
+#include "GraphicsSettings.h"
 #include "Input/InputState.h"
 #include "Windows/Win32ErrorHandler.h"
 #include "Windows/Win32Window.h"
@@ -134,6 +135,11 @@ void Window::PollResize()
         Height = newH;
         OnResize(Width, Height);
     }
+}
+
+void Window::Show()
+{
+    ShowWindow(WindowHandle, GRAPHICS_SETTINGS.CanTakeFocus ? SW_SHOW : SW_SHOWNOACTIVATE);
 }
 
 Window* Window::GetWindow(HWND hwnd)

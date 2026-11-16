@@ -127,6 +127,9 @@ void ImGuiLayer::Start(bool isLayoutSavedToDisk)
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGui::StyleColorsDark();
+    float dpiScale = GetDpiForWindow(windowHandle) / static_cast<float>(USER_DEFAULT_SCREEN_DPI);
+    ImGui::GetStyle().ScaleAllSizes(dpiScale);
+    ImGui::GetStyle().FontScaleDpi = dpiScale;
     if (!isLayoutSavedToDisk)
         ImGui::GetIO().IniFilename = nullptr;
 

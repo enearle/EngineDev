@@ -214,8 +214,11 @@ void GameInit()
     std::vector<SceneNode*> characters = { derp };
 
     // The character lives outside the repository, since its licence forbids publishing it. Without
-    // it the Derp stands in.
-    std::filesystem::path characterPath = SwitchText(L" -character", L"../../TempAssets/CharBlend.fbx");
+    // it the Derp stands in. -animation-test prefers the export that carries two clips.
+    std::wstring defaultCharacter = L"../../TempAssets/CharBlend.fbx";
+    if (IsSwitchPresent(L" -animation-test") && std::filesystem::exists(L"../../TempAssets/CharBlendClips.fbx"))
+        defaultCharacter = L"../../TempAssets/CharBlendClips.fbx";
+    std::filesystem::path characterPath = SwitchText(L" -character", defaultCharacter);
     std::vector<MaterialHandle> characterMaterials(32, derpMaterials[0]);
     if (std::filesystem::exists(characterPath))
     {

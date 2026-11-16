@@ -105,6 +105,7 @@ void BufferAllocator::CreateFrameRing(uint64_t bytesPerFrame)
     desc.Usage.Access = UploadMemory;
     desc.Usage.Uniform = true;
     desc.Usage.Storage = true;
+    desc.Usage.TransferSource = true;
     FrameRing = CreateBuffer(desc);
 
     const BufferAllocation& allocation = Buffers.Get(FrameRing);

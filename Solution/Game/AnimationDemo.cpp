@@ -30,6 +30,7 @@ static uint32_t FadesStarted = 0;
 static uint32_t FramesFading = 0;
 static bool IsTestRunning = false;
 static uint32_t BindPoseJoints = 0;
+static size_t FileClipCount = 0;
 static std::string BindPoseFailure;
 static DebugOverlay::PanelID AnimationPanel = 0;
 
@@ -335,7 +336,9 @@ void AnimationDemo::Start(const std::vector<SceneNode*>& characters, const std::
     SceneNode* character = characters.back();
     if (isAnimationTest)
     {
-        CheckBindPose(static_cast<AnimatorComponent*>(character->GetComponent(AnimatorComponentType)));
+        AnimatorComponent* tested = static_cast<AnimatorComponent*>(character->GetComponent(AnimatorComponentType));
+        CheckBindPose(tested);
+        FileClipCount = tested ? tested->GetStates().size() : 0;
         FindSkinnedSubmesh(character);
         Readback::WatchBuffer(Skinning::GetPool());
     }
@@ -411,7 +414,7 @@ void AnimationDemo::PrintResults()
     if (!IsTestRunning)
         return;
     if (BindPoseFailure.empty())
-        std::cout << "Animation test: bind pose identity for " << BindPoseJoints << " joints" << std::endl;
+        std::cout << "Animation test: bind pose identity for " << BindPoseJoints << " joints, " << FileClipCount << " clips from the file" << std::endl;
     else
         std::cout << "Animation test: bind pose failed, " << BindPoseFailure << std::endl;
     if (!SkinningFailure.empty())

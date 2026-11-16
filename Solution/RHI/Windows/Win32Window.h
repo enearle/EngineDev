@@ -6,6 +6,8 @@ class Win32Window
 {
     static unsigned long windowClassNum;
 public:
+    static bool FindMonitorWorkArea(int monitorIndex, RECT& workArea);
+
     static HWND NewWindow(WNDPROC windowProcedure, HINSTANCE applicationInstance, LONG xSize, LONG ySize,
         LPCWSTR& name, HICON iconHandle = nullptr, HICON smallIconHandle = nullptr, HCURSOR cursorHandle = nullptr);
 

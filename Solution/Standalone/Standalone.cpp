@@ -8,10 +8,10 @@
 int main(int argumentCount, char** arguments)
 {
     GRAPHICS_SETTINGS.ApplyCommandLine(argumentCount, arguments);
+    SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
 
     Window* window = new Window(L"Standalone", Win32, 1280, 720);
     Renderer::Start(window);
-    ShowWindow(window->GetWindowHandle(), SW_SHOW);
 
     ImGuiLayer::Start(false);
     DebugOverlay::Start();

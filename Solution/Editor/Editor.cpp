@@ -75,7 +75,7 @@ static void DrawEditorInterface()
     // Left sidebar: Scene Hierarchy + Properties
     float totalW = ImGui::GetContentRegionAvail().x;
     float totalH = ImGui::GetContentRegionAvail().y;
-    float sideW  = 220.f;
+    float sideW  = 220.f * ImGui::GetStyle().FontScaleDpi;
 
     ImGui::BeginChild("##LeftPanel", ImVec2(sideW, totalH), true);
     float halfH = (ImGui::GetContentRegionAvail().y - ImGui::GetStyle().ItemSpacing.y * 4.f) * 0.5f;
@@ -121,9 +121,9 @@ int main(int argumentCount, char** arguments)
         if (strcmp(arguments[i], "-play") == 0)
             IS_PLAYING = SHOULD_START = true;
 
+    SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     Window* window = new Window(L"Engine Editor", Win32, 1600, 900);
     Renderer::Start(window);
-    ShowWindow(window->GetWindowHandle(), SW_SHOW);
 
     ImGuiLayer::Start(true);
     ImGuiLayer::Subscribe(DrawEditorInterface);

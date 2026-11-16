@@ -3,7 +3,8 @@ param(
     [string]$WorkDir,
     [string]$Out,
     [int]$Seconds = 6,
-    [string]$ExeArgs = ""
+    [string]$ExeArgs = "",
+    [switch]$Foreground
 )
 
 Add-Type -AssemblyName System.Drawing
@@ -16,10 +17,11 @@ public class Win {
     [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr h, out RECT r);
     [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr h, ref POINT p);
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
-    [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
+    [DllImport("user32.dll")] public static extern bool SetProcessDpiAwarenessContext(IntPtr context);
 }
 "@
-[Win]::SetProcessDPIAware() | Out-Null
+# Per-monitor aware, as the engine is, so window and screen coordinates agree on every display.
+[Win]::SetProcessDpiAwarenessContext([IntPtr](-4)) | Out-Null
 
 $psi = New-Object System.Diagnostics.ProcessStartInfo
 $psi.FileName = $Exe
@@ -40,8 +42,10 @@ if (-not $p.HasExited) {
     $p.Refresh()
     $h = $p.MainWindowHandle
     if ($h -ne [IntPtr]::Zero) {
-        [Win]::SetForegroundWindow($h) | Out-Null
-        Start-Sleep -Milliseconds 400
+        if ($Foreground) {
+            [Win]::SetForegroundWindow($h) | Out-Null
+            Start-Sleep -Milliseconds 400
+        }
         $r = New-Object Win+RECT
         [Win]::GetClientRect($h, [ref]$r) | Out-Null
         $pt = New-Object Win+POINT

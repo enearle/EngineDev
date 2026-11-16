@@ -66,8 +66,11 @@ void InputEventSystem::RegisterCommand(InputMode inputMode, const std::string& k
 
 void InputEventSystem::PollInput(HWND hwnd, double deltaTime)
 {
+    // GetAsyncKeyState reads the keyboard of the whole desktop, so input counts only while the window
+    // is in front.
+    bool hasFocus = GetForegroundWindow() == GetAncestor(hwnd, GA_ROOT);
     static bool wasPressed = false;
-    bool isPressed = GetAsyncKeyState(VK_LBUTTON) & 0x8000;
+    bool isPressed = hasFocus && (GetAsyncKeyState(VK_LBUTTON) & 0x8000);
     POINT mousePos;
     GetCursorPos(&mousePos);
     ScreenToClient(hwnd, &mousePos);
@@ -77,8 +80,8 @@ void InputEventSystem::PollInput(HWND hwnd, double deltaTime)
     // Translate to game-pane-relative coords and gate callbacks when a viewport is active
     uint32_t gvX = 0, gvY = 0, gvW = 0, gvH = 0;
     Renderer::GetGameViewport(gvX, gvY, gvW, gvH);
-    bool mouseInViewport = true;
-    if (gvW > 0 && gvH > 0)
+    bool mouseInViewport = hasFocus;
+    if (hasFocus && gvW > 0 && gvH > 0)
     {
         mouseInViewport = (x >= (int)gvX && x < (int)(gvX + gvW) &&
                            y >= (int)gvY && y < (int)(gvY + gvH));
@@ -91,7 +94,7 @@ void InputEventSystem::PollInput(HWND hwnd, double deltaTime)
     case InputMode::Gameplay:
         for (auto& [keyString, keyState] : sRegisteredGameplayInput)
         {
-            bool combinationActive = true;
+            bool combinationActive = hasFocus;
             for (char key : keyString)
                 if (!(GetAsyncKeyState(key) & 0x8000)) {
                     combinationActive = false;
@@ -120,7 +123,7 @@ void InputEventSystem::PollInput(HWND hwnd, double deltaTime)
     case InputMode::UI:
         for (auto& [keyString, keyState] : sRegisteredMenuInput)
         {
-            bool combinationActive = true;
+            bool combinationActive = hasFocus;
             for (char key : keyString)
                 if (!(GetAsyncKeyState(key) & 0x8000)) {
                     combinationActive = false;

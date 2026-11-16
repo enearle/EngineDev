@@ -25,6 +25,7 @@
 #include <print>
 #include "Window.h"
 #include "Renderer.h"
+#include "RHI/PipelineExecutor.h"
 #include <NsGui/Uri.h>
 
 #include "Input/InputEventSystem.h"
@@ -165,6 +166,11 @@ void NoesisUILayer::NoesisRenderOnscreen()
         info.safeFrameNumber = frameCounter > framesInFlight ? frameCounter - framesInFlight : 0;
 
         NoesisApp::VKFactory::SetCommandBuffer(RenderDevice.GetPtr(), info);
+
+        uint32_t gvX, gvY, gvW, gvH;
+        Renderer::GetGameViewport(gvX, gvY, gvW, gvH);
+        if (gvW > 0 && gvH > 0)
+            Renderer::GetExecutor()->SetViewport(gvX, gvY, gvW, gvH);
         View->GetRenderer()->Render(true);
     }
     else if (ForwardInterface::GetCurrentAPI() == DirectX12)
