@@ -55,6 +55,8 @@
     <ClCompile Include="MaterialType.cpp" />
     <ClCompile Include="MeshRegistry.cpp" />
     <ClCompile Include="MipGenerator.cpp" />
+    <ClCompile Include="PageFile.cpp" />
+    <ClCompile Include="Paging.cpp" />
     <ClCompile Include="Passes\ComputeTestPass.cpp" />
     <ClCompile Include="Passes\DeferredPasses.cpp" />
     <ClCompile Include="PassGraph.cpp" />
@@ -72,6 +74,8 @@
     <ClInclude Include="MaterialType.h" />
     <ClInclude Include="MeshRegistry.h" />
     <ClInclude Include="MipGenerator.h" />
+    <ClInclude Include="PageFile.h" />
+    <ClInclude Include="Paging.h" />
     <ClInclude Include="Passes\ComputeTestPass.h" />
     <ClInclude Include="Passes\DeferredPasses.h" />
     <ClInclude Include="PassGraph.h" />
@@ -93,6 +97,11 @@
       <OutputName>cs_downsample</OutputName>
       <Arguments></Arguments>
     </ShaderSource>
+    <ShaderSource Include="Shaders\cs_paging_clear.hlsl">
+      <Profile>cs_6_1</Profile>
+      <OutputName>cs_paging_clear</OutputName>
+      <Arguments></Arguments>
+    </ShaderSource>
     <ShaderSource Include="Shaders\cs_skinning.hlsl">
       <Profile>cs_6_1</Profile>
       <OutputName>cs_skinning</OutputName>
@@ -107,6 +116,11 @@
       <Profile>ps_6_1</Profile>
       <OutputName>ps_gbuffer_flat</OutputName>
       <Arguments>-D SURFACE=flat</Arguments>
+    </ShaderSource>
+    <ShaderSource Include="Shaders\ps_gbuffer.hlsl">
+      <Profile>ps_6_1</Profile>
+      <OutputName>ps_gbuffer_paged_albedo</OutputName>
+      <Arguments>-D SURFACE=paged_albedo</Arguments>
     </ShaderSource>
     <ShaderSource Include="Shaders\ps_gbuffer.hlsl">
       <Profile>ps_6_1</Profile>
@@ -140,8 +154,10 @@
     </ShaderSource>
     <ShaderInclude Include="Shaders\Colour.hlsli" />
     <ShaderInclude Include="Shaders\Common.hlsli" />
+    <ShaderInclude Include="Shaders\Paging.hlsli" />
     <ShaderInclude Include="Shaders\Surface.hlsli" />
     <ShaderInclude Include="Shaders\Surfaces\flat.hlsli" />
+    <ShaderInclude Include="Shaders\Surfaces\paged_albedo.hlsli" />
     <ShaderInclude Include="Shaders\Surfaces\textured_pbr.hlsli" />
   </ItemGroup>
   <ItemGroup>

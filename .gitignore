@@ -413,3 +413,6 @@ Solution/Renderer/Shaders/Compiled/
 
 # Licensed character assets; never published
 TempAssets/
+
+# Page files and other caches built at runtime
+Cache/

@@ -5,12 +5,12 @@
 #include "RHI/RHIStructures.h"
 #include "RENDERER_API_Macro.h"
 #include "Data/Event.h"
+#include "PassGraph.h"
 #include "RenderScene.h"
 
 class Window;
 class PipelineExecutor;
 class PipelineLayout;
-class PassGraph;
 struct PreparedObject;
 
 // A pass recorded by code outside the renderer, such as a UI library, using its own native calls.
@@ -36,6 +36,14 @@ struct GpuPassTime
 {
     std::string Name;
     double Milliseconds = 0.0;
+};
+
+// Graph resources that every pass drawing surfaces must declare, because surface shaders may use
+// them. Services such as Paging fill the lists at startup.
+struct SurfacePassResources
+{
+    std::vector<PassInput> SampledReads;
+    std::vector<GraphBufferID> BufferWrites;
 };
 
 struct FrameStats
@@ -80,6 +88,9 @@ public:
     static std::vector<RHIStructures::DescriptorBinding> GetSceneSetBindings();
     static RHIStructures::ShaderStageMask GetSceneVisibleStages();
     static void BindSceneSet(PipelineExecutor* executor);
+    // The scene set and every other set a surface shader may read, for passes that draw meshes.
+    static void BindSurfaceSets(PipelineExecutor* executor);
+    static SurfacePassResources& GetSurfacePassResources();
     static PipelineExecutor* GetExecutor();
     static RHIStructures::Format GetBackBufferFormat();
 

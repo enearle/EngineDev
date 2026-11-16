@@ -1,0 +1,4 @@
+# The -paging-test plane. Its albedo is the paged test pattern, whose texture ID is set at runtime.
+type = paged_albedo
+metallic = 0
+roughness = 0.9

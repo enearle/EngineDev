@@ -8,6 +8,8 @@
 #include <string>
 #include "Game.h"
 #include "AnimationDemo.h"
+#include "PagingTest.h"
+#include "Paging.h"
 #include "imgui.h"
 #include "Camera.h"
 #include "CameraController.h"
@@ -38,6 +40,7 @@ static Light* sLight = nullptr;
 static CameraController* sCameraCon = nullptr;
 static std::vector<MaterialHandle> sMaterials;
 static DebugOverlay::PanelID sStatsPanel = 0;
+static DebugOverlay::PanelID sPagingPanel = 0;
 
 static bool IsSwitchPresent(const wchar_t* name)
 {
@@ -189,25 +192,9 @@ static void DrawRendererPanel()
     }
 }
 
-void GameInit()
+// The shells, the Derp, the character and its crowd, and the stress grid.
+static void BuildDemoScene()
 {
-    NoesisUILayer::Instance().NoesisInit();
-    DeferredPasses::Enlist();
-    if (IsSwitchPresent(L" -compute-test"))
-        ComputeTestPass::Enlist();
-
-    sCamera = new Camera(90, 1280.0f / 720.0f, { 0, 10, -8 });
-    Camera::ActiveCamera = sCamera;
-    sCamera->LookAtFloat3({});
-
-    RHIStructures::LightData lightData = {};
-    lightData.Position = XMFLOAT3(-20.0f, 20.0f, -20.0f);
-    lightData.Colour = XMFLOAT3(1.0f, 1.0f, 1.0f);
-    lightData.Intensity = 20.0f;
-    lightData.Radius = 50.0f;
-    lightData.Type = 1;
-    sLight = new Light(lightData, true);
-
     std::vector<MaterialHandle> shellMaterials = { MaterialRegistry::Enlist("shells_0"), MaterialRegistry::Enlist("shells_1") };
     std::vector<MaterialHandle> derpMaterials = { MaterialRegistry::Enlist("derp_0") };
     sMaterials = shellMaterials;
@@ -249,10 +236,43 @@ void GameInit()
 
     if (IsSwitchPresent(L" -stress"))
         BuildStressScene(shells, shellMaterials);
+}
+
+void GameInit()
+{
+    NoesisUILayer::Instance().NoesisInit();
+    DeferredPasses::Enlist();
+    if (IsSwitchPresent(L" -compute-test"))
+        ComputeTestPass::Enlist();
+
+    sCamera = new Camera(90, 1280.0f / 720.0f, { 0, 10, -8 });
+    Camera::ActiveCamera = sCamera;
+    sCamera->LookAtFloat3({});
+
+    RHIStructures::LightData lightData = {};
+    lightData.Position = XMFLOAT3(-20.0f, 20.0f, -20.0f);
+    lightData.Colour = XMFLOAT3(1.0f, 1.0f, 1.0f);
+    lightData.Intensity = 20.0f;
+    lightData.Radius = 50.0f;
+    lightData.Type = 1;
+    if (IsSwitchPresent(L" -paging-test"))
+    {
+        lightData.Position = XMFLOAT3(0.0f, 30.0f, 0.0f);
+        lightData.Intensity = 4.0f;
+        lightData.Radius = 120.0f;
+    }
+    sLight = new Light(lightData, true);
+
+    if (IsSwitchPresent(L" -paging-test"))
+        PagingTest::Start(std::filesystem::path(SwitchText(L" -paging-image", L"")).string());
+    else
+        BuildDemoScene();
+    Paging::SetTint(IsSwitchPresent(L" -paging-tint"));
 
     sCameraCon = new CameraController(sCamera, 5.0f);
     AnimationSystem::SetFrozen(IsSwitchPresent(L" -freeze-animation"));
     sStatsPanel = DebugOverlay::EnlistPanel("Renderer", DrawRendererPanel);
+    sPagingPanel = DebugOverlay::EnlistPanel("Paging", PagingTest::DrawPanel);
     GameTime::Init();
 }
 
@@ -263,6 +283,7 @@ void GameRunFrame(float /*dt*/)
     InputEventSystem::ProcessCommands(GameTime::GetDeltaTime());
     NoesisUILayer::Instance().NoesisUpdate(GameTime::GetDeltaTime());
     if (sCameraCon) sCameraCon->MoveCamera(GameTime::GetDeltaTime());
+    PagingTest::Update(static_cast<float>(GameTime::GetDeltaTime()), sCamera);
     AnimationDemo::Update(static_cast<float>(GameTime::GetDeltaTime()));
     AnimationSystem::Update(static_cast<float>(GameTime::GetDeltaTime()));
     SceneExtraction::ExtractFrame(sCamera, { sLight });
@@ -282,9 +303,11 @@ void GameShutdown()
         std::cout << " " << time.Name << " " << time.Milliseconds << ";";
     std::cout << std::endl;
     AnimationDemo::PrintResults();
+    PagingTest::PrintResults();
 
     Renderer::WaitForGpu();
     DebugOverlay::RetirePanel(sStatsPanel);
+    DebugOverlay::RetirePanel(sPagingPanel);
     ComputeTestPass::Retire();
     DeferredPasses::Retire();
     Renderer::GetRenderScene().Clear();
@@ -298,6 +321,7 @@ void GameShutdown()
     sMaterials.clear();
 
     AnimationDemo::Shutdown();
+    PagingTest::Shutdown();
     NoesisUILayer::Instance().NoesisShutdown();
 
     delete sCameraCon; sCameraCon = nullptr;

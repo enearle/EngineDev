@@ -350,6 +350,20 @@ Mesh GeometryImport::LoadSkinnedMesh(const aiMesh* mesh, const XMMATRIX& meshToM
     return Mesh(cache, mesh->mMaterialIndex);
 }
 
+SceneNode* GeometryImport::CreateMeshNode(const std::string& name, VertexCache* vertices, const std::string& assetDirectory)
+{
+    std::vector<Mesh> meshes;
+    meshes.emplace_back(vertices, 0);
+    MeshAsset* meshAsset = new MeshAsset(meshes, name);
+    std::filesystem::create_directories(assetDirectory);
+    ResourceManager::CreateAsset(meshAsset, ResourceType::Mesh, assetDirectory);
+
+    SceneNode* node = new SceneNode(name, XMMatrixIdentity());
+    MeshComponent* component = static_cast<MeshComponent*>(node->AddComponent(MeshComponentType));
+    component->SetMeshAsset(meshAsset);
+    return node;
+}
+
 SceneNode* GeometryImport::CreateMeshGroup(const std::string& sourcePath, const std::string& name, const XMMATRIX& transform, bool allowSkinned)
 {
     Assimp::Importer importer;

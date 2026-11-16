@@ -11,7 +11,7 @@ maintained copy and is updated as each phase lands.
 | 1. Frame structure | Done | Branch `Dev-2`, 14 November 2026. See "Phase 1 outcome" |
 | 2. Compute and GPU data | Done | Branch `Dev-2`, 14 November 2026. See "Phase 2 outcome" |
 | 3. Skeleton and animation | Done | Branch `Dev-2`, 16 November 2026. See "Phase 3 outcome" |
-| 4. Materials and paging | Not started | |
+| 4. Materials and paging | Done | Branch `Dev-2`, 16 November 2026. See "Phase 4 outcome" |
 | 5. Procedural skin on the character | Not started | |
 | 6. Subdivision and deep zoom | Not started | Optional |
 
@@ -369,6 +369,172 @@ Carried, not part of Phase 3:
   Cooked assets are the fix.
 - The open and carried items under "Phase 2 outcome".
 
+## Phase 4 outcome
+
+Finished on `Dev-2` on 16 November 2026, following `Docs/Handoff-Phase4.md`. Three commits: "Phase 3
+corrections" (step 1), "Phase 4: materials" (steps 2 and 3) and "Phase 4: paging" (steps 4 to 8).
+
+**Gate.** Debug, validation clean, `-paging-test`:
+
+- Vulkan: "Paging test: 16384 x 16384, 21845 pages, 256 slots; 425 filled, 169 evicted, peak 256
+  resident; longest wait 10 frames; 300 pages verified; final view fully resident".
+- D3D12: the same with 432 filled, 176 evicted and a longest wait of 12 frames. The camera path is
+  timed by the clock, so the counts move by a few pages between runs.
+- `-paging-image ../Engine/Textures/shells_0_diff.png` runs the same test on a page file cut by
+  `PageFile::Build`: 1024 x 1024, 85 pages, 54 filled and all 54 verified, on both.
+
+**Corrections** (step 1, findings 1 to 5 and 8)
+
+- Overlay viewport: `VulkanPipelineExecutor::BeginOverlayPass` sets the full viewport, and the Vulkan
+  branch of `NoesisRenderOnscreen` sets the game viewport when there is one, through the executor's
+  `SetViewport`. Frozen `-compute-test` captures now match between backends over the scene (mean
+  difference 0.44) and differ only in the animated test square and the timing text.
+- DPI: Standalone and Editor declare per-monitor DPI awareness before creating the window. Dear
+  ImGui scales its style and fonts by the window's DPI, and the Editor's side panel with them.
+- The frame ring has transfer-source usage. Vulkan requires and enables `fragmentStoresAndAtomics`.
+- `PassGraph::ImportImage` takes the image's current layout as well as its resting layout.
+- Not among the findings: input was polled with `GetAsyncKeyState` whichever window was in front,
+  so typing in another program moved the camera. Keys and the mouse now count only while the game's
+  window is in front.
+- For unattended runs, `-monitor N` opens the window on display N (0 is the primary, the rest from
+  left to right), shrunk to fit its work area, and `-no-focus` shows it without activating it.
+  `Tools/RunAndCapture.ps1` is per-monitor DPI aware and brings the window forward only with
+  `-Foreground`. Every run in this phase was on the second display.
+- Finding 8: the Blender export with "Raise" and "Bow" is kept as `TempAssets/CharBlendClips.fbx`,
+  and `-animation-test` loads it when it is there, printing "2 clips from the file".
+  `CharBlend.fbx`, the default otherwise, still has no clips.
+
+**Materials** (step 2)
+
+- `MaterialType`: a name, the fields of its parameter block, laid out with HLSL cbuffer packing,
+  and its texture slots. `textured_pbr`, `flat` and `paged_albedo` are registered at startup; at most
+  8 types, the 3 bits of the batch key.
+- `Shaders/Surface.hlsli` declares `SurfaceInput`, `Surface` and `EvaluateSurface`. Each file in
+  `Shaders/Surfaces` is compiled through `ps_gbuffer.hlsl` with `-D SURFACE=<name>` into
+  `ps_gbuffer_<name>`; `Tools/GenerateProjects.py` writes one shader item per surface file.
+  `ps_pbr.hlsl` is gone.
+- One material set for every type: a 256-byte dynamic uniform buffer and eight sampled images,
+  unused ones holding a 1 x 1 white image. The block is copied into the frame ring the first time a
+  material is bound in a frame, so `MaterialRegistry::SetParameter` can be called at any time.
+- Material files: `Engine/Materials/<name>.material`, `key = value` lines. Without one,
+  `MaterialRegistry::Enlist` uses the texture file-name convention as `textured_pbr`, and without
+  those textures a flat grey material, saying so on stdout. `Material::MaterialFormat`,
+  `PreBufferCache` and the duplicated loading code are deleted.
+- The batch key is material type, skinned bit, material, mesh, object. `DeferredPasses` builds one
+  G-buffer pipeline per registered type, and the draw list binds a pipeline when the type changes.
+- Import (finding 6): meshes keep their `aiMaterial` name, saved in the mesh asset, and
+  `MeshComponent::AssignMaterialsByName` enlists one material per submesh and retires them with the
+  component. The character uses it; its seven materials have neither files nor textures, so they
+  are flat grey. The shells and the Derp still assign by list order, because their material names
+  ("12_gauge_00_buck_HP", "Material") are not their texture names.
+- Check: with the character left out (`-character none.fbx`), frozen Standalone, Editor and
+  `-stress` captures before and after the step match on both backends (mean difference 0.00 to
+  0.05).
+
+**Colour** (step 3, finding 7)
+
+- `textured_pbr` decodes its albedo with the sRGB curve, `ps_gbuffer` encodes albedo into the 8-bit
+  G-buffer, and the lighting pass decodes it, lights in linear colour and encodes its clamped result
+  for the `UNORM` back buffer. `cs_downsample` averages colour textures as linear light; the texture
+  slot says which are colour. The curve is in `Shaders/Colour.hlsli`.
+- New frozen reference captures were taken on both backends. Vulkan against D3D12: 0.18 in the
+  Editor, 1.71 in Standalone, where the Noesis panel is caught in different states.
+
+**Paging** (steps 4 to 7)
+
+- `Renderer/Paging`, started by `Renderer` after `Skinning`. Pages are 128 x 128 with a 4-texel
+  gutter; level 0 is one page. A key is texture, level, x and y, with 32-bit x and y.
+- Atlas: 16 x 16 slots of 136 x 136 texels (2176 x 2176, 19 MB), one image per format in
+  `PagingSettings::AtlasFormats` (one `R8G8B8A8_UNORM` image today), imported into the graph as
+  `Undefined` with `ShaderReadOnly` as its resting layout.
+- Page table: the CPU owns it and writes a hash into the frame ring each frame: 1,024 entries of x,
+  y, texture << 8 | level and slot, every page within four steps of its hash, coarse levels placed
+  first. A page that cannot be placed waits for a later frame. A second array holds two user words
+  per slot (`Paging::SetPageUserWords`).
+- `Shaders/Paging.hlsli` holds the only code that knows the table: `SamplePagedTexture` wants the
+  level whose texels cover one to two pixels, probes it and three parents, falls back to the pinned
+  level 0, and samples the atlas once, bilinear (`s2`).
+- Feedback: two words per 8 x 8 block (level and x, texture and y, 24 bits of each coordinate),
+  written by the G-buffer pixel shader for one pixel of each block, chosen by a jitter that visits
+  all 64 in 64 frames. A compute pass clears it first, and `Readback::RequestBuffer` returns it, 3
+  frames later in Debug at 60 Hz. `paged_albedo` is compiled with `[earlydepthstencil]`.
+- The paging set is set 3 of the scene layout: the constants, the frame ring as the table, the
+  feedback buffer and the atlas images. `Renderer::BindSurfaceSets` binds it with the scene set for
+  every mesh pass. `Renderer::GetSurfacePassResources` lists the atlas and the feedback buffer, and
+  `DeferredPasses` adds them to the G-buffer pass at `Enlist` without knowing what they are.
+- Each frame, after `Readback::DeliverCompleted`: decode the feedback; stamp resident pages and
+  their ancestors as used; queue the coarsest missing ancestor of each missing page (at most 64
+  queued, coarse levels and the most requested first, cancelled after 60 frames unwanted); fill at
+  most 16 ready pages whose parent is resident, each into a free slot or the slot of the least
+  recently used page that is unpinned, has no resident child and was not used this frame, or not at
+  all; write the table.
+- `PageProducer`: `Begin`, `IsReady`, `Fill` and `Cancel`. `Fill` runs in the "Paging fill" compute
+  pass, which declares the atlas as a storage write and moves it to `TransferDst` around the fills.
+- `PageFile`: a header, a level directory, then tiles of 136 x 136 raw texels, coarsest level
+  first. `Build` cuts any square power-of-two image `stb_image` loads, with box-filtered levels.
+  `BuildTestPattern` writes the 16,384 x 16,384 pattern tile by tile: level in red, position in
+  green and blue, 8-texel checks and white page borders. Both write into `Cache/Pages/`, which git
+  ignores, and skip a file that is up to date. The test file is 1,616,180,564 bytes and took under
+  two minutes to write in Debug.
+- `FilePageProducer`: one IO thread reads tiles into pooled buffers, and `Fill` copies a tile into
+  the frame ring and calls `CopyBufferToImage`, its first client (finding 3).
+- Without a paged texture the service does nothing: the clear and fill passes return at once and no
+  feedback is read back.
+- `-paging-test` (`Game/PagingTest`): a 60 x 60 plane with the `paging_test` material, a camera path
+  (the whole plane, a dolly to a close-up, a 40-unit pan, a pull back, 4 seconds still), then the
+  game quits. Up to 300 fills are read back from the atlas in the frame they are filled and compared
+  with their tiles. `-paging-image path` runs it on a page file built from an image, and
+  `-paging-tint` colours each pixel by the level it sampled. The "Paging" panel shows textures,
+  resident pages against slots, requests, fills and evictions this frame, the IO queue, unplaced
+  pages, feedback latency, fill GPU ms and update CPU ms.
+- `GeometryImport::CreateMeshNode` makes a scene node from vertices made in code.
+
+**Checked**
+
+- Debug, after each step: Standalone and Editor `-play`, `-stress -novsync`, `-compute-test`,
+  `-animation-test` and `-crowd 100` on both backends, and `-paging-test` on both from step 4. Every
+  run exits 0, and stderr holds nothing but "DirectX debugging enabled." and the Noesis message.
+- `-animation-test`: bind pose identity for 144 joints, 2 clips from the file, 256 vertices
+  matched, largest error 4.58e-05, on both.
+- Release `-paging-test -novsync`, average and peak over every frame after the first second:
+
+  | | Vulkan | D3D12 |
+  | --- | --- | --- |
+  | Frames | 12,395 | 53,506 |
+  | Frame | 1.86 and 6.9 ms | 0.43 and 8.2 ms |
+  | Paging update, CPU | 0.010 and 0.19 ms | 0.010 and 0.68 ms |
+  | Fill pass, GPU | 0.002 and 0.36 ms | 0.0002 and 0.06 ms |
+  | Longest wait | 13 frames | 19 frames |
+
+  Waits are counted in frames, so the faster D3D12 run waits more of them for the same reads.
+- Debug `-stress -novsync` on the second display took 41 to 48 ms a frame on Vulkan and 63 to 79 ms
+  on D3D12 in every step, step 1 included, against 32 and 54 ms in Phase 3 on the primary display.
+  The cause was not looked into.
+
+Open items:
+
+- Filtering is bilinear within one level: no anisotropic filtering, and a visible step when a finer
+  page arrives, with no fade-in. At grazing angles the far plane is served from coarse levels.
+- One feedback sample per block per frame, so a material with several paged textures takes turns,
+  and a page seen by a few pixels can wait up to 64 frames to be asked for.
+- A material's paged texture is set by code (`paged_texture` holds a Paging texture ID), not named in
+  its file.
+- `PageFile::Build` averages encoded colour, not linear light, and needs a square power-of-two image.
+- A producer that dispatches compute must move the atlas from `TransferDst` to `Storage` and back.
+- The character's materials are flat grey until its textures are supplied.
+- Material types are capped at 8 by the batch key.
+
+Carried, not part of Phase 4:
+
+- Vulkan device selection requires a discrete GPU.
+- Every character is animated and skinned whether or not a view sees it, and the skinning pool caps
+  a crowd of this character at 21.
+- Every launch re-imports the FBX files and rewrites their `.asset` files. The page file is built
+  once and reused, which is the pattern cooked assets should follow.
+- `ImageAsset` and `MaterialAsset` are still stubs.
+- Flexible vertex formats, a second UV set and non-overlapping UVs for the character: Phase 5.
+- The open and carried items under "Phase 2 outcome" and "Phase 3 outcome".
+
 ## Verdict
 
 EngineDev is a viable starting point: keep it. The slow, unglamorous parts already work on both backends, and most of what the cache system needs is additive.
@@ -393,9 +559,9 @@ The RHI is real and symmetric across both backends; everything above it is place
 | Draws | Retained | Registered once at load into per-variant bins. No removal, culling, sorting, instancing or batching |
 | Resources | Partial | Buffers and images behind integer IDs. Images must be uploaded from CPU data, with 1 mip and 1 layer. Buffers are never freed at runtime, and each resource is its own device allocation |
 | Descriptors | Partial | Sets per pipeline and slot. Dynamic uniform buffers work on both backends. Storage buffers and storage images are never written on the Vulkan side |
-| Lighting | Working | Deferred PBR with 4 lights and variance shadow maps rendered with multiview |
-| Skinning | Working | Since Phase 3: a skeleton imported from the node tree, clips, an animator with fades, and compute skinning once per frame into a pool drawn with the static pipelines. Clip import from a file is untested |
-| Import | Working | Assimp for FBX, stb_image for textures. A material is one of two hard-coded texture layouts, found by file name |
+| Lighting | Working | Deferred PBR with 4 lights and variance shadow maps, one pass per shadow layer. Since Phase 4 in linear colour: albedo is decoded from sRGB, and the clamped result is encoded for the `UNORM` back buffer; no floating-point target or tone mapping |
+| Skinning | Working | Since Phase 3: a skeleton imported from the node tree, clips, an animator with fades, and compute skinning once per frame into a pool drawn with the static pipelines. Clip import is tested on a Blender export with two clips, `TempAssets/CharBlendClips.fbx` |
+| Import | Working | Assimp for FBX, stb_image for textures. Since Phase 4 a material has a type (surface shader, parameter block, texture slots) and is read from `Engine/Materials/<name>.material`, falling back to the texture file-name convention, then to flat grey. Meshes keep their file's material names, and components can assign materials by them |
 | UI | Working | NoesisGUI on both backends, with Noesis-specific calls inside the RHI executor |
 | Engine side | Placeholder | TempGameObject, a static active camera, and an input command system. About 1,600 lines |
 | Build and repo | Fragile | Visual Studio solution only. One absolute user path in the Engine project. The Noesis SDK is 5,585 of the repo's 5,829 files (528 MB). Compiled shaders are committed. No README or tests |
@@ -553,4 +719,5 @@ Game code talks to a scene, and the renderer reads a snapshot of it. Nothing out
 - **Noesis licence.** The SDK's LICENSE.txt restricts distributing its source, and the full SDK, including Src, is in the public repo. It is worth reading before the next push.
 - **Pass graph scope.** It is easy to over-build. The target is ordering, transient attachments and barriers, with no automatic pass merging or async compute.
 - **Character asset.** Phase 5 needs a humanoid with clean, non-overlapping UVs and at least two clips. Which character do you intend to use?
-- **Carried over from the cache design.** Page table form, chart seams and the subdivision method are still open there.
+- **Carried over from the cache design.** Chart seams and the subdivision method are still open there.
+- **Page table form.** Settled in Phase 4 in favour of a hash: Phase 5 needs unbounded depth and several close-up regions at once, which a fixed window cannot give. The CPU writes it into the frame ring each frame, and `Shaders/Paging.hlsli` is the only code that knows its form, so a windowed table can replace it there.

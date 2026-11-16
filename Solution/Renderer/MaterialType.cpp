@@ -43,6 +43,13 @@ void MaterialTypes::RegisterBuiltInTypes()
         { "metallic", 1, { 0.0f } },
         { "roughness", 1, { 0.6f } },
     } });
+
+    // The texture is a Paging texture ID, set at runtime once the texture is enlisted.
+    Register({ .Name = "paged_albedo", .Fields = {
+        { "paged_texture", 1, { 0.0f } },
+        { "metallic", 1, { 0.0f } },
+        { "roughness", 1, { 0.8f } },
+    } });
 }
 
 void MaterialTypes::Clear()

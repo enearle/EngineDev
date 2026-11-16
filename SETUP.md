@@ -160,11 +160,15 @@ adds 10,000 objects, `-freeze-animation` holds the animated mesh still, `-novsyn
 off (it is on by default), and `-compute-test` runs the Phase 2 gate test, which prints
 `Compute test: N readbacks matched, latency A to B frames` on exit. `-animation-test` runs the
 Phase 3 checks (the bind pose and GPU skinning against the CPU), and `-crowd N` adds N animated
-copies of the character, 100 when N is left out.
+copies of the character, 100 when N is left out. `-paging-test` runs the Phase 4 gate and prints
+`Paging test: ...` when its camera path ends; `-paging-tint` colours paged surfaces by level.
+`-monitor N` and `-no-focus` open the window on another display without taking focus, so test runs
+do not interrupt work on the main one.
 
 **Character.** The animated character is licensed and is not in the repository. Put it at
 `TempAssets/CharBlend.fbx` (ignored by git), exported from Blender, or point `-character path` at
-another file. Without it the Derp stands in. The game also prints the last frame's statistics,
+another file. Without it the Derp stands in. `-animation-test` loads `TempAssets/CharBlendClips.fbx`
+instead when it is there: a Blender export of the same character with two clips. The game also prints the last frame's statistics,
 GPU times per pass and animation figures on exit.
 
 **Validation.** Debug builds enable the Vulkan validation layer and the Direct3D 12 debug layer; both
@@ -173,6 +177,10 @@ stderr, the exit code and a screenshot, which is the quickest way to check both 
 
 **Generated files.** Loading the demo meshes writes `*.asset` files next to the FBX files in
 `Engine/Meshes/` and a `registry.bin` in the working directory. Both are gitignored.
+
+**Page files.** `-paging-test` writes `Cache/Pages/test_pattern.pages` the first time it runs:
+1.6 GB, under two minutes in Debug. `Cache/` is gitignored, and the file is reused while it is
+intact; delete it to rebuild.
 
 ---
 
@@ -184,5 +192,6 @@ stderr, the exit code and a screenshot, which is the quickest way to check both 
 - Noesis logs `Image not found '../Engine/MyXAML/Assets/tarkov.png'` for `MainPage.xaml`. The image
   is not in the repository; this is harmless.
 - Meshes and textures upload synchronously: each upload waits for the GPU.
-- `ImageAsset` and `MaterialAsset` are stubs from unfinished asset work: textures are still loaded
-  by file name through `Material`, and `ResourceManager::Import` only handles meshes.
+- `ImageAsset` and `MaterialAsset` are stubs from unfinished asset work: materials are loaded by
+  name through `MaterialRegistry` (a `.material` file or the texture file-name convention), and
+  `ResourceManager::Import` only handles meshes.

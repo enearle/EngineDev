@@ -111,7 +111,7 @@ void DrawList::Record(PipelineExecutor* executor, std::span<Pipeline* const> pip
         if (pipeline != boundPipeline)
         {
             executor->BindPipeline(pipeline);
-            Renderer::BindSceneSet(executor);
+            Renderer::BindSurfaceSets(executor);
             boundPipeline = pipeline;
             boundMaterial = {};
         }

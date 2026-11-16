@@ -15,4 +15,6 @@ public:
     static Mesh LoadSkinnedMesh(const aiMesh* mesh, const DirectX::XMMATRIX& meshToModel, const std::unordered_map<std::string, int32_t>& jointByName);
     // A skinned model gets a skeleton, an AnimatorComponent on the returned root and one state per clip in the file.
     static SceneNode* CreateMeshGroup(const std::string& sourcePath, const std::string& name, const DirectX::XMMATRIX& transform, bool allowSkinned = true);
+    // A root node with one static mesh made in code; its asset file is written to assetDirectory.
+    static SceneNode* CreateMeshNode(const std::string& name, VertexCache* vertices, const std::string& assetDirectory);
 };

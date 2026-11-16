@@ -51,6 +51,11 @@ because runtime paths are relative to it.
 | `-compute-test` | Run the Phase 2 gate test; prints `Compute test: ...` on exit |
 | `-animation-test` | Run the Phase 3 checks; prints `Animation test: ...` and `Skinning test: ...` on exit |
 | `-crowd N` | Add N animated copies of the character (100 when N is left out, fewer if the skinning pool cannot hold them), cross-fading on a timer |
-| `-character path` | Load the character from path instead of `../../TempAssets/CharBlend.fbx` |
+| `-character path` | Load the character from path instead of `../../TempAssets/CharBlend.fbx` (`CharBlendClips.fbx` with `-animation-test`, when present) |
+| `-paging-test` | Run the Phase 4 gate: a paged 16,384 x 16,384 texture on a plane, a scripted camera, then quit; prints `Paging test: ...`. Builds `Cache/Pages/test_pattern.pages` (1.6 GB) on first use |
+| `-paging-image path` | With `-paging-test`, cut the image at path into a page file and show it instead |
+| `-paging-tint` | Colour paged surfaces by the level they sampled |
+| `-monitor N` | Open the window on display N (0 is the primary, then left to right), shrunk to fit |
+| `-no-focus` | Show the window without taking focus, for unattended runs |
 
 In Debug builds the Vulkan validation layer and the Direct3D 12 debug layer print to stderr.

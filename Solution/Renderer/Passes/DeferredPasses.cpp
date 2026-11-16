@@ -186,6 +186,9 @@ void DeferredPasses::Enlist()
     gBuffer.HasDepthWrite = true;
     gBuffer.DepthWrite = { Depth, AttachmentLoadOp::Clear };
     gBuffer.BufferReads = { { Skinning::GetPool(), BufferState::VertexBuffer } };
+    const SurfacePassResources& surfaces = Renderer::GetSurfacePassResources();
+    gBuffer.SampledReads = surfaces.SampledReads;
+    gBuffer.BufferWrites = surfaces.BufferWrites;
     gBuffer.Execute = ExecuteGBufferPass;
 
     PassDesc lighting;

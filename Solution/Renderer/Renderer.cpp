@@ -10,6 +10,7 @@
 #include "PassGraph.h"
 #include "Readback.h"
 #include "MipGenerator.h"
+#include "Paging.h"
 #include "Skinning.h"
 #include "RHI/BufferAllocator.h"
 #include "RHI/PipelineExecutor.h"
@@ -34,6 +35,7 @@ static std::vector<PreparedObject> PreparedObjects;
 static PipelineLayout* SceneLayout = nullptr;
 static DescriptorSetHandle SceneSet = {};
 static uint32_t FrameConstantsOffset = 0;
+static SurfacePassResources SurfaceResources;
 
 struct EnlistedExternalPass
 {
@@ -88,6 +90,17 @@ void Renderer::BindSceneSet(PipelineExecutor* executor)
     executor->BindDescriptorSet(SceneSet, offsets);
 }
 
+void Renderer::BindSurfaceSets(PipelineExecutor* executor)
+{
+    BindSceneSet(executor);
+    Paging::BindPagingSet(executor);
+}
+
+SurfacePassResources& Renderer::GetSurfacePassResources()
+{
+    return SurfaceResources;
+}
+
 void Renderer::ReportPassStats(const std::string& name, uint32_t instances, uint32_t batches, uint32_t drawCalls)
 {
     StatsInProgress.Passes.push_back({ name, instances, batches, drawCalls });
@@ -131,12 +144,15 @@ void Renderer::Start(Window* mainWindow)
     Readback::Start();
     MipGenerator::Start();
     Skinning::Start();
+    Paging::Start();
 
     MaterialTypes::RegisterBuiltInTypes();
     ResourceLayout sceneResources;
     sceneResources.VisibleStages = GetSceneVisibleStages();
     sceneResources.Bindings = GetSceneSetBindings();
     for (const DescriptorBinding& binding : MaterialRegistry::GetMaterialSetBindings())
+        sceneResources.Bindings.push_back(binding);
+    for (const DescriptorBinding& binding : Paging::GetPagingSetBindings())
         sceneResources.Bindings.push_back(binding);
 
     ShaderStageMask constantStages(0);
@@ -247,6 +263,7 @@ void Renderer::DrawFrame()
         StatsInProgress.GpuPasses.push_back({ timer.Name, timer.Milliseconds });
 
     Readback::DeliverCompleted();
+    Paging::Update();
 
     for (EnlistedExternalPass& external : ExternalPasses)
         if (external.Pass.Prepare)
@@ -274,6 +291,8 @@ int Renderer::End()
     Skinning::Shutdown();
     MaterialRegistry::Shutdown();
     MaterialTypes::Clear();
+    Paging::Shutdown();
+    SurfaceResources = {};
     Graph->Clear();
     delete Graph;
     Graph = nullptr;
