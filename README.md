@@ -50,6 +50,7 @@ because runtime paths are relative to it.
 | `-novsync` | Present without waiting for vertical blank, on both backends |
 | `-compute-test` | Run the Phase 2 gate test; prints `Compute test: ...` on exit |
 | `-animation-test` | Run the Phase 3 checks; prints `Animation test: ...` and `Skinning test: ...` on exit |
-| `-crowd N` | Add N animated copies of the character (100 when N is left out), cross-fading on a timer |
+| `-crowd N` | Add N animated copies of the character (100 when N is left out, fewer if the skinning pool cannot hold them), cross-fading on a timer |
+| `-character path` | Load the character from path instead of `../../TempAssets/CharBlend.fbx` |
 
 In Debug builds the Vulkan validation layer and the Direct3D 12 debug layer print to stderr.

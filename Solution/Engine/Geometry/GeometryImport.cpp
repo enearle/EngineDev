@@ -206,10 +206,12 @@ static std::vector<std::pair<std::string, Clip*>> LoadClips(const ImportState& s
     return clips;
 }
 
-static SceneNode* LoadNode(const aiNode* node, const XMMATRIX& local, SceneNode* parent, ImportState& state)
+// Joints and the nodes below them become no scene nodes; any of them with meshes becomes one under
+// the model root, at its bind-pose model transform.
+static SceneNode* LoadNode(const aiNode* node, const XMMATRIX& local, SceneNode* parent, bool isBelowJoint, ImportState& state)
 {
     const aiScene* scene = state.Scene;
-    bool isJoint = state.IsJoint(node);
+    bool isDetached = isBelowJoint || state.IsJoint(node);
     std::string nodeName = node->mName.length ? std::string(node->mName.C_Str()) : state.Name;
 
     std::vector<Mesh> meshes;
@@ -221,16 +223,15 @@ static SceneNode* LoadNode(const aiNode* node, const XMMATRIX& local, SceneNode*
             meshes.emplace_back(GeometryImport::LoadSkinnedMesh(assimpMesh, state.GetModel(node), state.JointByName));
         else
         {
-            if (isJoint)
-                std::cout << "Import warning: mesh on joint " << nodeName << " is attached to the model root at its bind position" << std::endl;
+            if (isDetached)
+                std::cout << "Import warning: mesh below joint " << nodeName << " is attached to the model root at its bind position" << std::endl;
             meshes.emplace_back(GeometryImport::LoadMesh(assimpMesh));
         }
     }
 
-    // Joint nodes become no scene node; what hangs from them is attached to the model root.
     SceneNode* sceneNode = nullptr;
-    if (!isJoint || !meshes.empty())
-        sceneNode = new SceneNode(nodeName, isJoint ? state.GetModel(node) : local, isJoint ? state.Root : parent);
+    if (!isDetached || !meshes.empty())
+        sceneNode = new SceneNode(nodeName, isDetached ? state.GetModel(node) : local, isDetached ? state.Root : parent);
     if (!state.Root)
         state.Root = sceneNode;
 
@@ -251,10 +252,10 @@ static SceneNode* LoadNode(const aiNode* node, const XMMATRIX& local, SceneNode*
     for (uint32_t i = 0; i < node->mNumChildren; i++)
     {
         const aiNode* child = node->mChildren[i];
-        if (isJoint)
-            LoadNode(child, state.GetModel(child), state.Root, state);
+        if (isDetached)
+            LoadNode(child, state.GetModel(child), state.Root, true, state);
         else
-            LoadNode(child, ToMatrix(child->mTransformation), sceneNode, state);
+            LoadNode(child, ToMatrix(child->mTransformation), sceneNode, false, state);
     }
     return sceneNode;
 }
@@ -357,7 +358,7 @@ SceneNode* GeometryImport::CreateMeshGroup(const std::string& sourcePath, const 
         aiProcess_Triangulate | aiProcess_JoinIdenticalVertices |
         aiProcess_CalcTangentSpace | aiProcess_GenSmoothNormals | aiProcess_ConvertToLeftHanded);
     if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode)
-        throw std::runtime_error("Failed to load model: " + sourcePath);
+        throw std::runtime_error("Failed to load model " + sourcePath + ": " + importer.GetErrorString());
 
     ImportState state;
     state.Scene = scene;
@@ -367,7 +368,7 @@ SceneNode* GeometryImport::CreateMeshGroup(const std::string& sourcePath, const 
     if (allowSkinned)
         BuildSkeleton(state);
 
-    SceneNode* root = LoadNode(scene->mRootNode, ToMatrix(scene->mRootNode->mTransformation) * transform, nullptr, state);
+    SceneNode* root = LoadNode(scene->mRootNode, ToMatrix(scene->mRootNode->mTransformation) * transform, nullptr, false, state);
 
     if (state.ModelSkeleton)
     {

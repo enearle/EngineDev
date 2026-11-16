@@ -13,10 +13,14 @@
 class RENDERER_API Skinning
 {
 public:
+    // D3D12 buffer views hold at most 2^27 elements, and the pool is viewed as 4-byte words of
+    // 56-byte vertices.
+    static constexpr uint32_t MaxPoolVertices = static_cast<uint32_t>((1ull << 29) / 56);
+
     static void Start();
     static void Shutdown();
 
-    // The source mesh must have the Skinned vertex layout.
+    // The source mesh must have the Skinned vertex layout. Throws when the pool cannot hold it.
     static SkinnedMeshHandle Enlist(MeshHandle sourceMesh);
     static void Retire(SkinnedMeshHandle mesh);
     static bool IsLive(SkinnedMeshHandle mesh);

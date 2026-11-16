@@ -252,8 +252,9 @@ open, and leave Phase 3 marked in progress.
 
 ## Status
 
-In progress on 14 November 2026. "Phase 2 corrections" (step 1) and "Phase 3" (steps 2 to 5 and 7)
-are committed on `Dev-2`. Step 6 waits for a character with at least two clips; until then the Derp
-runs two clips built in code, and `-crowd` uses it. Skeleton and clip assets are written as `.asset`
-files, and joints are not scene nodes, as proposed above. See "Phase 3 outcome" in
+Done on 16 November 2026. "Phase 2 corrections" (step 1), "Phase 3" (steps 2 to 5 and 7) and "Phase
+3: the character" (step 6) are committed on `Dev-2`. The owner supplied a Genesis 9 character in
+`TempAssets`, kept out of git for its licence. Its FBX does not import in Assimp and has no clips, so
+the gate ran on a Blender re-export with two scripted actions. Skeleton and clip assets are written
+as `.asset` files, and joints are not scene nodes, as proposed above. See "Phase 3 outcome" in
 `Docs/RendererPlan.md`.

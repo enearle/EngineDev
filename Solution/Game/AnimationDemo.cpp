@@ -161,11 +161,67 @@ static XMFLOAT4 RotateFromBind(const JointTransform& bind, FXMVECTOR axis, float
     return rotation;
 }
 
-// Two looping clips on the last three joints, both at the bind pose at time 0: "Dance" moves the
-// first of them round a circle and bends the other two about their Z axes; "Sway" bends the first
-// about its X axis.
+struct JointSwing
+{
+    const char* Joint;
+    XMFLOAT3 Axis;          // In the joint's own space
+    float Amplitude;        // Radians
+};
+
+// A looping clip that swings each named joint about an axis by Amplitude * sin, so it is at the bind
+// pose at time 0. Rotations only, so it survives changes to the character's proportions. Null when
+// the skeleton has none of the joints.
+static Clip* BuildSwingClip(const Skeleton& skeleton, const std::string& name, float seconds, std::initializer_list<JointSwing> swings)
+{
+    constexpr uint32_t KeyCount = 31;
+    std::vector<JointTrack> tracks(skeleton.GetJointCount());
+    bool hasJoint = false;
+    for (const JointSwing& swing : swings)
+    {
+        int32_t joint = skeleton.FindJoint(swing.Joint);
+        if (joint < 0)
+            continue;
+        hasJoint = true;
+        for (uint32_t k = 0; k < KeyCount; k++)
+        {
+            float time = seconds * k / (KeyCount - 1);
+            float angle = swing.Amplitude * std::sin(XM_2PI * time / seconds);
+            tracks[joint].Rotations.push_back({ time, RotateFromBind(skeleton.GetJoint(joint).BindLocal, XMLoadFloat3(&swing.Axis), angle) });
+        }
+    }
+    return hasJoint ? new Clip(name, seconds, std::move(tracks)) : nullptr;
+}
+
+// Clips for a Genesis 9 skeleton, found by joint name.
+static bool AddNamedJointClips(AnimatorComponent* animator)
+{
+    const Skeleton& skeleton = *animator->GetSkeleton();
+    Clip* wave = BuildSwingClip(skeleton, "Wave", 2.0f, {
+        { "r_upperarm", { 0, 0, 1 }, 0.6f }, { "r_forearm", { 1, 0, 0 }, 0.5f }, { "neck1", { 0, 1, 0 }, 0.15f } });
+    Clip* sway = BuildSwingClip(skeleton, "Sway", 3.0f, {
+        { "spine2", { 0, 0, 1 }, 0.12f }, { "neck1", { 0, 0, 1 }, -0.12f }, { "l_upperarm", { 0, 0, 1 }, 0.25f },
+        { "r_upperarm", { 0, 0, 1 }, -0.25f } });
+    if (!wave || !sway)
+    {
+        delete wave;
+        delete sway;
+        return false;
+    }
+    CodeClips.push_back(wave);
+    CodeClips.push_back(sway);
+    animator->AddState({ "Wave", wave });
+    animator->AddState({ "Sway", sway });
+    return true;
+}
+
+// Two looping clips, both at the bind pose at time 0. A Genesis 9 skeleton gets "Wave" and "Sway";
+// any other gets clips on its last three joints: "Dance" moves the first of them round a circle and
+// bends the other two about their Z axes, "Sway" bends the first about its X axis.
 static void AddCodeClips(AnimatorComponent* animator)
 {
+    if (AddNamedJointClips(animator))
+        return;
+
     const Skeleton& skeleton = *animator->GetSkeleton();
     uint32_t count = skeleton.GetJointCount();
     if (count < 3)
@@ -220,6 +276,18 @@ static SceneNode* CopyHierarchy(SceneNode* source, SceneNode* parent, const XMMA
 }
 
 // Copies of the character on a square grid behind it, each starting its clip at a different time.
+static uint32_t CountSkinnedVertices(SceneNode* node)
+{
+    uint32_t count = 0;
+    if (MeshComponent* component = static_cast<MeshComponent*>(node->GetComponent(MeshComponentType)))
+        for (uint32_t i = 0; i < component->GetMeshAsset()->GetMeshCount(); i++)
+            if (component->GetMeshAsset()->GetMesh(i).IsSkinned())
+                count += component->GetMeshAsset()->GetMesh(i).GetVertexCount();
+    for (SceneNode* child : node->GetChildren())
+        count += CountSkinnedVertices(child);
+    return count;
+}
+
 static void BuildCrowd(SceneNode* character, AnimatorComponent* animator, const std::vector<MaterialHandle>& materials, uint32_t count)
 {
     XMMATRIX world = character->GetWorldMatrix();
@@ -244,29 +312,53 @@ static void BuildCrowd(SceneNode* character, AnimatorComponent* animator, const 
     }
 }
 
-void AnimationDemo::Start(SceneNode* character, const std::vector<MaterialHandle>& materials, uint32_t crowdCount, bool isAnimationTest)
+// A character with fewer than two clips in its file gets clips built in code, so fades can be seen.
+static AnimatorComponent* StartCharacter(SceneNode* character)
 {
-    IsTestRunning = isAnimationTest;
-    AnimationPanel = DebugOverlay::EnlistPanel("Animation", DrawAnimationPanel);
     AnimatorComponent* animator = static_cast<AnimatorComponent*>(character->GetComponent(AnimatorComponentType));
-    if (isAnimationTest)
-    {
-        CheckBindPose(animator);
-        FindSkinnedSubmesh(character);
-        Readback::WatchBuffer(Skinning::GetPool());
-    }
     if (!animator || !animator->GetSkeleton())
-        return;
-
-    // A file with fewer than two clips gets the clips built in code, so fades can be seen.
+        return nullptr;
     if (animator->GetStates().size() < 2)
         AddCodeClips(animator);
     if (animator->GetStates().empty())
-        return;
+        return nullptr;
 
     animator->Play(animator->GetStates()[0].Name, 0.0f);
     Characters.push_back({ animator, SecondsBetweenFades });
+    return animator;
+}
 
+void AnimationDemo::Start(const std::vector<SceneNode*>& characters, const std::vector<MaterialHandle>& materials, uint32_t crowdCount, bool isAnimationTest)
+{
+    IsTestRunning = isAnimationTest;
+    AnimationPanel = DebugOverlay::EnlistPanel("Animation", DrawAnimationPanel);
+    SceneNode* character = characters.back();
+    if (isAnimationTest)
+    {
+        CheckBindPose(static_cast<AnimatorComponent*>(character->GetComponent(AnimatorComponentType)));
+        FindSkinnedSubmesh(character);
+        Readback::WatchBuffer(Skinning::GetPool());
+    }
+
+    AnimatorComponent* animator = nullptr;
+    for (SceneNode* each : characters)
+        animator = StartCharacter(each);
+    if (!animator)
+        return;
+
+    // Every copy needs its own range of the skinning pool, which is capped; the characters already
+    // started take their share first.
+    uint32_t characterVertices = (std::max)(CountSkinnedVertices(character), 1u);
+    uint32_t usedVertices = 0;
+    for (SceneNode* each : characters)
+        usedVertices += CountSkinnedVertices(each);
+    uint32_t fittingCopies = (Skinning::MaxPoolVertices - (std::min)(usedVertices, Skinning::MaxPoolVertices)) / characterVertices;
+    if (crowdCount > fittingCopies)
+    {
+        std::cout << "Crowd: " << crowdCount << " copies of " << characterVertices << " vertices do not fit the skinning pool; using "
+                  << fittingCopies << std::endl;
+        crowdCount = fittingCopies;
+    }
     CrowdCount = crowdCount;
     if (crowdCount > 0)
         BuildCrowd(character, animator, materials, crowdCount);

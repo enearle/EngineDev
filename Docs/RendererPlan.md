@@ -10,7 +10,7 @@ maintained copy and is updated as each phase lands.
 | 0. Stabilize and restructure | Done | Branch `Dev-2`, 14 November 2026. See "Phase 0 outcome" |
 | 1. Frame structure | Done | Branch `Dev-2`, 14 November 2026. See "Phase 1 outcome" |
 | 2. Compute and GPU data | Done | Branch `Dev-2`, 14 November 2026. See "Phase 2 outcome" |
-| 3. Skeleton and animation | In progress | Branch `Dev-2`, 14 November 2026. Steps 1 to 5 done; clip import waits for a character. See "Phase 3 outcome" |
+| 3. Skeleton and animation | Done | Branch `Dev-2`, 16 November 2026. See "Phase 3 outcome" |
 | 4. Materials and paging | Not started | |
 | 5. Procedural skin on the character | Not started | |
 | 6. Subdivision and deep zoom | Not started | Optional |
@@ -243,22 +243,40 @@ Carried, not part of Phase 2:
 
 ## Phase 3 outcome
 
-In progress on `Dev-2`, 14 November 2026, following `Docs/Handoff-Phase3.md`. Steps 1 to 5 and 7
-are done: step 1 is the "Phase 2 corrections" commit, the rest is "Phase 3". Step 6, clips imported
-from a file, waits for a character with clips (see "Open items").
+Finished on `Dev-2` on 16 November 2026, following `Docs/Handoff-Phase3.md`. Step 1 is the "Phase 2
+corrections" commit, steps 2 to 5 and 7 are "Phase 3", and step 6 is "Phase 3: the character".
 
-**Gate so far.** Both backends, validation clean:
+**The character.** A Genesis 9 figure in `TempAssets/CharBlend.blend` and `.fbx`: 143 bones under a
+`Genesis9` armature, 7 skinned meshes and 427,610 vertices (402,600 in the body), no shape keys and
+no actions. It is DAZ content, so it stays out of the repository: `TempAssets/` is in `.gitignore`.
+The game loads `../../TempAssets/CharBlend.fbx`, or the file given by `-character path`, scales it
+from its joint bounds to the Derp's size, puts it in the Derp's place and moves the Derp aside.
+Without the file, or when the import fails, the Derp stands in and the reason is printed.
 
-- `-animation-test` prints "Animation test: bind pose identity for 4 joints" and "Skinning test: 108
-  vertices matched on 994 frames, largest error 1.90735e-06" on Vulkan, and the same with 863 frames
-  on D3D12. The Derp has 108 vertices, so all of them are checked instead of the first 256. Each
-  read-back vertex is also checked to lie inside the culling sphere of its frame.
-- `-crowd 100` runs 100 copies that start at different times and cross-fade between two clips on a
-  timer: "Crowd: 100 copies, 138 cross-fades started, 751 frames fading" on Vulkan, 147 and 762 on
-  D3D12.
-- Not met yet: a character imported from a file with at least two clips. The Derp has no animation
-  stack, so its two clips, "Dance" and "Sway", are built in code (`Game/AnimationDemo.cpp`). Both are
-  at the bind pose at time 0, so `-freeze-animation` shows the rest pose.
+- Assimp cannot read the supplied `CharBlend.fbx`: "FBX-Parser (TOK_DATA, offset 0x226d2da) failed
+  to parse ID, unexpected data type, expected L(ong) (binary)". The same `.blend` exported by
+  Blender 5.2 or 4.3 imports in 2.2 s, with default settings, with leaf bones, with baked animation
+  and with embedded textures, so the supplied file was written some other way.
+- The file has no clips, so the gate ran on a scratch export of the `.blend` with two actions added
+  by a Blender script ("Raise": both upper arms; "Bow": spine and neck). The game builds "Wave" and
+  "Sway" in code for a Genesis 9 skeleton whose file has fewer than two clips. Both sets key
+  rotations only, by joint name, so they survive changes to the character's proportions.
+
+**Gate.** Both backends, Debug, validation clean, with the scratch export:
+
+- `-animation-test`: "Animation test: bind pose identity for 144 joints" and "Skinning test: 256
+  vertices matched on 4202 frames, largest error 4.57764e-05" on Vulkan, 4032 frames on D3D12. The
+  144 joints are the bones and the armature; no import warnings, so the seven meshes agree on every
+  inverse bind. The character's units are centimetres, hence the larger error.
+- The two clips come from the file; the character plays one and cross-fades to the other, and
+  `-crowd 100` cross-fades its copies ("Crowd: 21 copies, 142 cross-fades started" on both).
+- Without the character the Derp passes as before: 4 joints, 108 vertices, largest error 1.9e-06.
+
+Earlier, before the character, the Derp alone ran with two clips built in code ("Dance" and "Sway"),
+both at the bind pose at time 0, so `-freeze-animation` shows the rest pose.
+
+Each read-back vertex in the skinning check is also checked to lie inside the culling sphere of its
+frame.
 
 **RHI** (step 1, "Phase 2 corrections")
 
@@ -294,7 +312,8 @@ from a file, waits for a character with clips (see "Open items").
 - Buffers in the pass graph: `ImportBuffer`, `SetBuffer`, `ReleaseBuffer`, and `BufferWrites` and
   `BufferReads` on `PassDesc`. Writers run before readers and every buffer is undefined at the
   start of a frame. The D3D12 debug layer accepts that, so no state is kept across frames.
-- `Renderer/Skinning`: one pool buffer of static `Vertex` layout, ranges claimed by `Enlist` and
+- `Renderer/Skinning`: one pool buffer of static `Vertex` layout, at most
+  `Skinning::MaxPoolVertices` (9,586,980 vertices, 512 MB: D3D12 buffer views hold 2^27 words), ranges claimed by `Enlist` and
   returned by `Retire`, a larger pool and new descriptor sets when it is full. One compute pass
   (`Order` just after mip generation) dispatches once per skinned object. Vertices are read and
   written as 32-bit words, with `static_assert`s on the 56- and 88-byte layouts. Positions use the
@@ -320,18 +339,21 @@ from a file, waits for a character with clips (see "Open items").
   states. Vulkan against D3D12 gives a mean of 3.7 to 4.0 in the same cells as the Phase 2 runs in
   different run states; no pair of runs in this phase landed in the same state, so the 0.23 figure
   was not reproduced.
-- Release `-crowd 100 -novsync`, 101 characters, 404 joints, 10,908 skinned vertices: Vulkan
-  0.28 ms a frame, animation 0.011 ms CPU, skinning 0.019 ms GPU; D3D12 0.34 ms, 0.012 ms and
-  0.011 ms. The Derp is tiny, so these say little about a real character. Release
-  `-animation-test` passes on both.
+- Release `-crowd 100 -novsync` with the character: the pool holds 21 copies of its 427,610
+  vertices, so the crowd is cut to 21 and says so. 23 characters, 3,172 joints, 9,407,528 skinned
+  vertices: Vulkan 2.3 ms a frame, animation 0.10 ms CPU, skinning 0.90 ms GPU; D3D12 3.9 ms,
+  0.11 ms and 2.5 ms. With the Derp alone (101 characters, 10,908 vertices) Vulkan was 0.28 ms and
+  D3D12 0.34 ms. Release `-animation-test` passes on both.
+- Debug `-crowd 100` with the character: Vulkan 11 ms, D3D12 22 ms.
 - Debug `-stress` is unchanged: Vulkan 32 ms, D3D12 54 ms, which includes GPU-based validation
   (finding 5).
 
 Open items:
 
-- **Step 6.** Clip import from a file is written but has never run on a file with clips. Cross-fades
-  between imported clips and `-crowd` with that character wait for it, and Phase 3 stays in
-  progress until then.
+- The supplied `CharBlend.fbx` does not import; re-export it from Blender as above.
+- The pool caps a crowd of this character at 21. More needs a smaller mesh (the body is subdivided
+  to 402,600 vertices), several pools, or skinning only what a view can see.
+- The character draws with the Derp's material for every submesh until Phase 4.
 - Morph targets: no asset has them. The skinning shader would apply them before the bones.
 - Skinned normals use the 3 x 3 of the skin matrix, exact for rotation and uniform scale only.
 - Every character is animated and skinned whether or not a view sees it.

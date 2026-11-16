@@ -410,3 +410,6 @@ External/NoesisGUI-NativeSDK-*/
 registry.bin
 Solution/Engine/Meshes/*.asset
 Solution/Renderer/Shaders/Compiled/
+
+# Licensed character assets; never published
+TempAssets/

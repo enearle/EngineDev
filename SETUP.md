@@ -160,7 +160,11 @@ adds 10,000 objects, `-freeze-animation` holds the animated mesh still, `-novsyn
 off (it is on by default), and `-compute-test` runs the Phase 2 gate test, which prints
 `Compute test: N readbacks matched, latency A to B frames` on exit. `-animation-test` runs the
 Phase 3 checks (the bind pose and GPU skinning against the CPU), and `-crowd N` adds N animated
-copies of the character, 100 when N is left out. The game also prints the last frame's statistics,
+copies of the character, 100 when N is left out.
+
+**Character.** The animated character is licensed and is not in the repository. Put it at
+`TempAssets/CharBlend.fbx` (ignored by git), exported from Blender, or point `-character path` at
+another file. Without it the Derp stands in. The game also prints the last frame's statistics,
 GPU times per pass and animation figures on exit.
 
 **Validation.** Debug builds enable the Vulkan validation layer and the Direct3D 12 debug layer; both

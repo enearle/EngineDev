@@ -4,6 +4,7 @@
 #include <climits>
 #include <cstddef>
 #include <stdexcept>
+#include <string>
 #include "MeshRegistry.h"
 #include "Renderer.h"
 #include "ShaderLibrary.h"
@@ -16,6 +17,7 @@ using namespace RHIStructures;
 // cs_skinning reads vertices as 32-bit words at these offsets.
 static_assert(sizeof(Vertex) == 56 && offsetof(Vertex, Normal) == 12 && offsetof(Vertex, Tangent) == 24 &&
               offsetof(Vertex, Bitangent) == 36 && offsetof(Vertex, TexCoord) == 48);
+static_assert(Skinning::MaxPoolVertices == (1ull << 27) * 4 / sizeof(Vertex));
 static_assert(sizeof(SkinnedVertex) == 88 && offsetof(SkinnedVertex, Normal) == 12 && offsetof(SkinnedVertex, Tangent) == 24 &&
               offsetof(SkinnedVertex, Bitangent) == 36 && offsetof(SkinnedVertex, TexCoord) == 48 &&
               offsetof(SkinnedVertex, BoneWeights) == 56 && offsetof(SkinnedVertex, BoneIndices) == 72);
@@ -95,7 +97,11 @@ static void WriteDescriptorSet(SkinnedRecord& record)
 // A larger pool replaces the old one, which is released once the frames using it are done.
 static void GrowPool(uint32_t neededVertices)
 {
+    if (static_cast<uint64_t>(PoolCapacity) + neededVertices > Skinning::MaxPoolVertices)
+        throw std::runtime_error("The skinning pool is full: " + std::to_string(PoolCapacity) + " vertices, " +
+                                 std::to_string(neededVertices) + " more wanted.");
     uint32_t capacity = (std::max)({ PoolCapacity * 2, PoolCapacity + neededVertices, MinimumPoolVertices });
+    capacity = (std::min)(capacity, Skinning::MaxPoolVertices);
     BufferAllocator* allocator = BufferAllocator::GetInstance();
 
     BufferDesc desc;

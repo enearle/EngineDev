@@ -3,6 +3,7 @@
 
 #include <windows.h>
 #include <cwchar>
+#include <filesystem>
 #include <iostream>
 #include <string>
 #include "Game.h"
@@ -18,6 +19,7 @@
 #include "Renderer.h"
 #include "Window.h"
 #include "Animation/AnimationSystem.h"
+#include "Animation/AnimatorComponent.h"
 #include "Geometry/GeometryImport.h"
 #include "Input/InputEventSystem.h"
 #include "Passes/ComputeTestPass.h"
@@ -51,6 +53,38 @@ static uint32_t SwitchNumber(const wchar_t* name, uint32_t fallback)
     wchar_t* end = nullptr;
     unsigned long value = std::wcstoul(found + std::wcslen(name), &end, 10);
     return end == found + std::wcslen(name) ? fallback : static_cast<uint32_t>(value);
+}
+
+// The text after a switch up to the next space, or fallback when the switch is absent.
+static std::wstring SwitchText(const wchar_t* name, const std::wstring& fallback)
+{
+    const wchar_t* found = std::wcsstr(GetCommandLineW(), name);
+    if (!found)
+        return fallback;
+    const wchar_t* start = found + std::wcslen(name);
+    while (*start == L' ')
+        start++;
+    const wchar_t* end = start;
+    while (*end && *end != L' ')
+        end++;
+    return std::wstring(start, end);
+}
+
+static float WorldRadius(SceneNode* character)
+{
+    AnimatorComponent* animator = static_cast<AnimatorComponent*>(character->GetComponent(AnimatorComponentType));
+    return animator ? animator->GetModelBounds().w * XMVectorGetX(XMVector3Length(character->GetWorldMatrix().r[0])) : 0.0f;
+}
+
+// Files arrive in their own units, so the character is scaled from its joint bounds to the Derp's
+// size, whatever its proportions, and takes the Derp's place in the middle of the view.
+static void PlaceCharacter(SceneNode* character, SceneNode* derp)
+{
+    float derpRadius = WorldRadius(derp);
+    float radius = WorldRadius(character);
+    float scale = radius > 0.0f && derpRadius > 0.0f ? derpRadius / radius : 1.0f;
+    character->SetLocalMatrix(character->GetLocalMatrix() * XMMatrixScaling(scale, scale, scale));
+    derp->SetLocalMatrix(derp->GetLocalMatrix() * XMMatrixTranslation(-2.0f * derpRadius, 0.0f, 0.0f));
 }
 
 static void AssignMaterials(SceneNode* node, const std::vector<MaterialHandle>& materials)
@@ -177,9 +211,31 @@ void GameInit()
 
     SceneNode* derp = GeometryImport::CreateMeshGroup("../Engine/Meshes/Derp.fbx", "derp", XMMatrixIdentity(), true);
     AssignMaterials(derp, derpMaterials);
+    std::vector<SceneNode*> characters = { derp };
+
+    // The character lives outside the repository, since its licence forbids publishing it. Without
+    // it the Derp stands in.
+    std::filesystem::path characterPath = SwitchText(L" -character", L"../../TempAssets/CharBlend.fbx");
+    std::vector<MaterialHandle> characterMaterials(32, derpMaterials[0]);
+    if (std::filesystem::exists(characterPath))
+    {
+        try
+        {
+            SceneNode* character = GeometryImport::CreateMeshGroup(characterPath.string(), "character", XMMatrixIdentity(), true);
+            PlaceCharacter(character, derp);
+            AssignMaterials(character, characterMaterials);
+            characters.push_back(character);
+        }
+        catch (const std::exception& error)
+        {
+            std::cout << "Character not loaded, the Derp stands in: " << error.what() << std::endl;
+        }
+    }
+
     // The demo copies source vertices for the skinning check before the upload drops them.
-    AnimationDemo::Start(derp, derpMaterials, SwitchNumber(L" -crowd", 100), IsSwitchPresent(L" -animation-test"));
-    derp->UploadToGPU();
+    AnimationDemo::Start(characters, characterMaterials, SwitchNumber(L" -crowd", 100), IsSwitchPresent(L" -animation-test"));
+    for (SceneNode* character : characters)
+        character->UploadToGPU();
 
     if (IsSwitchPresent(L" -stress"))
         BuildStressScene(shells, shellMaterials);
