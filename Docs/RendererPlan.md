@@ -350,7 +350,9 @@ frame.
 
 Open items:
 
-- The supplied `CharBlend.fbx` does not import; re-export it from Blender as above.
+- The supplied `CharBlend.fbx` did not import. It is kept as `CharBlend.original.fbx` and replaced
+  by a Blender 5.2 export (no leaf bones, no baked animation), which the game loads by default; with
+  no clips in it, the character plays the clips built in code.
 - The pool caps a crowd of this character at 21. More needs a smaller mesh (the body is subdivided
   to 402,600 vertices), several pools, or skinning only what a view can see.
 - The character draws with the Derp's material for every submesh until Phase 4.
