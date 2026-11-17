@@ -147,4 +147,8 @@ public:
 
     // Told of every page given a slot, during Update; the slot is filled later in the same frame.
     static void SetFillObserver(std::function<void(const PageKey&, const PageSlot&)> observer);
+
+    // After Update: the pages given a slot this frame, and the pages the latest feedback asked for.
+    static void ForEachFill(const std::function<void(const PageKey&)>& visit);
+    static void ForEachWantedPage(const std::function<void(const PageKey&)>& visit);
 };

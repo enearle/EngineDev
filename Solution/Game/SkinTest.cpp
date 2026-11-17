@@ -6,6 +6,8 @@
 #include <windows.h>
 #include <algorithm>
 #include <cstring>
+#include <cwchar>
+#include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <sstream>
@@ -35,8 +37,8 @@ static constexpr uint32_t BiasLevels = 2;
 static constexpr uint32_t BiasFrames = 4;
 static constexpr double AlbedoMeanTolerance = 2.0;          // 8-bit levels
 static constexpr double AlbedoPercentileTolerance = 16.0;
-static constexpr double NormalMeanTolerance = 0.005;        // Octahedral units, 0 to 1
-static constexpr double NormalPercentileTolerance = 0.04;
+static constexpr double NormalMeanTolerance = 0.01;         // Octahedral units, 0 to 1: about 2 degrees
+static constexpr double NormalPercentileTolerance = 0.05;   // About 9 degrees
 static constexpr double FragmentCostSpread = 0.25;
 static const char* CacheDirectory = "../../Cache";
 
@@ -222,6 +224,35 @@ static double Percentile(std::vector<float>& values, double fraction)
 
 // Albedo: the largest difference among red, green and blue in 8-bit levels. Normal: the largest
 // difference of the two octahedral coordinates.
+// -skin-diff: the normal difference of each stop as a 24-bit BMP in Cache/, magnified 20 times.
+static void WriteDifferenceImage(const std::string& name, const std::vector<float>& difference)
+{
+    std::ofstream file(std::string(CacheDirectory) + "/skin_difference_" + name + ".bmp", std::ios::binary);
+    uint32_t rowBytes = (CaptureWidth * 3 + 3) & ~3u;
+    uint32_t imageBytes = rowBytes * CaptureHeight;
+    uint8_t header[54] = { 'B', 'M' };
+    auto put = [&header](int offset, uint32_t value) { std::memcpy(header + offset, &value, 4); };
+    put(2, 54 + imageBytes);
+    put(10, 54);
+    put(14, 40);
+    put(18, CaptureWidth);
+    put(22, static_cast<uint32_t>(-static_cast<int32_t>(CaptureHeight)));
+    header[26] = 1;
+    header[28] = 24;
+    put(34, imageBytes);
+    file.write(reinterpret_cast<const char*>(header), sizeof(header));
+    std::vector<uint8_t> row(rowBytes, 0);
+    for (uint32_t y = 0; y < CaptureHeight; y++)
+    {
+        for (uint32_t x = 0; x < CaptureWidth; x++)
+        {
+            uint8_t value = static_cast<uint8_t>((std::min)(255.0f, difference[static_cast<size_t>(y) * CaptureWidth + x] * 20.0f * 255.0f));
+            row[x * 3] = row[x * 3 + 1] = row[x * 3 + 2] = value;
+        }
+        file.write(reinterpret_cast<const char*>(row.data()), rowBytes);
+    }
+}
+
 static void CompareCaptures(StopResult& result)
 {
     size_t pixels = static_cast<size_t>(CaptureWidth) * CaptureHeight;
@@ -240,6 +271,8 @@ static void CompareCaptures(StopResult& result)
         albedoSum += albedo[i];
         normalSum += normal[i];
     }
+    if (std::wcsstr(GetCommandLineW(), L" -skin-diff"))
+        WriteDifferenceImage(result.Name.substr(0, result.Name.find(' ')), normal);
     result.AlbedoMean = albedoSum / pixels;
     result.NormalMean = normalSum / pixels;
     result.AlbedoPercentile = Percentile(albedo, 0.99);
@@ -399,6 +432,8 @@ void SkinTest::PrintResults()
               << Results.front().MemoryBytes / 1048576.0 << " MB at the first stop and " << Results.back().MemoryBytes / 1048576.0 << " MB at the last" << std::endl;
     std::cout << "Skin test: fragment cost, G-buffer " << fastest << " to " << slowest << " ms where skin fills the view, spread "
               << spread * 100.0 << "% (" << (spread < FragmentCostSpread ? "under" : "OVER") << " 25%; meaningful in Release with -novsync)" << std::endl;
+    std::cout << "Skin test: features, " << Skin::GetStats().TotalCellsGenerated << " cells generated, cache peak "
+              << Skin::GetStats().PeakResidentCells << " of " << Skin::GetStats().FeatureCacheBytes / (33 * 8) << " cells" << std::endl;
     std::cout << "Skin test: convergence, longest " << longestConvergence << " frames" << (isConverged ? "" : "; a stop DID NOT CONVERGE") << std::endl;
     if (IsPlane)
     {

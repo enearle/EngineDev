@@ -19,9 +19,13 @@ cbuffer ProceduralSkinParameters : register(b0, space2)
 cbuffer SkinConstants : register(b0, space4)
 {
     uint4 SkinTableOffsets[4];      // Band table i starts at entry SkinTableOffsets[i / 4][i % 4] of the ring
+    uint SkinCellTableBase;
+    uint SkinCellTableMask;
+    uint2 SkinPadding;
 };
 StructuredBuffer<float4> SkinRing : register(t1, space4);
 Texture2DArray<float4> SkinChartMaps : register(t2, space4);
+StructuredBuffer<uint2> SkinFeatureCells : register(t3, space4);
 
 // Absorption per unit of melanin and of hemoglobin in red, green and blue.
 static const float3 MelaninAbsorption = float3(0.35, 0.8, 1.6);
@@ -57,18 +61,30 @@ Surface EvaluateSurface(SurfaceInput input)
 
     float footprint = max(length(uvDdx * info.Millimetres), length(uvDdy * info.Millimetres));
     uint level = resolved.IsFound ? resolved.Level : 0;
+    SkinPlace place;
+    place.Chart = texture;
+    place.ChartMillimetres = info.Millimetres;
+    place.IsPeriodic = info.IsPeriodic;
+    place.Level = level;
+    place.Page = resolved.Page;
+    place.Within = resolved.WithinPage;
+    place.Direction = ChartDirection(SkinChartMaps, info.ChartMapLayer, input.UV);
+    place.Footprint = footprint;
+    place.CellTableBase = SkinCellTableBase;
+    place.CellTableMask = SkinCellTableMask;
     uint live = 0;
     float unresolvedVariance = header.TotalSlopeVariance;
     for (uint b = 0; b < header.BandCount; b++)
     {
         SkinBand band = LoadSkinBand(SkinRing, table, b);
-        float pixelWeight = BandWeight(band.Wavelength, footprint);
+        float pixelWeight = BandWeight(BandScale(band), footprint);
         if (pixelWeight > 0.0)
             unresolvedVariance = band.FinerSlopeVariance;
-        float weight = pixelWeight - (resolved.IsFound ? BakeWeight(band.Wavelength, info.Millimetres, level) : 0.0);
+        float weight = pixelWeight - (resolved.IsFound ? BakeWeight(BandScale(band), info.Millimetres, level) : 0.0);
         if (weight <= 0.001 || live >= SKIN_LIVE_BANDS)
             continue;
-        AddBand(fields, band, EvaluateBand(band, info.Millimetres, info.IsPeriodic, level, resolved.Page, resolved.WithinPage), weight);
+        place.BandIndex = b;
+        AddBand(fields, band, EvaluateBand(band, place, SkinRing, SkinFeatureCells), weight);
         live++;
     }
 

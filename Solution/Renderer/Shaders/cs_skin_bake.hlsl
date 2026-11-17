@@ -18,6 +18,7 @@ RWTexture2D<float4> ScratchPigments : register(u2, space1);
 RWTexture2D<float4> ScratchHeightSlope : register(u3, space1);
 StructuredBuffer<float4> Ring : register(t4, space1);
 Texture2DArray<float4> ChartMaps : register(t5, space1);
+StructuredBuffer<uint2> FeatureCells : register(t6, space1);
 
 struct BakeConstants
 {
@@ -29,6 +30,10 @@ struct BakeConstants
     float2 ChartMillimetres;
     uint BandTable;
     uint ChartLayer;
+    uint Chart;
+    uint CellTableBase;
+    uint CellTableMask;
+    uint Padding;
 };
 
 [[vk::push_constant]]
@@ -72,27 +77,40 @@ void main(uint3 id : SV_DispatchThreadID)
     bool isPeriodic = (Bake.Flags & 2) != 0;
     float2 within = (float2(id.xy) - GUTTER + 0.5) / 128.0;
 
+    SkinPlace place;
+    place.Chart = Bake.Chart;
+    place.ChartMillimetres = Bake.ChartMillimetres;
+    place.IsPeriodic = isPeriodic;
+    place.Level = Bake.Level;
+    place.Page = Bake.Page;
+    place.Within = within;
+    place.Direction = ChartDirection(ChartMaps, Bake.ChartLayer, (float2(Bake.Page) + within) / float(1u << Bake.Level));
+    place.Footprint = LevelTexelMillimetres(Bake.ChartMillimetres, Bake.Level);
+    place.CellTableBase = Bake.CellTableBase;
+    place.CellTableMask = Bake.CellTableMask;
+
     SkinFields fields;
     fields.Height = 0.0;
     fields.Slope = 0.0;
     fields.Pigments = 0.0;
     if (hasParent)
     {
-        float2 parentLocal = (float2(Bake.Page & 1u) * 128.0 + float2(id.xy) - GUTTER + 0.5) * 0.5;
+        float2 parentPosition = (float2(Bake.Page & 1u) * 128.0 + float2(id.xy) - GUTTER + 0.5) * 0.5 + GUTTER;
         float4 pigments, heightSlope;
-        SampleParent(parentLocal + GUTTER, pigments, heightSlope);
+        SampleParent(parentPosition, pigments, heightSlope);
         fields = DecodeFields(heightSlope, pigments, header);
     }
 
     for (uint b = 0; b < header.BandCount; b++)
     {
         SkinBand band = LoadSkinBand(Ring, Bake.BandTable, b);
-        float weight = BakeWeight(band.Wavelength, Bake.ChartMillimetres, Bake.Level);
+        float weight = BakeWeight(BandScale(band), Bake.ChartMillimetres, Bake.Level);
         if (hasParent)
-            weight -= BakeWeight(band.Wavelength, Bake.ChartMillimetres, Bake.Level - 1);
+            weight -= BakeWeight(BandScale(band), Bake.ChartMillimetres, Bake.Level - 1);
         if (weight <= 0.0)
             continue;
-        AddBand(fields, band, EvaluateBand(band, Bake.ChartMillimetres, isPeriodic, Bake.Level, Bake.Page, within), weight);
+        place.BandIndex = b;
+        AddBand(fields, band, EvaluateBand(band, place, Ring, FeatureCells), weight);
     }
 
     ScratchPigments[Bake.Scratch + id.xy] = EncodePigments(fields, header);

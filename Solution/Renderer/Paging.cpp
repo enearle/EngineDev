@@ -813,6 +813,18 @@ Format Paging::GetAtlasFormat(uint32_t formatIndex)
     return Settings.AtlasFormats[formatIndex];
 }
 
+void Paging::ForEachFill(const std::function<void(const PageKey&)>& visit)
+{
+    for (const auto& [page, slot] : Fills)
+        visit(page);
+}
+
+void Paging::ForEachWantedPage(const std::function<void(const PageKey&)>& visit)
+{
+    for (const auto& [page, count] : LatestRequests)
+        visit(page);
+}
+
 void Paging::SetFillObserver(std::function<void(const PageKey&, const PageSlot&)> observer)
 {
     FillObserver = std::move(observer);

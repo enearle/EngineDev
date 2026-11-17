@@ -1,15 +1,23 @@
-# Bands of procedural skin, one per line, coarse to fine after loading:
+# Bands of procedural skin, one per line, sorted coarse to fine when loaded:
 # name, primitive, wavelength in millimetres, amplitude, field, seed, and for points and curves
 # density, profile, width in millimetres, the band it depends on (- for none) and stretch.
-# Height is in millimetres; melanin and hemoglobin deviate from the material's base values.
+# Height is in millimetres; melanin and hemoglobin deviate from the material's base values. A dip
+# profile subtracts, so a negative amplitude raises: freckles darken.
+#
+# Weights compare a band's scale with texels and pixels: the wavelength of noise, the width of
+# points and curves. Scales here step by about 2.5, so a lookup two levels coarser than wanted
+# leaves at most about three bands to add live.
 tone_broad     noise   40      0.12      melanin     11
-tone_mid       noise   12      0.08      hemoglobin  12
-tone_fine      noise   4       0.05      melanin     13
-relief_broad   noise   2       0.05      height      21
-relief_mid     noise   0.5     0.012     height      22
-relief_fine    noise   0.12    0.004     height      23
-grain_1        noise   0.03    0.001     height      31
-grain_2        noise   0.012   0.0004    height      32
-grain_3        noise   0.005   0.00015   height      33
-grain_4        noise   0.002   0.00006   height      34
-grain_5        noise   0.0008  0.000024  height      35
+tone_mid       noise   15      0.08      hemoglobin  12
+tone_fine      noise   6       0.05      melanin     13
+freckles       points  9       -0.25     melanin     41   0.15  dip      2.5     -        1
+relief_broad   noise   1.0     0.03      height      21
+wrinkles       curves  5       0.05      height      51   0.35  line     0.4     -        1
+creases        curves  1.5     0.012     height      52   0.4   line     0.16    -        1
+furrows        points  0.35    0.04      height      42   1     network  0.06    -        1.6
+pores          points  0.35    0.025     height      43   0.7   dip      0.025   furrows  1
+lines          points  0.08    0.006     height      44   1     network  0.01    -        1.3
+plates         points  0.035   0.0012    height      45   1     plate    0.004   -        1
+grain_1        noise   0.0016  0.00007   height      31
+grain_2        noise   0.00065 0.000028  height      32
+grain_3        noise   0.00026 0.000011  height      33

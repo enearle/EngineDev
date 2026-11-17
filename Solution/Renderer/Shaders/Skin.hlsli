@@ -14,6 +14,15 @@
 #define SKIN_LIVE_BANDS 3
 #define SKIN_TABLE_HEADER 2
 #define SKIN_BAND_ENTRIES 3
+#define SKIN_PROFILE_DIP 0
+#define SKIN_PROFILE_NETWORK 1
+#define SKIN_PROFILE_PLATE 2
+#define SKIN_PROFILE_LINE 3
+#define SKIN_CELL_RECORD 33         // A count, then up to 32 primitives of 8 bytes
+#define SKIN_CELL_PROBE_STEPS 4
+#define SKIN_CHART_MAP_SIZE 512
+#define SKIN_CURVE_STEPS 6              // Half-cell steps each way from a curve's seed
+#define SKIN_CURVE_REACH 4              // Lattice cells a curve can reach from its seed
 
 // Mirrors the band table Renderer/Skin/Skin.cpp writes into the frame ring: two header entries, then
 // three per band, coarse to fine.
@@ -77,8 +86,26 @@ SkinBand LoadSkinBand(StructuredBuffer<float4> ring, uint table, uint band)
     return result;
 }
 
-// A band is baked into a level when its wavelength spans 4 or more of the level's texels, not at all
-// at 2 or fewer, and smoothly between. The pixel weight is the same curve on the pixel footprint.
+// The scale the weights compare with texels and pixels: a noise band's wavelength, and the profile
+// width of points and curves, which are far narrower than their spacing. A profile is about four
+// widths across, so it is baked only once it spans 8 to 16 texels, which the parent upsampling
+// reproduces closely; baked any narrower, children would inherit its upsampling error.
+float BandScale(SkinBand band)
+{
+    return band.Primitive == SKIN_PRIMITIVE_NOISE ? band.Wavelength : band.Width;
+}
+
+// A feature cell is one lattice cell plus a margin of lattice cells all round, so a texel reads one
+// cell: two for an independent band, whose network profiles need the second-nearest point (25
+// points), one for a dependent band, which has two points per lattice cell and needs only the
+// nearest (18 points).
+uint FeatureCellMargin(SkinBand band)
+{
+    return band.DependsOn >= 0 && band.Primitive == SKIN_PRIMITIVE_POINTS ? 1u : 2u;
+}
+
+// A band is baked into a level when its scale spans 4 or more of the level's texels, not at all at
+// 2 or fewer, and smoothly between. The pixel weight is the same curve on the pixel footprint.
 float BandWeight(float wavelength, float footprintMillimetres)
 {
     return smoothstep(2.0, 4.0, wavelength / max(footprintMillimetres, 1e-12));
@@ -194,15 +221,193 @@ float3 GradientNoise(LatticePoint located, uint seed)
     return float3(gradient, value);
 }
 
-// One band's contribution at a point: x height or pigment, yz slope in millimetres per millimetre
-// along U and V. Points and curves are added in later steps; until then they contribute nothing.
-float3 EvaluateBand(SkinBand band, float2 chartMillimetres, bool isPeriodic, uint level, uint2 page, float2 within)
+// Mirrors FeatureCellHash in Renderer/Skin/FeatureCache.cpp.
+uint FeatureCellHash(uint chart, uint band, int x, int y)
 {
-    if (band.Primitive != SKIN_PRIMITIVE_NOISE)
+    uint hash = chart * 0x9E3779B1u ^ band * 0x85EBCA77u;
+    hash ^= uint(x) * 0xC2B2AE3Du;
+    hash = (hash ^ (hash >> 15)) * 0x27D4EB2Fu;
+    hash ^= uint(y) * 0x165667B1u;
+    hash = (hash ^ (hash >> 13)) * 0x9E3779B1u;
+    return hash ^ (hash >> 16);
+}
+
+// What a band evaluation needs besides the band: the chart, where the point is, and the caches.
+struct SkinPlace
+{
+    uint Chart;
+    uint BandIndex;
+    float2 ChartMillimetres;
+    bool IsPeriodic;
+    uint Level;
+    uint2 Page;
+    float2 Within;
+    float2 Direction;           // Unit direction field in the chart's millimetre frame
+    float Footprint;            // Millimetres a profile is widened to at least
+    uint CellTableBase;         // In 16-byte entries of the ring
+    uint CellTableMask;
+};
+
+bool FindFeatureCell(StructuredBuffer<float4> ring, SkinPlace place, int2 cell, out uint slot)
+{
+    uint key = (place.Chart << 8) | place.BandIndex;
+    uint index = FeatureCellHash(place.Chart, place.BandIndex, cell.x, cell.y);
+    bool isFound = false;
+    slot = 0;
+    [unroll]
+    for (uint step = 0; step < SKIN_CELL_PROBE_STEPS; step++)
+    {
+        uint4 entry = asuint(ring[place.CellTableBase + ((index + step) & place.CellTableMask)]);
+        if (!isFound && entry.z == key && int(entry.x) == cell.x && int(entry.y) == cell.y)
+        {
+            slot = entry.w;
+            isFound = true;
+        }
+    }
+    return isFound;
+}
+
+int FloorDivide(int value, int divisor)
+{
+    return value >= 0 ? value / divisor : -((-value + divisor - 1) / divisor);
+}
+
+float2 DecodeFeaturePosition(uint packed, uint margin)
+{
+    return float2(packed & 0xFFFF, packed >> 16) / 65535.0 * float(1 + 2 * margin) - float(margin);
+}
+
+// The direction field at a chart position, read without filtering so the bake and the material see
+// the same value.
+float2 ChartDirection(Texture2DArray<float4> maps, uint layer, float2 uv)
+{
+    int2 texel = clamp(int2(uv * SKIN_CHART_MAP_SIZE), 0, SKIN_CHART_MAP_SIZE - 1);
+    float2 doubled = maps.Load(int4(texel, layer, 0)).xy * 2.0 - 1.0;
+    if (dot(doubled, doubled) < 0.01)
+        return float2(1.0, 0.0);
+    float angle = 0.5 * atan2(doubled.y, doubled.x);
+    return float2(cos(angle), sin(angle));
+}
+
+// Points: the nearest and second-nearest points of the band's cell, distances measured with the
+// direction field stretched by the band's stretch, turned into a profile. Dip: a hollow at each
+// point (pores, freckles). Network: grooves where the two nearest are equally far (furrows, lines).
+// Plate: ridges there instead. A missing cell contributes nothing.
+float3 EvaluatePointBand(SkinBand band, SkinPlace place, StructuredBuffer<float4> ring, StructuredBuffer<uint2> cells)
+{
+    LatticePoint located = LocateInBand(band.Wavelength, place.ChartMillimetres, place.IsPeriodic, place.Level, place.Page, place.Within);
+    uint margin = FeatureCellMargin(band);
+    int2 cell = located.Cell;
+    uint slot;
+    if (!FindFeatureCell(ring, place, cell, slot))
         return 0.0;
-    LatticePoint located = LocateInBand(band.Wavelength, chartMillimetres, isPeriodic, level, page, within);
+
+    float2 local = located.Fraction;
+    float2 cellMillimetres = place.ChartMillimetres / float2(located.Cells);
+    float2 across = float2(-place.Direction.y, place.Direction.x);
+    uint record = slot * SKIN_CELL_RECORD;
+    uint count = min(cells[record].x, 32u);
+    float nearest = 1e9, second = 1e9;
+    float2 nearestGradient = 0.0, secondGradient = 0.0;
+    for (uint i = 0; i < count; i++)
+    {
+        float2 delta = (local - DecodeFeaturePosition(cells[record + 1 + i].x, margin)) * cellMillimetres;
+        float2 metric = float2(dot(delta, place.Direction) / band.Stretch, dot(delta, across));
+        float distance = length(metric);
+        float2 gradient = distance > 0.0 ? (metric.x / band.Stretch * place.Direction + metric.y * across) / distance : 0.0;
+        if (distance < nearest)
+        {
+            second = nearest;
+            secondGradient = nearestGradient;
+            nearest = distance;
+            nearestGradient = gradient;
+        }
+        else if (distance < second)
+        {
+            second = distance;
+            secondGradient = gradient;
+        }
+    }
+    if (count == 0 || (band.Profile != SKIN_PROFILE_DIP && count < 2))
+        return 0.0;
+
+    float width = max(band.Width, place.Footprint);
+    float distance = band.Profile == SKIN_PROFILE_DIP ? nearest : second - nearest;
+    float2 gradient = band.Profile == SKIN_PROFILE_DIP ? nearestGradient : secondGradient - nearestGradient;
+    float bump = exp(-(distance * distance) / (width * width));
+    float sign = band.Profile == SKIN_PROFILE_PLATE ? 1.0 : -1.0;
+    float slope = sign * bump * (-2.0 * distance / (width * width));
+    return band.Amplitude * float3(sign * bump, slope * gradient);
+}
+
+// The distance from p to the segment a-b, and its gradient with respect to p.
+float2 SegmentDistance(float2 p, float2 a, float2 b, out float2 gradient)
+{
+    float2 ab = b - a;
+    float t = saturate(dot(p - a, ab) / max(dot(ab, ab), 1e-12));
+    float2 offset = p - (a + t * ab);
+    float distance = length(offset);
+    gradient = distance > 0.0 ? offset / distance : 0.0;
+    return distance;
+}
+
+// Curves: each cell holds quadratic segments in two primitive slots (start and middle, then end), and
+// a segment's distance is measured as its two straight halves. A groove follows the nearest curve.
+float3 EvaluateCurveBand(SkinBand band, SkinPlace place, StructuredBuffer<float4> ring, StructuredBuffer<uint2> cells)
+{
+    LatticePoint located = LocateInBand(band.Wavelength, place.ChartMillimetres, place.IsPeriodic, place.Level, place.Page, place.Within);
+    uint slot;
+    if (!FindFeatureCell(ring, place, located.Cell, slot))
+        return 0.0;
+
+    uint margin = FeatureCellMargin(band);
+    float2 cellMillimetres = place.ChartMillimetres / float2(located.Cells);
+    float2 position = located.Fraction * cellMillimetres;
+    uint record = slot * SKIN_CELL_RECORD;
+    uint count = min(cells[record].x, 32u);
+    float nearest = 1e9;
+    float2 nearestGradient = 0.0;
+    for (uint i = 0; i + 1 < count; i += 2)
+    {
+        uint2 first = cells[record + 1 + i];
+        uint2 second = cells[record + 2 + i];
+        float2 a = DecodeFeaturePosition(first.x, margin) * cellMillimetres;
+        float2 middle = DecodeFeaturePosition(first.y, margin) * cellMillimetres;
+        float2 b = DecodeFeaturePosition(second.x, margin) * cellMillimetres;
+        float2 gradient;
+        float distance = SegmentDistance(position, a, middle, gradient);
+        if (distance < nearest)
+        {
+            nearest = distance;
+            nearestGradient = gradient;
+        }
+        distance = SegmentDistance(position, middle, b, gradient);
+        if (distance < nearest)
+        {
+            nearest = distance;
+            nearestGradient = gradient;
+        }
+    }
+    if (nearest >= 1e9)
+        return 0.0;
+
+    float width = max(band.Width, place.Footprint);
+    float bump = exp(-(nearest * nearest) / (width * width));
+    float slope = bump * (2.0 * nearest / (width * width));
+    return band.Amplitude * float3(-bump, slope * nearestGradient);
+}
+
+// One band's contribution at a point: x height or pigment, yz slope in millimetres per millimetre
+// along U and V.
+float3 EvaluateBand(SkinBand band, SkinPlace place, StructuredBuffer<float4> ring, StructuredBuffer<uint2> cells)
+{
+    if (band.Primitive == SKIN_PRIMITIVE_POINTS)
+        return EvaluatePointBand(band, place, ring, cells);
+    if (band.Primitive == SKIN_PRIMITIVE_CURVES)
+        return EvaluateCurveBand(band, place, ring, cells);
+    LatticePoint located = LocateInBand(band.Wavelength, place.ChartMillimetres, place.IsPeriodic, place.Level, place.Page, place.Within);
     float3 noise = GradientNoise(located, band.Seed);
-    float2 cellsPerMillimetre = float2(located.Cells) / chartMillimetres;
+    float2 cellsPerMillimetre = float2(located.Cells) / place.ChartMillimetres;
     return band.Amplitude * float3(noise.z, noise.xy * cellsPerMillimetre);
 }
 

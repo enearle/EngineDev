@@ -63,6 +63,7 @@
     <ClCompile Include="Readback.cpp" />
     <ClCompile Include="Renderer.cpp" />
     <ClCompile Include="ShaderLibrary.cpp" />
+    <ClCompile Include="Skin\FeatureCache.cpp" />
     <ClCompile Include="Skin\Skin.cpp" />
     <ClCompile Include="Skinning.cpp" />
   </ItemGroup>
@@ -85,6 +86,7 @@
     <ClInclude Include="RENDERER_API_Macro.h" />
     <ClInclude Include="RenderScene.h" />
     <ClInclude Include="ShaderLibrary.h" />
+    <ClInclude Include="Skin\FeatureCache.h" />
     <ClInclude Include="Skin\Skin.h" />
     <ClInclude Include="Skinning.h" />
   </ItemGroup>
@@ -113,6 +115,11 @@
       <Profile>cs_6_1</Profile>
       <OutputName>cs_skin_bake_float</OutputName>
       <Arguments>-D ATLAS_HEIGHT_FLOAT</Arguments>
+    </ShaderSource>
+    <ShaderSource Include="Shaders\cs_skin_features.hlsl">
+      <Profile>cs_6_1</Profile>
+      <OutputName>cs_skin_features</OutputName>
+      <Arguments></Arguments>
     </ShaderSource>
     <ShaderSource Include="Shaders\cs_skinning.hlsl">
       <Profile>cs_6_1</Profile>

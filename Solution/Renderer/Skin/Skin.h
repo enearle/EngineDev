@@ -25,6 +25,10 @@ struct SkinStats
     uint64_t TotalPagesBaked = 0;
     uint64_t ChartMapBytes = 0;
     uint64_t FeatureCacheBytes = 0;
+    uint32_t CellsGenerated = 0;        // This frame
+    uint32_t ResidentCells = 0;
+    uint32_t PeakResidentCells = 0;
+    uint64_t TotalCellsGenerated = 0;
 };
 
 // Procedural skin: band tables, chart maps and the bake producer, and the skin set (set 4 of the

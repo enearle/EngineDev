@@ -13,6 +13,7 @@
 #include <stdexcept>
 #include <unordered_map>
 #include <DirectXMath.h>
+#include "FeatureCache.h"
 #include "Renderer.h"
 #include "ShaderLibrary.h"
 #include "RHI/BufferAllocator.h"
@@ -47,6 +48,10 @@ struct BakeConstants
     float ChartMillimetres[2];
     uint32_t BandTable;
     uint32_t ChartLayer;
+    uint32_t Chart;
+    uint32_t CellTableBase;
+    uint32_t CellTableMask;
+    uint32_t Padding;
 };
 
 struct Band
@@ -64,11 +69,18 @@ struct Band
     float Stretch = 1.0f;
 };
 
+struct ParsedTable
+{
+    std::vector<Band> Bands;            // Coarse to fine by BandScale
+    std::vector<XMFLOAT4> Entries;      // The GPU copy: header, then three entries per band
+};
+
 struct BandTable
 {
     std::string Name;
     std::filesystem::file_time_type WriteTime;
-    std::vector<XMFLOAT4> Entries;      // The GPU copy: header, then three entries per band
+    std::vector<Band> Bands;
+    std::vector<XMFLOAT4> Entries;
     uint32_t RingOffset = 0;            // This frame's, in 16-byte entries
 };
 
@@ -120,10 +132,33 @@ static uint32_t FindName(const char* const (&names)[Count], const std::string& n
     throw std::runtime_error("Unknown " + what + " in a band table: " + name);
 }
 
+// Mirrors BandScale and BandWeight in Shaders/Skin.hlsli.
+static float BandScale(const Band& band)
+{
+    return band.Primitive == 0 ? band.Wavelength : band.Width;
+}
+
+static float BandWeight(float scale, float footprint)
+{
+    float t = std::clamp((scale / (std::max)(footprint, 1e-12f) - 2.0f) / 2.0f, 0.0f, 1.0f);
+    return t * t * (3.0f - 2.0f * t);
+}
+
+static float LevelTexelMillimetres(const float millimetres[2], int32_t level)
+{
+    return (std::max)(millimetres[0], millimetres[1]) / (128.0f * std::ldexp(1.0f, (std::max)(level, 0)));
+}
+
+static bool IsDependent(const Band& band)
+{
+    return !band.DependsOn.empty() && band.DependsOn != "-";
+}
+
 // One band per line: name, primitive, wavelength in millimetres, amplitude, field, seed, and for
 // points and curves the density, profile, width in millimetres, the band it depends on (- for none)
-// and stretch along the direction field. # starts a comment.
-static std::vector<XMFLOAT4> ParseBandTable(const std::string& name)
+// and stretch along the direction field. # starts a comment. A dependent band shares its parent's
+// lattice, so its wavelength is replaced by the parent's.
+static ParsedTable ParseBandTable(const std::string& name)
 {
     std::string path = BandDirectory + name + ".bands";
     std::ifstream file(path);
@@ -156,10 +191,14 @@ static std::vector<XMFLOAT4> ParseBandTable(const std::string& name)
     }
     if (bands.size() > Skin::MaxBands)
         throw std::runtime_error(path + " has more than " + std::to_string(Skin::MaxBands) + " bands");
-    std::stable_sort(bands.begin(), bands.end(), [](const Band& a, const Band& b) { return a.Wavelength > b.Wavelength; });
+    std::stable_sort(bands.begin(), bands.end(), [](const Band& a, const Band& b) { return BandScale(a) > BandScale(b); });
+    for (Band& band : bands)
+        for (const Band& other : bands)
+            if (IsDependent(band) && other.Name == band.DependsOn)
+                band.Wavelength = other.Wavelength;
 
-    // Slope variance of a height band: gradient noise and point profiles both have a slope of about
-    // amplitude / wavelength, root mean square.
+    // Slope of a height band, root mean square: about amplitude / wavelength for noise, and
+    // amplitude / width over the fraction of the surface a point profile covers.
     std::vector<float> variances(bands.size(), 0.0f);
     float heightRange = 1e-6f, slopeRange = 1e-6f, totalVariance = 0.0f;
     float pigmentRanges[3] = { 1e-3f, 1e-3f, 1e-3f };
@@ -167,8 +206,10 @@ static std::vector<XMFLOAT4> ParseBandTable(const std::string& name)
         if (bands[b].Field == 0)
         {
             heightRange += std::abs(bands[b].Amplitude);
-            slopeRange += 2.5f * std::abs(bands[b].Amplitude) / bands[b].Wavelength;
-            variances[b] = (bands[b].Amplitude / bands[b].Wavelength) * (bands[b].Amplitude / bands[b].Wavelength);
+            float steepness = bands[b].Primitive == 0 ? bands[b].Wavelength : bands[b].Width;
+            float coverage = bands[b].Primitive == 0 ? 1.0f : (std::min)(1.0f, 2.0f * bands[b].Width / bands[b].Wavelength);
+            slopeRange += 2.5f * std::abs(bands[b].Amplitude) / steepness;
+            variances[b] = coverage * (bands[b].Amplitude / steepness) * (bands[b].Amplitude / steepness);
             totalVariance += variances[b];
         }
         else
@@ -190,7 +231,7 @@ static std::vector<XMFLOAT4> ParseBandTable(const std::string& name)
         entries.push_back({ std::bit_cast<float>(band.Seed), band.Density, band.Width, band.Stretch });
         entries.push_back({ static_cast<float>(band.Profile), static_cast<float>(dependsOn), variances[b], (std::max)(finerVariance, 0.0f) });
     }
-    return entries;
+    return { bands, entries };
 }
 
 static uint32_t LoadBandTable(const std::string& name)
@@ -203,7 +244,9 @@ static uint32_t LoadBandTable(const std::string& name)
     BandTable table;
     table.Name = name;
     table.WriteTime = std::filesystem::last_write_time(BandDirectory + name + ".bands");
-    table.Entries = ParseBandTable(name);
+    ParsedTable parsed = ParseBandTable(name);
+    table.Bands = std::move(parsed.Bands);
+    table.Entries = std::move(parsed.Entries);
     Tables.push_back(std::move(table));
     return static_cast<uint32_t>(Tables.size() - 1);
 }
@@ -222,7 +265,9 @@ static void ReloadChangedTables()
         Tables[i].WriteTime = writeTime;
         try
         {
-            Tables[i].Entries = ParseBandTable(Tables[i].Name);
+            ParsedTable parsed = ParseBandTable(Tables[i].Name);
+            Tables[i].Bands = std::move(parsed.Bands);
+            Tables[i].Entries = std::move(parsed.Entries);
         }
         catch (const std::exception& failure)
         {
@@ -232,7 +277,10 @@ static void ReloadChangedTables()
         std::cout << "Skin: reloaded " << path << std::endl;
         for (const auto& [chart, record] : Charts)
             if (record.Table == i)
+            {
+                FeatureCache::ForgetChart(chart);
                 Paging::ResetTexture(chart);
+            }
     }
 }
 
@@ -252,6 +300,7 @@ void SkinBakeProducer::Fill(PipelineExecutor* executor, const PageKey& page, con
             DescriptorSetBinding::ForImage(3, slot.Images[1], SubresourceRange::Mip(0)),
             DescriptorSetBinding::ForBuffer(4, allocator->GetFrameRing()),
             DescriptorSetBinding::ForImage(5, ChartMaps),
+            DescriptorSetBinding::ForBuffer(6, FeatureCache::GetBuffer()),
         });
 
     BakeConstants constants = {};
@@ -267,6 +316,9 @@ void SkinBakeProducer::Fill(PipelineExecutor* executor, const PageKey& page, con
     constants.ChartMillimetres[1] = chart.Millimetres[1];
     constants.BandTable = Tables[chart.Table].RingOffset;
     constants.ChartLayer = chart.Layer;
+    constants.Chart = page.Texture;
+    constants.CellTableBase = FeatureCache::GetTableBase();
+    constants.CellTableMask = FeatureCache::GetTableMask();
 
     executor->BindPipeline(BakePipeline);
     executor->BindDescriptorSet(BakeSet);
@@ -345,6 +397,7 @@ void Skin::Start()
         { .Type = DescriptorType::StorageImage, .Slot = 3, .Set = BakeSetIndex, .Count = 1 },
         { .Type = DescriptorType::StorageBuffer, .Slot = 4, .Set = BakeSetIndex, .Count = 1, .Stride = 16 },
         { .Type = DescriptorType::SampledImage, .Slot = 5, .Set = BakeSetIndex, .Count = 1 },
+        { .Type = DescriptorType::StorageBuffer, .Slot = 6, .Set = BakeSetIndex, .Count = 1, .Stride = 8 },
     };
     BakeLayout = PipelineLayout::Create(bakeResources, { { .Size = sizeof(BakeConstants), .VisibleStages = computeStage } });
     ShaderStage shader = LoadShader(Paging::GetAtlasFormat(1) == Format::R16G16B16A16_FLOAT ? "cs_skin_bake_float" : "cs_skin_bake");
@@ -357,6 +410,8 @@ void Skin::Start()
     uploads.Order = INT_MIN + 2;
     uploads.Execute = ExecuteUploads;
     Renderer::GetPassGraph().AddPass(std::move(uploads));
+    FeatureCache::Start(ChartMaps);
+    Stats.FeatureCacheBytes = FeatureCache::GetBytes();
     LastFileCheck = std::chrono::steady_clock::now();
 }
 
@@ -377,11 +432,83 @@ void Skin::Shutdown()
         allocator->DestroyImage(ChartMaps);
     delete BakePipeline;
     delete BakeLayout;
+    FeatureCache::Shutdown();
     SkinSet = {};
     BakeSet = {};
     ChartMaps = {};
     BakePipeline = nullptr;
     BakeLayout = nullptr;
+}
+
+// The cells of a point band a page reads, gutter included: one per lattice cell.
+static void RequestPageCells(PagedTextureID id, const Chart& chart, uint32_t bandIndex, const PageKey& page)
+{
+    const Band& band = Tables[chart.Table].Bands[bandIndex];
+    double pages = std::ldexp(1.0, static_cast<int>(page.Level));
+    double gutter = static_cast<double>(Paging::Gutter) / Paging::PageSize;
+    int64_t range[2][2];
+    for (int axis = 0; axis < 2; axis++)
+    {
+        double cells = (std::max)(1.0f, std::nearbyint(chart.Millimetres[axis] / band.Wavelength));
+        double position = axis == 0 ? page.X : page.Y;
+        range[axis][0] = static_cast<int64_t>(std::floor((position - gutter) * cells / pages));
+        range[axis][1] = static_cast<int64_t>(std::floor((position + 1.0 + gutter) * cells / pages));
+    }
+    if ((range[0][1] - range[0][0] + 1) * (range[1][1] - range[1][0] + 1) > 4096)
+        return;
+
+    FeatureChart featureChart;
+    featureChart.TableOffset = Tables[chart.Table].RingOffset;
+    featureChart.Millimetres[0] = chart.Millimetres[0];
+    featureChart.Millimetres[1] = chart.Millimetres[1];
+    featureChart.IsPeriodic = chart.IsPeriodic;
+    featureChart.ChartLayer = chart.Layer;
+    for (int64_t y = range[1][0]; y <= range[1][1]; y++)
+        for (int64_t x = range[0][0]; x <= range[0][1]; x++)
+            FeatureCache::Request({ id, bandIndex, static_cast<int32_t>(x), static_cast<int32_t>(y) }, featureChart);
+}
+
+// Cells come from pages: those under each page baked this frame, for the point bands its bake adds,
+// and those under each wanted page, for the point bands that can be live there, a lookup up to two
+// levels coarser included.
+static void RequestFeatureCells()
+{
+    Paging::ForEachFill([](const PageKey& page)
+    {
+        auto found = Charts.find(page.Texture);
+        if (found == Charts.end())
+            return;
+        const Chart& chart = found->second;
+        const std::vector<Band>& bands = Tables[chart.Table].Bands;
+        for (uint32_t b = 0; b < bands.size(); b++)
+        {
+            if (bands[b].Primitive == 0)
+                continue;
+            float scale = BandScale(bands[b]);
+            float growth = BandWeight(scale, LevelTexelMillimetres(chart.Millimetres, page.Level)) -
+                           (page.Level > 0 ? BandWeight(scale, LevelTexelMillimetres(chart.Millimetres, page.Level - 1)) : 0.0f);
+            if (growth > 0.0f)
+                RequestPageCells(page.Texture, chart, b, page);
+        }
+    });
+    Paging::ForEachWantedPage([](const PageKey& page)
+    {
+        auto found = Charts.find(page.Texture);
+        if (found == Charts.end())
+            return;
+        const Chart& chart = found->second;
+        const std::vector<Band>& bands = Tables[chart.Table].Bands;
+        for (uint32_t b = 0; b < bands.size(); b++)
+        {
+            if (bands[b].Primitive == 0)
+                continue;
+            float scale = BandScale(bands[b]);
+            bool isVisible = BandWeight(scale, 0.5f * LevelTexelMillimetres(chart.Millimetres, page.Level)) > 0.0f;
+            bool isBakedCoarser = BandWeight(scale, LevelTexelMillimetres(chart.Millimetres, static_cast<int32_t>(page.Level) - 2)) >= 1.0f;
+            if (isVisible && !isBakedCoarser)
+                RequestPageCells(page.Texture, chart, b, page);
+        }
+    });
 }
 
 void Skin::Update()
@@ -414,10 +541,19 @@ void Skin::Update()
     if (!entries.empty())
         std::memcpy(ring.Address, entries.data(), entries.size() * sizeof(XMFLOAT4));
 
+    RequestFeatureCells();
+    FeatureCache::Schedule(Renderer::GetExecutor()->GetFrameNumber());
+
     FrameAllocation constants = allocator->AllocateFrameData(ConstantsSize, BufferAllocator::UniformAlignment);
     std::memcpy(constants.Address, offsets, sizeof(offsets));
+    uint32_t cellTable[2] = { FeatureCache::GetTableBase(), FeatureCache::GetTableMask() };
+    std::memcpy(static_cast<uint8_t*>(constants.Address) + sizeof(offsets), cellTable, sizeof(cellTable));
     ConstantsOffset = static_cast<uint32_t>(constants.Offset);
     Stats.Charts = static_cast<uint32_t>(Charts.size());
+    Stats.CellsGenerated = FeatureCache::GetCellsGenerated();
+    Stats.ResidentCells = FeatureCache::GetResidentCells();
+    Stats.PeakResidentCells = FeatureCache::GetPeakResidentCells();
+    Stats.TotalCellsGenerated = FeatureCache::GetTotalCellsGenerated();
 }
 
 std::vector<DescriptorBinding> Skin::GetSkinSetBindings()
@@ -426,6 +562,7 @@ std::vector<DescriptorBinding> Skin::GetSkinSetBindings()
         { .Type = DescriptorType::DynamicUniformBuffer, .Slot = 0, .Set = SkinSetIndex, .Count = 1, .Size = ConstantsSize },
         { .Type = DescriptorType::StorageBuffer, .Slot = 1, .Set = SkinSetIndex, .Count = 1, .Stride = 16 },
         { .Type = DescriptorType::SampledImage, .Slot = 2, .Set = SkinSetIndex, .Count = 1 },
+        { .Type = DescriptorType::StorageBuffer, .Slot = 3, .Set = SkinSetIndex, .Count = 1, .Stride = 8 },
     };
 }
 
@@ -438,6 +575,7 @@ void Skin::BindSkinSet(PipelineExecutor* executor)
             DescriptorSetBinding::ForBuffer(0, allocator->GetFrameRing()),
             DescriptorSetBinding::ForBuffer(1, allocator->GetFrameRing()),
             DescriptorSetBinding::ForImage(2, ChartMaps),
+            DescriptorSetBinding::ForBuffer(3, FeatureCache::GetBuffer()),
         });
     }
     uint32_t offsets[] = { ConstantsOffset };
@@ -486,6 +624,7 @@ void Skin::RetireChart(PagedTextureID chart)
     if (found->second.Layer != 0)
         IsLayerUsed[found->second.Layer] = false;
     Charts.erase(found);
+    FeatureCache::ForgetChart(chart);
     Paging::RetireTexture(chart);
 }
 
