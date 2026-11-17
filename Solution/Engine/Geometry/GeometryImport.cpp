@@ -1,5 +1,6 @@
 #include "GeometryImport.h"
 #include <algorithm>
+#include <chrono>
 #include <filesystem>
 #include <iostream>
 #include <stdexcept>
@@ -9,6 +10,7 @@
 #include <assimp/config.h>
 #include <assimp/scene.h>
 #include <assimp/postprocess.h>
+#include "ChartBuilder.h"
 #include "Mesh.h"
 #include "DirectXMath.h"
 #include "RHI/RHIStructures.h"
@@ -43,6 +45,8 @@ struct ImportState
     std::string DestDir;
     SceneNode* Root = nullptr;
     Skeleton* ModelSkeleton = nullptr;
+    float MillimetresPerUnit = 10.0f;
+    double ChartMilliseconds = 0.0;
     std::unordered_map<const aiNode*, int32_t> JointByNode;
     std::unordered_map<std::string, int32_t> JointByName;
     std::unordered_map<const aiNode*, XMFLOAT4X4> ModelByNode;
@@ -50,6 +54,38 @@ struct ImportState
     XMMATRIX GetModel(const aiNode* node) const { return XMLoadFloat4x4(&ModelByNode.at(node)); }
     bool IsJoint(const aiNode* node) const { return JointByNode.contains(node); }
 };
+
+// Chart sizes for every mesh with UVs, and chart maps for skinned ones, in millimetres of the bind
+// pose as the file measures it; the scene may rescale the model, which charts ignore.
+static void MeasureChart(Mesh& mesh, ImportState& state)
+{
+    std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
+    std::vector<ChartBuilder::ChartVertex> vertices(mesh.GetVertexCount());
+    const uint32_t* indices = static_cast<const uint32_t*>(mesh.GetCachedIndexData());
+    if (mesh.IsSkinned())
+    {
+        const RHIStructures::SkinnedVertex* source = static_cast<const RHIStructures::SkinnedVertex*>(mesh.GetCachedVertexData());
+        for (size_t i = 0; i < vertices.size(); i++)
+        {
+            const float weights[4] = { source[i].BoneWeights.x, source[i].BoneWeights.y, source[i].BoneWeights.z, source[i].BoneWeights.w };
+            const uint32_t joints[4] = { source[i].BoneIndices.x, source[i].BoneIndices.y, source[i].BoneIndices.z, source[i].BoneIndices.w };
+            int largest = static_cast<int>(std::max_element(weights, weights + 4) - weights);
+            vertices[i] = { source[i].Position, source[i].Normal, source[i].TexCoord, weights[largest] > 0.0f ? static_cast<int32_t>(joints[largest]) : -1 };
+        }
+    }
+    else
+    {
+        const RHIStructures::Vertex* source = static_cast<const RHIStructures::Vertex*>(mesh.GetCachedVertexData());
+        for (size_t i = 0; i < vertices.size(); i++)
+            vertices[i] = { source[i].Position, source[i].Normal, source[i].TexCoord, -1 };
+    }
+    mesh.SetChart(ChartBuilder::Build(vertices, { indices, mesh.GetIndexCount() }, mesh.IsSkinned() ? state.ModelSkeleton : nullptr,
+                                      state.MillimetresPerUnit));
+    state.ChartMilliseconds += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+    if (!mesh.GetChart().Map.empty())
+        std::cout << "Chart " << mesh.GetMaterialName() << ": " << mesh.GetChart().MillimetresU << " x " << mesh.GetChart().MillimetresV
+                  << " mm per UV unit, chart map " << MeshChart::MapSize << " x " << MeshChart::MapSize << std::endl;
+}
 
 static void CollectModelTransforms(const aiNode* node, const XMMATRIX& model, ImportState& state)
 {
@@ -228,6 +264,7 @@ static SceneNode* LoadNode(const aiNode* node, const XMMATRIX& local, SceneNode*
             meshes.emplace_back(GeometryImport::LoadMesh(assimpMesh));
         }
         meshes.back().SetMaterialName(scene->mMaterials[assimpMesh->mMaterialIndex]->GetName().C_Str());
+        MeasureChart(meshes.back(), state);
     }
 
     SceneNode* sceneNode = nullptr;
@@ -382,11 +419,19 @@ SceneNode* GeometryImport::CreateMeshGroup(const std::string& sourcePath, const 
     state.Scene = scene;
     state.Name = name;
     state.DestDir = std::filesystem::path(sourcePath).parent_path().string();
+
+    // FBX states its unit as centimetres per unit; Assimp leaves positions in it.
+    double unitScale = 1.0;
+    float unitScaleFloat = 1.0f;
+    if (scene->mMetaData && !scene->mMetaData->Get("UnitScaleFactor", unitScale) && scene->mMetaData->Get("UnitScaleFactor", unitScaleFloat))
+        unitScale = unitScaleFloat;
+    state.MillimetresPerUnit = static_cast<float>(unitScale * 10.0);
     CollectModelTransforms(scene->mRootNode, XMMatrixIdentity(), state);
     if (allowSkinned)
         BuildSkeleton(state);
 
     SceneNode* root = LoadNode(scene->mRootNode, ToMatrix(scene->mRootNode->mTransformation) * transform, nullptr, false, state);
+    std::cout << "Import " << name << ": charts measured in " << state.ChartMilliseconds << " ms" << std::endl;
 
     if (state.ModelSkeleton)
     {

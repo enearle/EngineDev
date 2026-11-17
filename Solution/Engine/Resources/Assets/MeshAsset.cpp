@@ -28,6 +28,11 @@ void MeshAsset::Serialize(std::string& data)
         AssetSerializer::Write<bool>(data, Meshes[i].IsSkinned());
         AssetSerializer::Write<uint32_t>(data, Meshes[i].GetLocalMaterialIndex());
         AssetSerializer::WriteString(data, Meshes[i].GetMaterialName());
+        const MeshChart& chart = Meshes[i].GetChart();
+        AssetSerializer::Write<float>(data, chart.MillimetresU);
+        AssetSerializer::Write<float>(data, chart.MillimetresV);
+        AssetSerializer::Write<uint32_t>(data, static_cast<uint32_t>(chart.Map.size()));
+        AssetSerializer::WriteBytes(data, chart.Map.data(), chart.Map.size());
         AssetSerializer::Write<uint32_t>(data, Meshes[i].GetVertexCount());
         AssetSerializer::Write<uint32_t>(data, Meshes[i].GetIndexCount());
 
@@ -72,6 +77,11 @@ void MeshAsset::Deserialize(std::string& data, long& offset)
         bool skinned    = AssetSerializer::Read<bool>(data, offset);
         uint32_t matIdx = AssetSerializer::Read<uint32_t>(data, offset);
         std::string materialName = AssetSerializer::ReadString(data, offset);
+        MeshChart chart;
+        chart.MillimetresU = AssetSerializer::Read<float>(data, offset);
+        chart.MillimetresV = AssetSerializer::Read<float>(data, offset);
+        chart.Map.resize(AssetSerializer::Read<uint32_t>(data, offset));
+        AssetSerializer::ReadBytes(data, offset, chart.Map.data(), chart.Map.size());
         uint32_t vCount = AssetSerializer::Read<uint32_t>(data, offset);
         uint32_t iCount = AssetSerializer::Read<uint32_t>(data, offset);
 
@@ -98,6 +108,7 @@ void MeshAsset::Deserialize(std::string& data, long& offset)
             Meshes.emplace_back(cache, matIdx);
         }
         Meshes.back().SetMaterialName(materialName);
+        Meshes.back().SetChart(std::move(chart));
     }
 }
 

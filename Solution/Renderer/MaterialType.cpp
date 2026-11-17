@@ -50,6 +50,17 @@ void MaterialTypes::RegisterBuiltInTypes()
         { "metallic", 1, { 0.0f } },
         { "roughness", 1, { 0.8f } },
     } });
+
+    // The chart is a Skin chart's Paging texture ID, bound at load. Melanin and hemoglobin are the
+    // base concentrations the bands deviate from; tint is the colour before absorption, linear.
+    Register({ .Name = "procedural_skin", .Fields = {
+        { "chart", 1, { 0.0f } },
+        { "melanin", 1, { 0.5f } },
+        { "hemoglobin", 1, { 0.3f } },
+        { "tint", 3, { 0.95f, 0.9f, 0.85f } },
+        { "roughness", 1, { 0.45f } },
+        { "subsurface", 1, { 0.0f } },
+    } });
 }
 
 void MaterialTypes::Clear()

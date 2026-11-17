@@ -9,6 +9,7 @@
 #include "Game.h"
 #include "AnimationDemo.h"
 #include "PagingTest.h"
+#include "SkinTest.h"
 #include "Paging.h"
 #include "imgui.h"
 #include "Camera.h"
@@ -255,7 +256,7 @@ void GameInit()
     lightData.Intensity = 20.0f;
     lightData.Radius = 50.0f;
     lightData.Type = 1;
-    if (IsSwitchPresent(L" -paging-test"))
+    if (IsSwitchPresent(L" -paging-test") || IsSwitchPresent(L" -skin-test"))
     {
         lightData.Position = XMFLOAT3(0.0f, 30.0f, 0.0f);
         lightData.Intensity = 4.0f;
@@ -265,6 +266,12 @@ void GameInit()
 
     if (IsSwitchPresent(L" -paging-test"))
         PagingTest::Start(std::filesystem::path(SwitchText(L" -paging-image", L"")).string());
+    else if (IsSwitchPresent(L" -skin-test plane"))
+    {
+        SkinTest::StartOnPlane();
+        if (IsSwitchPresent(L" -skin-stop"))
+            SkinTest::HoldAtStop(static_cast<int>(SwitchNumber(L" -skin-stop", 0)));
+    }
     else
         BuildDemoScene();
     Paging::SetTint(IsSwitchPresent(L" -paging-tint"));
@@ -284,6 +291,7 @@ void GameRunFrame(float /*dt*/)
     NoesisUILayer::Instance().NoesisUpdate(GameTime::GetDeltaTime());
     if (sCameraCon) sCameraCon->MoveCamera(GameTime::GetDeltaTime());
     PagingTest::Update(static_cast<float>(GameTime::GetDeltaTime()), sCamera);
+    SkinTest::Update(static_cast<float>(GameTime::GetDeltaTime()), sCamera);
     AnimationDemo::Update(static_cast<float>(GameTime::GetDeltaTime()));
     AnimationSystem::Update(static_cast<float>(GameTime::GetDeltaTime()));
     SceneExtraction::ExtractFrame(sCamera, { sLight });
@@ -304,6 +312,7 @@ void GameShutdown()
     std::cout << std::endl;
     AnimationDemo::PrintResults();
     PagingTest::PrintResults();
+    SkinTest::PrintResults();
 
     Renderer::WaitForGpu();
     DebugOverlay::RetirePanel(sStatsPanel);
@@ -322,6 +331,7 @@ void GameShutdown()
 
     AnimationDemo::Shutdown();
     PagingTest::Shutdown();
+    SkinTest::Shutdown();
     NoesisUILayer::Instance().NoesisShutdown();
 
     delete sCameraCon; sCameraCon = nullptr;

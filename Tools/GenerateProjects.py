@@ -160,6 +160,9 @@ def gen(p):
             profile = {"vs": "vs_6_1", "ps": "ps_6_1", "cs": "cs_6_1"}[base[:2]]
             # ps_gbuffer is compiled once per material type's surface file.
             variants = [(f"{base}_{name}", f"-D SURFACE={name}") for name in surfaces] if base == "ps_gbuffer" else [(base, "")]
+            # The skin bake writes atlas height as R16G16B16A16_FLOAT where UNORM cannot be written.
+            if base == "cs_skin_bake":
+                variants.append((f"{base}_float", "-D ATLAS_HEIGHT_FLOAT"))
             for output, arguments in variants:
                 w(f'    <ShaderSource Include="{s}">')
                 w(f'      <Profile>{profile}</Profile>')

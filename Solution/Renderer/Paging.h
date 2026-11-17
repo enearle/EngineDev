@@ -132,6 +132,11 @@ public:
     static void RetireTexture(PagedTextureID texture);
 
     static void SetTint(bool isTinted);
+    // Starts every lookup this many levels coarser than wanted, while feedback still asks for the
+    // wanted level; for comparing how a surface looks from coarser pages.
+    static void SetLevelBias(uint32_t levels);
+    // Drops every page of the texture and queues its level 0 again, for a producer whose content changed.
+    static void ResetTexture(PagedTextureID texture);
     static void SetPageUserWords(const PageKey& page, uint32_t first, uint32_t second);
     static bool IsResident(const PageKey& page);
     // True once enough feedback has arrived without a missing page that every pixel was sampled.

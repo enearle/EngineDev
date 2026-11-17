@@ -56,6 +56,7 @@
     <ClCompile Include="Camera.cpp" />
     <ClCompile Include="CameraController.cpp" />
     <ClCompile Include="GameTime.cpp" />
+    <ClCompile Include="Geometry\ChartBuilder.cpp" />
     <ClCompile Include="Geometry\GeometryImport.cpp" />
     <ClCompile Include="Geometry\Mesh.cpp" />
     <ClCompile Include="Input\CommandQueue.cpp" />
@@ -92,6 +93,7 @@
     <ClInclude Include="CameraController.h" />
     <ClInclude Include="ENGINE_API_Macro.h" />
     <ClInclude Include="GameTime.h" />
+    <ClInclude Include="Geometry\ChartBuilder.h" />
     <ClInclude Include="Geometry\GeometryImport.h" />
     <ClInclude Include="Geometry\Mesh.h" />
     <ClInclude Include="Input\CommandQueue.h" />

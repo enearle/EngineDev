@@ -24,6 +24,8 @@ cbuffer PagingConstants : register(b0, space3)
     uint2 PagingJitter;
     uint PagingIsTinted;
     uint PagingTexturesBase;
+    uint PagingLevelBias;           // Lookups start this many levels coarser than wanted
+    uint3 PagingPadding;
 };
 
 // The frame ring: the table, the user words and the per-texture entries all live in it.
@@ -129,7 +131,7 @@ PageResolve ResolvePage(uint texture, float2 uv, float2 uvDdx, float2 uvDdy)
     result.WithinPage = 0.0;
     result.Page = 0;
 
-    uint level = result.WantedLevel;
+    uint level = result.WantedLevel - min(PagingLevelBias, result.WantedLevel);
     [unroll]
     for (uint probe = 0; probe < PAGING_LEVELS_PROBED; probe++)
     {

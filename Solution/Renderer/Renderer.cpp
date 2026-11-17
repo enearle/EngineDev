@@ -12,6 +12,7 @@
 #include "Readback.h"
 #include "MipGenerator.h"
 #include "Paging.h"
+#include "Skin/Skin.h"
 #include "Skinning.h"
 #include "RHI/BufferAllocator.h"
 #include "RHI/PipelineExecutor.h"
@@ -95,6 +96,7 @@ void Renderer::BindSurfaceSets(PipelineExecutor* executor)
 {
     BindSceneSet(executor);
     Paging::BindPagingSet(executor);
+    Skin::BindSkinSet(executor);
 }
 
 SurfacePassResources& Renderer::GetSurfacePassResources()
@@ -148,6 +150,7 @@ void Renderer::Start(Window* mainWindow)
     PagingSettings pagingSettings;
     pagingSettings.SlotsPerSide = (std::max)(1u, static_cast<uint32_t>(std::sqrt(static_cast<double>(GRAPHICS_SETTINGS.AtlasSlots))));
     Paging::Start(pagingSettings);
+    Skin::Start();
 
     MaterialTypes::RegisterBuiltInTypes();
     ResourceLayout sceneResources;
@@ -156,6 +159,8 @@ void Renderer::Start(Window* mainWindow)
     for (const DescriptorBinding& binding : MaterialRegistry::GetMaterialSetBindings())
         sceneResources.Bindings.push_back(binding);
     for (const DescriptorBinding& binding : Paging::GetPagingSetBindings())
+        sceneResources.Bindings.push_back(binding);
+    for (const DescriptorBinding& binding : Skin::GetSkinSetBindings())
         sceneResources.Bindings.push_back(binding);
 
     ShaderStageMask constantStages(0);
@@ -267,6 +272,7 @@ void Renderer::DrawFrame()
 
     Readback::DeliverCompleted();
     Paging::Update();
+    Skin::Update();
 
     for (EnlistedExternalPass& external : ExternalPasses)
         if (external.Pass.Prepare)
@@ -294,6 +300,7 @@ int Renderer::End()
     Skinning::Shutdown();
     MaterialRegistry::Shutdown();
     MaterialTypes::Clear();
+    Skin::Shutdown();
     Paging::Shutdown();
     SurfaceResources = {};
     Graph->Clear();

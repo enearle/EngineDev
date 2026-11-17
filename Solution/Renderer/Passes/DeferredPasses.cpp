@@ -216,6 +216,16 @@ void DeferredPasses::Enlist()
     IsEnlisted = true;
 }
 
+GraphImageID DeferredPasses::GetAlbedoImage()
+{
+    return Albedo;
+}
+
+GraphImageID DeferredPasses::GetNormalImage()
+{
+    return Normal;
+}
+
 void DeferredPasses::Retire()
 {
     if (!IsEnlisted)

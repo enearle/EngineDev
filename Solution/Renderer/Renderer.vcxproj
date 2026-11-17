@@ -63,6 +63,7 @@
     <ClCompile Include="Readback.cpp" />
     <ClCompile Include="Renderer.cpp" />
     <ClCompile Include="ShaderLibrary.cpp" />
+    <ClCompile Include="Skin\Skin.cpp" />
     <ClCompile Include="Skinning.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -84,6 +85,7 @@
     <ClInclude Include="RENDERER_API_Macro.h" />
     <ClInclude Include="RenderScene.h" />
     <ClInclude Include="ShaderLibrary.h" />
+    <ClInclude Include="Skin\Skin.h" />
     <ClInclude Include="Skinning.h" />
   </ItemGroup>
   <ItemGroup>
@@ -101,6 +103,16 @@
       <Profile>cs_6_1</Profile>
       <OutputName>cs_paging_clear</OutputName>
       <Arguments></Arguments>
+    </ShaderSource>
+    <ShaderSource Include="Shaders\cs_skin_bake.hlsl">
+      <Profile>cs_6_1</Profile>
+      <OutputName>cs_skin_bake</OutputName>
+      <Arguments></Arguments>
+    </ShaderSource>
+    <ShaderSource Include="Shaders\cs_skin_bake.hlsl">
+      <Profile>cs_6_1</Profile>
+      <OutputName>cs_skin_bake_float</OutputName>
+      <Arguments>-D ATLAS_HEIGHT_FLOAT</Arguments>
     </ShaderSource>
     <ShaderSource Include="Shaders\cs_skinning.hlsl">
       <Profile>cs_6_1</Profile>
@@ -121,6 +133,11 @@
       <Profile>ps_6_1</Profile>
       <OutputName>ps_gbuffer_paged_albedo</OutputName>
       <Arguments>-D SURFACE=paged_albedo</Arguments>
+    </ShaderSource>
+    <ShaderSource Include="Shaders\ps_gbuffer.hlsl">
+      <Profile>ps_6_1</Profile>
+      <OutputName>ps_gbuffer_procedural_skin</OutputName>
+      <Arguments>-D SURFACE=procedural_skin</Arguments>
     </ShaderSource>
     <ShaderSource Include="Shaders\ps_gbuffer.hlsl">
       <Profile>ps_6_1</Profile>
@@ -155,9 +172,11 @@
     <ShaderInclude Include="Shaders\Colour.hlsli" />
     <ShaderInclude Include="Shaders\Common.hlsli" />
     <ShaderInclude Include="Shaders\Paging.hlsli" />
+    <ShaderInclude Include="Shaders\Skin.hlsli" />
     <ShaderInclude Include="Shaders\Surface.hlsli" />
     <ShaderInclude Include="Shaders\Surfaces\flat.hlsli" />
     <ShaderInclude Include="Shaders\Surfaces\paged_albedo.hlsli" />
+    <ShaderInclude Include="Shaders\Surfaces\procedural_skin.hlsli" />
     <ShaderInclude Include="Shaders\Surfaces\textured_pbr.hlsli" />
   </ItemGroup>
   <ItemGroup>

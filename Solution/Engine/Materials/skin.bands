@@ -1,0 +1,15 @@
+# Bands of procedural skin, one per line, coarse to fine after loading:
+# name, primitive, wavelength in millimetres, amplitude, field, seed, and for points and curves
+# density, profile, width in millimetres, the band it depends on (- for none) and stretch.
+# Height is in millimetres; melanin and hemoglobin deviate from the material's base values.
+tone_broad     noise   40      0.12      melanin     11
+tone_mid       noise   12      0.08      hemoglobin  12
+tone_fine      noise   4       0.05      melanin     13
+relief_broad   noise   2       0.05      height      21
+relief_mid     noise   0.5     0.012     height      22
+relief_fine    noise   0.12    0.004     height      23
+grain_1        noise   0.03    0.001     height      31
+grain_2        noise   0.012   0.0004    height      32
+grain_3        noise   0.005   0.00015   height      33
+grain_4        noise   0.002   0.00006   height      34
+grain_5        noise   0.0008  0.000024  height      35

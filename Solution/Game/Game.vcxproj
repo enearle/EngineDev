@@ -50,11 +50,13 @@
     <ClCompile Include="AnimationDemo.cpp" />
     <ClCompile Include="Game.cpp" />
     <ClCompile Include="PagingTest.cpp" />
+    <ClCompile Include="SkinTest.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="AnimationDemo.h" />
     <ClInclude Include="Game.h" />
     <ClInclude Include="PagingTest.h" />
+    <ClInclude Include="SkinTest.h" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\RHI\RHI.vcxproj">

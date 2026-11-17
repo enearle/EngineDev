@@ -43,6 +43,7 @@ Mesh::Mesh(Mesh&& other) noexcept
       IndexCount(other.IndexCount),
       LocalMaterialIndex(other.LocalMaterialIndex),
       MaterialName(std::move(other.MaterialName)),
+      Chart(std::move(other.Chart)),
       GPUMesh(other.GPUMesh),
       TempVertexCache(other.TempVertexCache),
       TempSkinnedVertexCache(other.TempSkinnedVertexCache)
@@ -62,6 +63,7 @@ Mesh& Mesh::operator=(Mesh&& other) noexcept
         IndexCount = other.IndexCount;
         LocalMaterialIndex = other.LocalMaterialIndex;
         MaterialName = std::move(other.MaterialName);
+        Chart = std::move(other.Chart);
         GPUMesh = other.GPUMesh;
         TempVertexCache = other.TempVertexCache;
         TempSkinnedVertexCache = other.TempSkinnedVertexCache;

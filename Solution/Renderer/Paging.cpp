@@ -48,6 +48,8 @@ struct PagingConstants
     uint32_t Jitter[2];
     uint32_t IsTinted;
     uint32_t TexturesBase;              // In 16-byte entries of the frame ring, EntriesPerTexture per texture
+    uint32_t LevelBias;
+    uint32_t Padding[3];
 };
 static_assert(sizeof(PagingConstants) <= ConstantsSize);
 
@@ -129,6 +131,7 @@ static uint64_t LatestFeedbackFrame = 0;
 static bool HasNewFeedback = false;
 static uint32_t FeedbackFramesWithoutMissing = 0;
 static bool IsTintOn = false;
+static uint32_t LevelBias = 0;
 static PagingStats Stats;
 static std::function<void(const PageKey&, const PageSlot&)> FillObserver;
 
@@ -664,6 +667,7 @@ static void WriteGpuData(uint64_t frame)
     constants.Jitter[0] = jitter % Paging::FeedbackBlockSize;
     constants.Jitter[1] = jitter / Paging::FeedbackBlockSize;
     constants.IsTinted = IsTintOn;
+    constants.LevelBias = LevelBias;
 
     std::vector<DirectX::XMUINT4> textureEntries((std::max)(Textures.size(), size_t(1)) * EntriesPerTexture, DirectX::XMUINT4(0, 0, 0, 0));
     for (size_t i = 0; i < Textures.size(); i++)
@@ -758,6 +762,23 @@ void Paging::RetireTexture(PagedTextureID texture)
 void Paging::SetTint(bool isTinted)
 {
     IsTintOn = isTinted;
+}
+
+void Paging::SetLevelBias(uint32_t levels)
+{
+    LevelBias = levels;
+}
+
+void Paging::ResetTexture(PagedTextureID texture)
+{
+    if (texture >= Textures.size() || !Textures[texture].IsLive)
+        return;
+    PagedTexture kept = Textures[texture];
+    RetireTexture(texture);
+    Textures[texture] = kept;
+    PageKey root = { texture, 0, 0, 0 };
+    Queued[root] = { Renderer::GetExecutor()->GetFrameNumber(), 0, true };
+    kept.Producer->Begin(root);
 }
 
 void Paging::SetPageUserWords(const PageKey& page, uint32_t first, uint32_t second)
