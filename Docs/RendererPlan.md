@@ -12,7 +12,7 @@ maintained copy and is updated as each phase lands.
 | 2. Compute and GPU data | Done | Branch `Dev-2`, 14 November 2026. See "Phase 2 outcome" |
 | 3. Skeleton and animation | Done | Branch `Dev-2`, 16 November 2026. See "Phase 3 outcome" |
 | 4. Materials and paging | Done | Branch `Dev-2`, 16 November 2026. See "Phase 4 outcome" |
-| 5. Procedural skin on the character | Not started | |
+| 5. Procedural skin on the character | Done, two gate lines fail | Branch `Dev-2`, 17 November 2026. See "Phase 5 outcome"; plan in `Docs/Handoff-Phase5.md` |
 | 6. Subdivision and deep zoom | Not started | Optional |
 
 ## Phase 0 outcome
@@ -533,7 +533,117 @@ Carried, not part of Phase 4:
   once and reused, which is the pattern cooked assets should follow.
 - `ImageAsset` and `MaterialAsset` are still stubs.
 - Flexible vertex formats, a second UV set and non-overlapping UVs for the character: Phase 5.
+  Done there with a second UV set on both fixed layouts, not flexible formats.
 - The open and carried items under "Phase 2 outcome" and "Phase 3 outcome".
+
+## Phase 5 outcome
+
+Finished on `Dev-2` on 17 November 2026, following `Docs/Handoff-Phase5.md`. Six commits: "Phase 4
+corrections" (step 1), "Phase 5: baked and live bands" (steps 2 and 3), "Phase 5: vector features"
+(steps 4 and 5), "Phase 5: the character" (step 6), "Phase 5: seam patches" (steps 7 and 8) and
+"Phase 5: skin shading" (steps 9 and 10).
+
+**Gate.** `-skin-test` on the character, Debug and Release, both backends, validation clean. Four
+of the six lines hold; two do not.
+
+| Line | Vulkan | D3D12 |
+| --- | --- | --- |
+| Level invariance | FAILED at 1 of 6 stops: the 2 mm view, normal 99th percentile 0.617 against 0.05 (mean 0.016 against 0.01). The other five hold, albedo mean at most 0.144 levels | The same figures |
+| Fixed memory | 87.859 MB at every stop | The same |
+| Fixed fragment cost, Release `-novsync` | FAILED: G-buffer 0.113 to 0.224 ms where skin fills the view, a spread of 98% | Held: 0.134 to 0.163 ms, 22% |
+| Convergence | Longest 63 frames (neck seam, two charts); 39 for the whole body from nothing | Longest 56 |
+| Seams | Held at 63 seam pixels on the neck: step to neighbouring pixels 0.62 albedo levels on the seam and 0.48 beside it, normal 0.017 and 0.035. Without patches 2.60 and 1.39, normal 0.046 and 0.033, which fails | The same |
+| Stability | 0 pages filled in 120 frames with a clip playing (Debug: 1 to 2) | 0 |
+
+`-skin-test plane` holds every line it measures but fragment cost: invariance at 4 of 4 stops
+(normal 99th percentile 0.031), 87.859 MB, convergence in 5 frames, and a Release G-buffer spread of
+44% on Vulkan and 52% on D3D12 (0.071 to 0.107 ms).
+
+**Release `-skin-test -novsync`**, per stop (Vulkan, then D3D12). Peaks are the slowest frame from
+arriving at the stop to a resident view; no pages were baked while measuring at any stop.
+
+| Stop | Frame ms | G-buffer ms | Peak feature pass ms | Peak fill ms | Cells generated | Wait, frames |
+| --- | --- | --- | --- | --- | --- | --- |
+| Whole body | 1.68, 1.00 | 0.061, 0.066 | 0.067, 0.321 | 0.163, 1.308 | 10,838 | 39, 39 |
+| Torso 400 mm | 3.21, 1.74 | 0.117, 0.115 | 0.014, 0.015 | 0.074, 0.075 | 13,584 | 9, 11 |
+| Forearm 200 mm | 2.40, 1.12 | 0.076, 0.095 | 0.232, 0.243 | 0.063, 0.067 | 1,512 | 29, 25 |
+| Forearm 20 mm | 3.06, 1.40 | 0.113, 0.134 | 0.199, 0.208 | 0.090, 0.095 | 6,738 | 5, 5 |
+| Forearm 2 mm | 2.93, 1.58 | 0.224, 0.163 | 0.017, 0.014 | 0.127, 0.082 | 4,456 | 4, 7 |
+| Neck seam 60 mm | 3.78, 2.07 | 0.397, 0.230 | 0.419, 0.240 | 0.271, 0.180 | 19,594, 19,559 | 63, 56 |
+
+The feature cache peaks at its 16,384 cells from the torso stop on; 56,722 cells were generated in
+the run. Paging fills include the bakes and the copies from scratch into the atlas.
+
+**What was built**
+
+- Corrections (step 1): reversed depth with an infinite far plane and a settable near plane
+  (default 0.01); whole missing chains queued and filled a level at a time; computing producers
+  that write scratch images, copied into the atlas by the new `PipelineExecutor::CopyImage`; one
+  sample call per atlas image; per-texture data in the frame ring, 64 textures, `-atlas-slots N`;
+  `R16G16B16A16_UNORM`; `TexCoord1`, `PatchWeight` and `PatchChart` on both vertex layouts; and
+  `Surface::Subsurface` in the material target's alpha.
+- Charts (step 2): import measures millimetres per UV unit from the file's unit, and builds a
+  512 x 512 chart map for skinned meshes with the direction field from the skeleton, local scale and
+  coverage.
+- Bands (steps 3 to 5): `Engine/Materials/skin.bands`, hot-reloaded; noise, points and curves on a
+  lattice addressed in 32-bit integer maths; `SkinBakeProducer` and `cs_skin_bake`; the vector
+  feature cache and `cs_skin_features`, with pores at furrow junctions and curves traced along the
+  direction field on the GPU; `procedural_skin` with at most three live bands.
+- The character (step 6): Head, Body, Arms and Legs share `skin.bands`, one chart per submesh,
+  shared by every copy of the mesh asset.
+- Seam patches (step 7): generated at import, 1.9 s in Debug for 25 patch charts over the four
+  skin meshes. Blended in `procedural_skin` as the handoff gives it.
+- Shading (step 9): wrapped diffuse per channel, red furthest, at strength 1 on the skin.
+- Overlay (step 10): a Skin panel, and `-skin-view level|bands|patch|residency`.
+
+**Decisions changed from the handoff, and why**
+
+- *Patch distances are straight lines to the seam polyline*, not a shortest-path sweep over the
+  welded mesh. Within a 30 mm strip the two differ little on the torso, neck and limbs, and the
+  straight line needs no mesh walk. Across a thin part (a finger, an ear) a strip can reach the far
+  side, where it repeats the pattern mirrored rather than breaking it.
+- *Patch charts are square in millimetres*: a closed curve's chart spans it along U, which wraps,
+  and an open curve's is a square with the curve along the middle. Paging picks a level from the
+  larger UV derivative, so a strip 60 mm by 1,350 mm in its own square would page 20 times finer
+  than needed along the curve.
+- *Feedback alternates between the two charts by 8 x 8 block and frame*, not by frame alone, so
+  both charts are asked for every frame.
+- *The seam check compares with pixels beside the seam*, 10 pixels away on four sides, not with
+  the whole view, and allows 1.25 times that plus a quarter of an 8-bit level (0.002 in normal):
+  the steps are mostly under one level, where a ratio alone measures quantisation. Against the
+  whole view the patched seam's albedo ratio was 1.26.
+- *The invariance line counts failing stops.* It read "FAILED at 5 stops" when only one failed.
+
+**Open items**
+
+- Invariance at the 2 mm view: the normal differs by up to 0.6 at 1% of pixels when the lookup is
+  two levels coarser. The other stops hold to 0.04. The cause was not found; candidates are the
+  three-band live cap at the finest bands and the 16-level limit of a chart.
+- Fragment cost on Vulkan: the 2 mm view costs twice the 20 mm view in Release. Point and curve
+  bands cost more per live band than noise, so a fixed count of live bands is not a fixed cost.
+  D3D12 holds, at 22%.
+- The feature cache runs full from the torso stop on. Nothing failed for it, but evictions then
+  decide what is regenerated.
+- Authored patches (step 8) are written but untested: no export of the character has a second UV
+  map yet. See "Seam patches" in `README.md` for how to author one.
+- Where curves meet or end, patch weights fade to 0 over a quarter of the strip, so the primary
+  chart's seam shows through faded there. Strips of two curves meeting at a junction can disagree
+  in weight along their shared border. Neither is measured; the seam stop sits mid-curve.
+- Every patch chart has a uniform direction field, so curve and stretched point bands change
+  direction across the blend.
+- Subsurface is a single-normal wrap with one scatter colour: fine pores still shade the diffuse
+  term at full sharpness. A screen-space diffusion pass and a floating-point target are the proper
+  fix. It is not measured.
+- Chart maps correct feature width by local scale, but lattice density is one value per chart, so
+  spacing varies by up to the 25% measured at the start; anisotropy is not handled.
+- Height uses one fixed range per material, not per page. Phase 6 needs the per-page range.
+- Noise has no tiling exemplars; bands driven by pose are not in.
+- Import adds about 2 s in Debug for charts and patches, on every launch, since assets are still
+  re-imported each time.
+
+Carried, not part of Phase 5:
+
+- The open and carried items under "Phase 2 outcome", "Phase 3 outcome" and "Phase 4 outcome".
 
 ## Verdict
 
@@ -559,9 +669,10 @@ The RHI is real and symmetric across both backends; everything above it is place
 | Draws | Retained | Registered once at load into per-variant bins. No removal, culling, sorting, instancing or batching |
 | Resources | Partial | Buffers and images behind integer IDs. Images must be uploaded from CPU data, with 1 mip and 1 layer. Buffers are never freed at runtime, and each resource is its own device allocation |
 | Descriptors | Partial | Sets per pipeline and slot. Dynamic uniform buffers work on both backends. Storage buffers and storage images are never written on the Vulkan side |
-| Lighting | Working | Deferred PBR with 4 lights and variance shadow maps, one pass per shadow layer. Since Phase 4 in linear colour: albedo is decoded from sRGB, and the clamped result is encoded for the `UNORM` back buffer; no floating-point target or tone mapping |
+| Lighting | Working | Deferred PBR with 4 lights and variance shadow maps, one pass per shadow layer. Since Phase 4 in linear colour: albedo is decoded from sRGB, and the clamped result is encoded for the `UNORM` back buffer; no floating-point target or tone mapping. Since Phase 5 a subsurface strength in the material target's alpha wraps the diffuse term |
 | Skinning | Working | Since Phase 3: a skeleton imported from the node tree, clips, an animator with fades, and compute skinning once per frame into a pool drawn with the static pipelines. Clip import is tested on a Blender export with two clips, `TempAssets/CharBlendClips.fbx` |
-| Import | Working | Assimp for FBX, stb_image for textures. Since Phase 4 a material has a type (surface shader, parameter block, texture slots) and is read from `Engine/Materials/<name>.material`, falling back to the texture file-name convention, then to flat grey. Meshes keep their file's material names, and components can assign materials by them |
+| Import | Working | Assimp for FBX, stb_image for textures. Since Phase 4 a material has a type (surface shader, parameter block, texture slots) and is read from `Engine/Materials/<name>.material`, falling back to the texture file-name convention, then to flat grey. Meshes keep their file's material names, and components can assign materials by them. Since Phase 5 import also measures each chart in millimetres, builds chart maps for skinned meshes and generates seam patches for skin |
+| Procedural skin | Working | Since Phase 5: `procedural_skin` on the character's skin, baked into the paging atlas from a hot-reloaded band table with noise, point and curve bands, at most three live, and seam patches blended in a second UV set. `-skin-test` checks it |
 | UI | Working | NoesisGUI on both backends, with Noesis-specific calls inside the RHI executor |
 | Engine side | Placeholder | TempGameObject, a static active camera, and an input command system. About 1,600 lines |
 | Build and repo | Fragile | Visual Studio solution only. One absolute user path in the Engine project. The Noesis SDK is 5,585 of the repo's 5,829 files (528 MB). Compiled shaders are committed. No README or tests |
@@ -718,6 +829,12 @@ Game code talks to a scene, and the renderer reads a snapshot of it. Nothing out
 - **Not built here.** The assessment is from reading. Validation-layer state and real frame cost are unknown until it runs.
 - **Noesis licence.** The SDK's LICENSE.txt restricts distributing its source, and the full SDK, including Src, is in the public repo. It is worth reading before the next push.
 - **Pass graph scope.** It is easy to over-build. The target is ordering, transient attachments and barriers, with no automatic pass merging or async compute.
-- **Character asset.** Phase 5 needs a humanoid with clean, non-overlapping UVs and at least two clips. Which character do you intend to use?
-- **Carried over from the cache design.** Chart seams and the subdivision method are still open there.
+- **Character asset.** Settled: the DAZ Genesis 9 export in `TempAssets` (licensed, never committed), with clean UVs in four skin charts, and a Blender export with two clips.
+- **The cache design's open questions**, as Phase 5 answers them:
+  - *Page table form:* a hash (Phase 4).
+  - *Chart seams:* patches in a second UV set, blended across each seam, generated at import or authored. Measured at the neck: the seam's step falls from 1.9 times its surroundings to 1.3, within a quarter of an 8-bit level. Curve ends and junctions are a known residual.
+  - *UV stretch:* one millimetre scale per chart, measured at import, plus a local scale in the chart map for feature width. Anisotropy is still unhandled.
+  - *Refinement error:* measured by the level-invariance check. It holds at every stop but the 2 mm view, without re-adding any band in full (that fallback made point bands worse and was removed).
+  - *Animation:* pages are keyed by chart UV and survive deformation; 0 fills in 120 frames with a clip playing in Release. Pose-driven bands are not in yet.
+  - *Subdivision method:* still open, for Phase 6.
 - **Page table form.** Settled in Phase 4 in favour of a hash: Phase 5 needs unbounded depth and several close-up regions at once, which a fixed window cannot give. The CPU writes it into the frame ring each frame, and `Shaders/Paging.hlsli` is the only code that knows its form, so a windowed table can replace it there.

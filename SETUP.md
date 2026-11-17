@@ -162,6 +162,10 @@ off (it is on by default), and `-compute-test` runs the Phase 2 gate test, which
 Phase 3 checks (the bind pose and GPU skinning against the CPU), and `-crowd N` adds N animated
 copies of the character, 100 when N is left out. `-paging-test` runs the Phase 4 gate and prints
 `Paging test: ...` when its camera path ends; `-paging-tint` colours paged surfaces by level.
+`-skin-test` runs the Phase 5 gate on the character and `-skin-test plane` on a plane;
+`-skin-stop N` holds the camera at one of its stops, `-skin-diff` writes difference images to
+`Cache/`, and `-skin-view level|bands|patch|residency` draws the skin as a debug view.
+`-atlas-slots N` sizes the paging atlas. The README describes the bands file and seam patches.
 `-monitor N` and `-no-focus` open the window on another display without taking focus, so test runs
 do not interrupt work on the main one.
 

@@ -55,7 +55,32 @@ because runtime paths are relative to it.
 | `-paging-test` | Run the Phase 4 gate: a paged 16,384 x 16,384 texture on a plane, a scripted camera, then quit; prints `Paging test: ...`. Builds `Cache/Pages/test_pattern.pages` (1.6 GB) on first use |
 | `-paging-image path` | With `-paging-test`, cut the image at path into a page file and show it instead |
 | `-paging-tint` | Colour paged surfaces by the level they sampled |
+| `-skin-test` | Run the Phase 5 gate on the character: stops from the whole body to a 2 mm view of the forearm, then the neck seam, then quit; prints `Skin stop ...` per stop and six `Skin test: ...` lines on exit |
+| `-skin-test plane` | The same checks on a plane carrying the skin as a chart 1 m wide |
+| `-skin-stop N` | With `-skin-test`, hold the camera at stop N (from 0) and skip the checks |
+| `-skin-diff` | With `-skin-test`, write each stop's normal difference to `Cache/skin_difference_<stop>.bmp`, magnified 20 times |
+| `-skin-view mode` | Draw procedural skin as a debug view: `level` (page level hit), `bands` (live bands, black to white for 0 to 3), `patch` (seam patch weight) or `residency` (green at the wanted level, yellow coarser, red none) |
+| `-atlas-slots N` | Pages the paging atlas holds (256 by default) |
 | `-monitor N` | Open the window on display N (0 is the primary, then left to right), shrunk to fit |
 | `-no-focus` | Show the window without taking focus, for unattended runs |
 
 In Debug builds the Vulkan validation layer and the Direct3D 12 debug layer print to stderr.
+
+**Procedural skin.** A `procedural_skin` material (`Engine/Materials/Head.material` and the others)
+reads its bands from `Engine/Materials/skin.bands`, one band per line:
+
+```
+name primitive wavelength_mm amplitude field seed [density profile width_mm depends_on stretch]
+```
+
+`primitive` is `noise`, `points` or `curves`; `field` is `height`, `melanin`, `hemoglobin` or
+`pigment`; `profile` is `dip`, `network`, `plate` or `line`; `depends_on` is another band's name or
+`-`. The file is checked once a second while the game runs, and a change rebakes the skin. The
+overlay's Skin panel shows charts, pages baked, feature cells and the feature and bake GPU times.
+
+**Seam patches.** At import, skin meshes get patches that hide their UV seams: a strip 30 mm wide
+around each seam, in a second UV set, blended over the seam. To author one instead, give every
+skin mesh a second UV map (`UVMap.001` in Blender, exported as the FBX's second UV channel) that
+lays the surface around each seam flat and without overlaps; nothing is then generated, and the
+weights still come from the seams. An authored patch around a closed seam, such as the neck, has
+to be cut somewhere: hide the cut where it does not show, or leave that mesh to the generator.

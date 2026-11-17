@@ -120,6 +120,8 @@ struct StopResult
     bool IsSkinFilling = false;
     uint32_t CellsGenerated = 0;
     uint32_t ResidentCells = 0;
+    double FeaturePeakMilliseconds = 0.0;   // GPU, the slowest frame from arrival to a resident view
+    double FillPeakMilliseconds = 0.0;      // Bakes and copies
 };
 
 // Steps between neighbouring pixels at seam samples and beside them: for each pixel the largest
@@ -694,6 +696,8 @@ void SkinTest::Update(float, Camera* camera)
     case Phase::Settling:
         if (Paging::GetStats().Requests > 0)
             LastMissingFrame = frame;
+        result.FeaturePeakMilliseconds = (std::max)(result.FeaturePeakMilliseconds, GpuMilliseconds("Skin features"));
+        result.FillPeakMilliseconds = (std::max)(result.FillPeakMilliseconds, GpuMilliseconds("Paging fill"));
         if ((PhaseFrames > MinimumSettleFrames && Paging::IsViewFullyResident()) || PhaseFrames > MaximumSettleFrames)
         {
             result.IsConverged = PhaseFrames <= MaximumSettleFrames;
@@ -806,6 +810,7 @@ static void PrintStop(const StopResult& result)
 {
     std::cout << std::fixed << std::setprecision(3) << "Skin stop " << result.Name << ": " << (result.IsConverged ? "converged in " : "not converged after ")
               << result.Convergence << " frames, G-buffer " << result.GBufferMilliseconds << " ms, frame " << result.FrameMilliseconds << " ms, "
+              << "peak feature pass " << result.FeaturePeakMilliseconds << " ms and fill " << result.FillPeakMilliseconds << " ms while converging, "
               << result.PagesBaked << " pages baked while measuring, " << result.CellsGenerated << " cells generated, " << result.ResidentCells
               << " cells resident; albedo difference mean " << result.AlbedoMean << ", 99th percentile "
               << result.AlbedoPercentile << "; normal difference mean " << result.NormalMean << ", 99th percentile " << result.NormalPercentile
