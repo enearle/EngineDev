@@ -112,6 +112,9 @@ public:
 
 static std::vector<BandTable> Tables;
 static std::unordered_map<PagedTextureID, Chart> Charts;
+static std::vector<std::vector<PagedTextureID>> PatchTables;
+static std::vector<bool> IsPatchTableUsed;
+static bool IsPatched = true;
 static std::vector<bool> IsLayerUsed;
 static std::vector<PendingUpload> Uploads;
 static ImageHandle ChartMaps = {};
@@ -422,6 +425,8 @@ void Skin::Shutdown()
     for (const auto& [chart, record] : Charts)
         Paging::RetireTexture(chart);
     Charts.clear();
+    PatchTables.clear();
+    IsPatchTableUsed.clear();
     Tables.clear();
     Uploads.clear();
 
@@ -545,11 +550,14 @@ void Skin::Update()
     BufferAllocator* allocator = BufferAllocator::GetInstance();
     std::vector<XMFLOAT4> entries;
     uint32_t offsets[MaxBandTables] = {};
+    uint32_t patchOffsets[MaxPatchTables] = {};
     FrameAllocation ring = allocator->AllocateFrameData((std::max)(size_t(1), [&]
     {
         size_t total = 0;
         for (const BandTable& table : Tables)
             total += table.Entries.size();
+        for (const std::vector<PagedTextureID>& table : PatchTables)
+            total += table.size();
         return total;
     }()) * sizeof(XMFLOAT4), sizeof(XMFLOAT4));
     uint32_t base = static_cast<uint32_t>(ring.Offset / sizeof(XMFLOAT4));
@@ -558,6 +566,12 @@ void Skin::Update()
         Tables[i].RingOffset = base + static_cast<uint32_t>(entries.size());
         offsets[i] = Tables[i].RingOffset;
         entries.insert(entries.end(), Tables[i].Entries.begin(), Tables[i].Entries.end());
+    }
+    for (size_t i = 0; i < PatchTables.size(); i++)
+    {
+        patchOffsets[i] = base + static_cast<uint32_t>(entries.size());
+        for (PagedTextureID chart : PatchTables[i])
+            entries.push_back({ static_cast<float>(chart), 0.0f, 0.0f, 0.0f });
     }
     if (!entries.empty())
         std::memcpy(ring.Address, entries.data(), entries.size() * sizeof(XMFLOAT4));
@@ -577,8 +591,9 @@ void Skin::Update()
 
     FrameAllocation constants = allocator->AllocateFrameData(ConstantsSize, BufferAllocator::UniformAlignment);
     std::memcpy(constants.Address, offsets, sizeof(offsets));
-    uint32_t cellTable[2] = { FeatureCache::GetTableBase(), FeatureCache::GetTableMask() };
+    uint32_t cellTable[4] = { FeatureCache::GetTableBase(), FeatureCache::GetTableMask(), IsPatched ? 1u : 0u, 0 };
     std::memcpy(static_cast<uint8_t*>(constants.Address) + sizeof(offsets), cellTable, sizeof(cellTable));
+    std::memcpy(static_cast<uint8_t*>(constants.Address) + sizeof(offsets) + sizeof(cellTable), patchOffsets, sizeof(patchOffsets));
     ConstantsOffset = static_cast<uint32_t>(constants.Offset);
     Stats.Charts = static_cast<uint32_t>(Charts.size());
     Stats.CellsGenerated = FeatureCache::GetCellsGenerated();
@@ -657,6 +672,34 @@ void Skin::RetireChart(PagedTextureID chart)
     Charts.erase(found);
     FeatureCache::ForgetChart(chart);
     Paging::RetireTexture(chart);
+}
+
+uint32_t Skin::EnlistPatchTable(std::span<const PagedTextureID> charts)
+{
+    if (IsPatchTableUsed.empty())
+        IsPatchTableUsed.assign(MaxPatchTables, false);
+    auto free = std::find(IsPatchTableUsed.begin(), IsPatchTableUsed.end(), false);
+    if (free == IsPatchTableUsed.end())
+        throw std::runtime_error("No patch table is free");
+    *free = true;
+    uint32_t table = static_cast<uint32_t>(free - IsPatchTableUsed.begin());
+    if (PatchTables.size() <= table)
+        PatchTables.resize(table + 1);
+    PatchTables[table].assign(charts.begin(), charts.end());
+    return table;
+}
+
+void Skin::RetirePatchTable(uint32_t table)
+{
+    if (table >= PatchTables.size() || !IsPatchTableUsed[table])
+        return;
+    IsPatchTableUsed[table] = false;
+    PatchTables[table].clear();
+}
+
+void Skin::SetPatchesEnabled(bool isEnabled)
+{
+    IsPatched = isEnabled;
 }
 
 const SkinStats& Skin::GetStats()

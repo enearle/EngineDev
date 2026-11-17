@@ -60,6 +60,7 @@ void MaterialTypes::RegisterBuiltInTypes()
         { "tint", 3, { 0.95f, 0.9f, 0.85f } },
         { "roughness", 1, { 0.45f } },
         { "subsurface", 1, { 0.0f } },
+        { "patch_table", 1, { -1.0f } },
     } });
 }
 

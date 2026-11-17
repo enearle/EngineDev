@@ -21,6 +21,13 @@ void MeshAsset::Serialize(std::string& data)
 {
     DependentAssetBase::Serialize(data);
 
+    AssetSerializer::Write<uint32_t>(data, static_cast<uint32_t>(PatchCharts.size()));
+    for (const PatchChart& chart : PatchCharts)
+    {
+        AssetSerializer::Write<float>(data, chart.MillimetresU);
+        AssetSerializer::Write<float>(data, chart.MillimetresV);
+        AssetSerializer::Write<bool>(data, chart.IsPeriodic);
+    }
     AssetSerializer::Write<uint32_t>(data, static_cast<uint32_t>(Meshes.size()));
 
     for (uint32_t i = 0; i < Meshes.size(); ++i)
@@ -58,6 +65,13 @@ void MeshAsset::Deserialize(std::string& data, long& offset)
 {
     DependentAssetBase::Deserialize(data, offset);
 
+    PatchCharts.resize(AssetSerializer::Read<uint32_t>(data, offset));
+    for (PatchChart& chart : PatchCharts)
+    {
+        chart.MillimetresU = AssetSerializer::Read<float>(data, offset);
+        chart.MillimetresV = AssetSerializer::Read<float>(data, offset);
+        chart.IsPeriodic = AssetSerializer::Read<bool>(data, offset);
+    }
     uint32_t meshCount = AssetSerializer::Read<uint32_t>(data, offset);
 
     // DependentAssetBase already populated Fields with IDs only (resized + SetID).

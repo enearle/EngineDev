@@ -36,7 +36,8 @@ struct SkinStats
 //
 // A band table is read from a .bands file, one band per line, and checked for changes once a second;
 // a change drops every page of the charts that use it. Its GPU copy is written into the frame ring
-// each frame. Chart maps live in one array image, a layer per chart; layer 0 is a uniform field.
+// each frame, as are the patch tables. Chart maps live in one array image, a layer per chart; layer
+// 0 is a uniform field.
 class RENDERER_API Skin
 {
 public:
@@ -45,6 +46,7 @@ public:
     static constexpr uint32_t MaxChartMaps = 16;
     static constexpr uint32_t MaxBands = 32;
     static constexpr uint32_t MaxBandTables = 16;
+    static constexpr uint32_t MaxPatchTables = 16;
 
     static void Start();
     static void Shutdown();
@@ -56,5 +58,11 @@ public:
 
     static PagedTextureID EnlistChart(const SkinChartDesc& desc);
     static void RetireChart(PagedTextureID chart);
+    // A mesh's seam patch charts, in the order of its vertices' PatchChart; procedural surfaces name
+    // the table by the index returned.
+    static uint32_t EnlistPatchTable(std::span<const PagedTextureID> charts);
+    static void RetirePatchTable(uint32_t table);
+    // Off draws every surface from its primary chart alone, for comparing seams with and without.
+    static void SetPatchesEnabled(bool isEnabled);
     static const SkinStats& GetStats();
 };

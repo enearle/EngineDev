@@ -11,6 +11,8 @@
 #include <assimp/scene.h>
 #include <assimp/postprocess.h>
 #include "ChartBuilder.h"
+#include "MaterialRegistry.h"
+#include "SeamPatches.h"
 #include "Mesh.h"
 #include "DirectXMath.h"
 #include "RHI/RHIStructures.h"
@@ -85,6 +87,30 @@ static void MeasureChart(Mesh& mesh, ImportState& state)
     if (!mesh.GetChart().Map.empty())
         std::cout << "Chart " << mesh.GetMaterialName() << ": " << mesh.GetChart().MillimetresU << " x " << mesh.GetChart().MillimetresV
                   << " mm per UV unit, chart map " << MeshChart::MapSize << " x " << MeshChart::MapSize << std::endl;
+}
+
+// Seam patches over the skinned submeshes whose material is procedural skin: generated, or from the
+// authored second UV map when every one of them has one.
+static std::vector<PatchChart> GeneratePatches(std::vector<Mesh>& meshes, const ImportState& state)
+{
+    std::vector<Mesh*> skinMeshes;
+    bool isAuthored = true;
+    for (Mesh& mesh : meshes)
+    {
+        std::string type;
+        if (mesh.IsSkinned() && MaterialRegistry::FindFileType(mesh.GetMaterialName(), type) && type == "procedural_skin")
+        {
+            skinMeshes.push_back(&mesh);
+            isAuthored &= mesh.HasAuthoredPatch();
+        }
+    }
+    if (skinMeshes.empty())
+        return {};
+    std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
+    std::vector<PatchChart> charts = SeamPatches::Generate(skinMeshes, state.MillimetresPerUnit, isAuthored);
+    std::cout << "Seam patches: " << charts.size() << (isAuthored ? " authored" : " generated") << " over " << skinMeshes.size() << " skin meshes in "
+              << std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count() << " ms" << std::endl;
+    return charts;
 }
 
 static void CollectModelTransforms(const aiNode* node, const XMMATRIX& model, ImportState& state)
@@ -264,8 +290,10 @@ static SceneNode* LoadNode(const aiNode* node, const XMMATRIX& local, SceneNode*
             meshes.emplace_back(GeometryImport::LoadMesh(assimpMesh));
         }
         meshes.back().SetMaterialName(scene->mMaterials[assimpMesh->mMaterialIndex]->GetName().C_Str());
+        meshes.back().SetAuthoredPatch(assimpMesh->mTextureCoords[1] != nullptr);
         MeasureChart(meshes.back(), state);
     }
+    std::vector<PatchChart> patchCharts = GeneratePatches(meshes, state);
 
     SceneNode* sceneNode = nullptr;
     if (!isDetached || !meshes.empty())
@@ -277,6 +305,7 @@ static SceneNode* LoadNode(const aiNode* node, const XMMATRIX& local, SceneNode*
     {
         MeshComponent* meshComponent = static_cast<MeshComponent*>(sceneNode->AddComponent(MeshComponentType));
         MeshAsset* meshAsset = new MeshAsset(meshes, nodeName);
+        meshAsset->SetPatchCharts(std::move(patchCharts));
         bool isSkinned = false;
         for (uint32_t i = 0; i < meshAsset->GetMeshCount(); i++)
             isSkinned |= meshAsset->GetMesh(i).IsSkinned();
@@ -303,6 +332,8 @@ static void ReadVertexBasis(const aiMesh* mesh, size_t i, RHIStructures::Vertex&
     vertex.Position = { mesh->mVertices[i].x, mesh->mVertices[i].y, mesh->mVertices[i].z };
     if (mesh->mTextureCoords[0])
         vertex.TexCoord = { mesh->mTextureCoords[0][i].x, mesh->mTextureCoords[0][i].y };
+    if (mesh->mTextureCoords[1])
+        vertex.TexCoord1 = { mesh->mTextureCoords[1][i].x, mesh->mTextureCoords[1][i].y };
     vertex.Normal = { mesh->mNormals[i].x, mesh->mNormals[i].y, mesh->mNormals[i].z };
     vertex.Tangent = { mesh->mTangents[i].x, mesh->mTangents[i].y, mesh->mTangents[i].z };
     vertex.Bitangent = { mesh->mBitangents[i].x, mesh->mBitangents[i].y, mesh->mBitangents[i].z };

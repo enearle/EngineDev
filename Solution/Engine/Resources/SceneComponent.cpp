@@ -42,6 +42,40 @@ static void ReleaseChart(const MeshAsset* asset, uint32_t submesh)
     SharedCharts.erase(found);
 }
 
+struct SharedPatchTable
+{
+    uint32_t Table = 0;
+    std::vector<PagedTextureID> Charts;
+    uint32_t References = 0;
+};
+
+// The seam patch charts of a mesh asset and the table naming them, shared like its charts.
+static std::map<const MeshAsset*, SharedPatchTable> SharedPatches;
+
+static uint32_t AcquirePatchTable(MeshAsset* asset)
+{
+    SharedPatchTable& shared = SharedPatches[asset];
+    if (shared.References++ == 0)
+    {
+        for (const PatchChart& patch : asset->GetPatchCharts())
+            shared.Charts.push_back(Skin::EnlistChart({ .MillimetresU = patch.MillimetresU, .MillimetresV = patch.MillimetresV,
+                                                        .IsPeriodic = patch.IsPeriodic, .BandTable = SkinBandTable }));
+        shared.Table = Skin::EnlistPatchTable(shared.Charts);
+    }
+    return shared.Table;
+}
+
+static void ReleasePatchTable(const MeshAsset* asset)
+{
+    auto found = SharedPatches.find(asset);
+    if (found == SharedPatches.end() || --found->second.References > 0)
+        return;
+    Skin::RetirePatchTable(found->second.Table);
+    for (PagedTextureID chart : found->second.Charts)
+        Skin::RetireChart(chart);
+    SharedPatches.erase(found);
+}
+
 void SceneComponentBase::Serialize(std::string& data)
 {
     AssetSerializer::Write<uint32_t>(data, static_cast<uint32_t>(Fields.size()));
@@ -110,6 +144,9 @@ void MeshComponent::AssignMaterialsByName()
     for (uint32_t submesh : HeldCharts)
         ReleaseChart(meshAsset, submesh);
     HeldCharts.clear();
+    if (IsHoldingPatchTable)
+        ReleasePatchTable(meshAsset);
+    IsHoldingPatchTable = false;
 
     MaterialTypeID skinType = 0;
     bool hasSkinType = MaterialTypes::Find("procedural_skin", skinType);
@@ -126,6 +163,14 @@ void MeshComponent::AssignMaterialsByName()
             float chart = static_cast<float>(AcquireChart(meshAsset, i));
             MaterialRegistry::SetParameter(SubmeshMaterials[i], "chart", { &chart, 1 });
             HeldCharts.push_back(i);
+            if (!meshAsset->GetPatchCharts().empty())
+            {
+                if (!IsHoldingPatchTable)
+                    PatchTable = AcquirePatchTable(meshAsset);
+                IsHoldingPatchTable = true;
+                float table = static_cast<float>(PatchTable);
+                MaterialRegistry::SetParameter(SubmeshMaterials[i], "patch_table", { &table, 1 });
+            }
         }
     }
 }
@@ -161,6 +206,9 @@ void MeshComponent::FreeGPUResources()
     for (uint32_t submesh : HeldCharts)
         ReleaseChart(LoadedMesh, submesh);
     HeldCharts.clear();
+    if (IsHoldingPatchTable)
+        ReleasePatchTable(LoadedMesh);
+    IsHoldingPatchTable = false;
 }
 
 bool SceneComponentFactory::SceneComponentExists(SceneComponentType sceneComponentType, SceneNode* owner)

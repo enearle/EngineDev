@@ -46,6 +46,8 @@ class ENGINE_API MeshComponent : public SceneComponentBase
     std::vector<MaterialHandle> SubmeshMaterials;
     std::vector<MaterialHandle> EnlistedMaterials;  // Held by this component; retired with its GPU resources
     std::vector<uint32_t> HeldCharts;               // Submeshes whose skin chart this component holds
+    uint32_t PatchTable = 0;                        // The mesh asset's seam patch table, while held
+    bool IsHoldingPatchTable = false;
     std::vector<SkinnedMeshHandle> SkinnedMeshes;     // Per submesh; enlisted on first use
     AnimatorComponent* Animator = nullptr;
     bool IsAnimatorSearched = false;

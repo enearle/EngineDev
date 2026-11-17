@@ -157,6 +157,15 @@ static MaterialRecord BuildRecord(const std::string& name, const MaterialDesc& d
     return record;
 }
 
+bool MaterialRegistry::FindFileType(const std::string& name, std::string& type)
+{
+    MaterialDesc desc;
+    if (!MaterialFiles::Read(name, desc))
+        return false;
+    type = desc.Type;
+    return true;
+}
+
 MaterialHandle MaterialRegistry::Enlist(const std::string& name)
 {
     auto found = MaterialsByName.find(name);

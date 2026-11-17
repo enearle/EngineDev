@@ -44,6 +44,7 @@ Mesh::Mesh(Mesh&& other) noexcept
       LocalMaterialIndex(other.LocalMaterialIndex),
       MaterialName(std::move(other.MaterialName)),
       Chart(std::move(other.Chart)),
+      IsPatchAuthored(other.IsPatchAuthored),
       GPUMesh(other.GPUMesh),
       TempVertexCache(other.TempVertexCache),
       TempSkinnedVertexCache(other.TempSkinnedVertexCache)
@@ -64,6 +65,7 @@ Mesh& Mesh::operator=(Mesh&& other) noexcept
         LocalMaterialIndex = other.LocalMaterialIndex;
         MaterialName = std::move(other.MaterialName);
         Chart = std::move(other.Chart);
+        IsPatchAuthored = other.IsPatchAuthored;
         GPUMesh = other.GPUMesh;
         TempVertexCache = other.TempVertexCache;
         TempSkinnedVertexCache = other.TempSkinnedVertexCache;
@@ -73,6 +75,20 @@ Mesh& Mesh::operator=(Mesh&& other) noexcept
         other.GPUMesh = {};
     }
     return *this;
+}
+
+void Mesh::RefreshCounts()
+{
+    if (TempSkinnedVertexCache)
+    {
+        VertexCount = static_cast<uint32_t>(TempSkinnedVertexCache->Vertices.size());
+        IndexCount = static_cast<uint32_t>(TempSkinnedVertexCache->Indices.size());
+    }
+    else if (TempVertexCache)
+    {
+        VertexCount = static_cast<uint32_t>(TempVertexCache->Vertices.size());
+        IndexCount = static_cast<uint32_t>(TempVertexCache->Indices.size());
+    }
 }
 
 void Mesh::UploadToGPU()

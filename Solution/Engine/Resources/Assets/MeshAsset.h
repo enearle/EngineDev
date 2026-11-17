@@ -1,6 +1,7 @@
 #pragma once
 #include "../AssetBase.h"
 #include "../Engine/Geometry/Mesh.h"
+#include "../Engine/Geometry/SeamPatches.h"
 
 class Skeleton;
 
@@ -12,6 +13,7 @@ class MeshAsset : public GPUAssetBase
 {
     // Every set of UVs represents a unique mesh
     std::vector<Mesh> Meshes;
+    std::vector<PatchChart> PatchCharts;    // Seam patches of the skin submeshes, indexed by Vertex::PatchChart
 public:
     
     // Deserialize Constructor
@@ -30,7 +32,9 @@ public:
     virtual void UploadToGPU() override;
     virtual void FreeGPUResources() override;
     
-    uint32_t GetMeshCount() const { return Meshes.size(); }
+    uint32_t GetMeshCount() const { return static_cast<uint32_t>(Meshes.size()); }
+    const std::vector<PatchChart>& GetPatchCharts() const { return PatchCharts; }
+    void SetPatchCharts(std::vector<PatchChart> charts) { PatchCharts = std::move(charts); }
     Mesh& GetMesh(uint32_t index) { return Meshes[index]; }
     
 };

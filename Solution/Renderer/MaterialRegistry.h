@@ -27,6 +27,8 @@ public:
     // Reads Engine/Materials/<name>.material. Without one it falls back to textured_pbr from the
     // texture file-name convention, and without those textures to a flat grey material.
     static MaterialHandle Enlist(const std::string& name);
+    // The type a material's file names, without loading it. False when there is no file.
+    static bool FindFileType(const std::string& name, std::string& type);
     static void Retire(MaterialHandle material);
     static bool IsLive(MaterialHandle material);
     static MaterialTypeID GetType(MaterialHandle material);

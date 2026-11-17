@@ -59,6 +59,7 @@
     <ClCompile Include="Geometry\ChartBuilder.cpp" />
     <ClCompile Include="Geometry\GeometryImport.cpp" />
     <ClCompile Include="Geometry\Mesh.cpp" />
+    <ClCompile Include="Geometry\SeamPatches.cpp" />
     <ClCompile Include="Input\CommandQueue.cpp" />
     <ClCompile Include="Input\InputEventSystem.cpp" />
     <ClCompile Include="Light.cpp" />
@@ -96,6 +97,7 @@
     <ClInclude Include="Geometry\ChartBuilder.h" />
     <ClInclude Include="Geometry\GeometryImport.h" />
     <ClInclude Include="Geometry\Mesh.h" />
+    <ClInclude Include="Geometry\SeamPatches.h" />
     <ClInclude Include="Input\CommandQueue.h" />
     <ClInclude Include="Input\InputEventSystem.h" />
     <ClInclude Include="Light.h" />

@@ -45,6 +45,14 @@ static constexpr double NormalPercentileTolerance = 0.05;   // About 9 degrees
 static constexpr double FragmentCostSpread = 0.25;
 static constexpr uint32_t AnimatedSettleFrames = 30;
 static constexpr uint32_t AnimatedFrames = 120;
+static constexpr float SeamViewMillimetres = 60.0f;
+static constexpr float SeamSampleMillimetres = 40.0f;      // Seam vertices this near the target are sampled
+static constexpr float SeamVertexWeight = 0.99f;            // PatchWeight of a vertex on a seam
+static constexpr int SeamClearance = 4;                     // Pixels from a seam sample that are not "beside" it
+static constexpr int SeamBeside = 10;                       // Pixels to the samples beside each seam sample
+static constexpr double SeamStepTolerance = 1.25;           // Seam mean step over the mean step beside it,
+static constexpr double SeamAlbedoFloor = 0.25;             // plus these: steps are mostly under one 8-bit
+static constexpr double SeamNormalFloor = 0.002;            // level, where a ratio alone measures quantisation
 static const char* CacheDirectory = "../../Cache";
 
 enum class Aim
@@ -52,7 +60,8 @@ enum class Aim
     PlaneCentre,
     WholeCharacter,
     Torso,
-    Forearm
+    Forearm,
+    Seam
 };
 
 struct Stop
@@ -63,6 +72,7 @@ struct Stop
     bool IsSkinFilling;
     Aim Target = Aim::PlaneCentre;
     bool IsAnimated = false;        // A clip plays after the checks, for the stability line
+    bool IsSeam = false;            // Seam steps are measured after the checks, with and without patches
 };
 
 // A vertex of the character's skin the camera looks at, followed through skinning.
@@ -79,6 +89,8 @@ enum class Phase
     CapturingWanted,
     Biasing,
     CapturingCoarse,
+    Unpatching,
+    CapturingUnpatched,
     Animating,
     Finished
 };
@@ -109,6 +121,19 @@ struct StopResult
     uint32_t ResidentCells = 0;
 };
 
+// Steps between neighbouring pixels at seam samples and beside them: for each pixel the largest
+// difference to its eight neighbours, then the largest of that over the 3 x 3 pixels around it, so a
+// sample a pixel off the seam still sees it. Beside a sample are the pixels SeamBeside away up, down,
+// left and right that are clear of the seam, so both sides of the comparison see the same region.
+struct SeamSteps
+{
+    uint32_t Samples = 0;
+    double SeamAlbedo = 0.0;            // Means; albedo in 8-bit levels, normal in octahedral units
+    double SeamNormal = 0.0;
+    double BesideAlbedo = 0.0;
+    double BesideNormal = 0.0;
+};
+
 static std::vector<Stop> Stops;
 static std::vector<StopResult> Results;
 static size_t StopIndex = 0;
@@ -137,6 +162,11 @@ static uint32_t StabilityFrames = 0;
 static uint32_t StabilityFills = 0;
 static uint32_t StabilityFramesWithFills = 0;
 static bool HasStabilityRun = false;
+static SurfaceTarget SeamTarget;
+static std::vector<RHIStructures::SkinnedVertex> SeamVertices;
+static bool HasSeamRun = false;
+static SeamSteps PatchedSteps;
+static SeamSteps UnpatchedSteps;
 
 static double GpuMilliseconds(const char* pass)
 {
@@ -212,7 +242,7 @@ static XMVECTOR JointWorldPosition(const Skeleton& skeleton, const char* name, c
 // The skinned vertex nearest a point among a material's vertices whose normal faces a direction, in
 // the bind pose. Vertices are read before upload drops them.
 static SurfaceTarget FindSurfaceVertex(SceneNode* node, const std::string& material, XMVECTOR point, XMVECTOR facing, const XMMATRIX& world,
-                                       float& bestDistance, float& millimetresPerUnit)
+                                       float& bestDistance, float& millimetresPerUnit, bool isOnSeam = false)
 {
     SurfaceTarget best;
     if (MeshComponent* component = static_cast<MeshComponent*>(node->GetComponent(MeshComponentType)))
@@ -221,7 +251,7 @@ static SurfaceTarget FindSurfaceVertex(SceneNode* node, const std::string& mater
         for (uint32_t i = 0; i < asset->GetMeshCount(); i++)
         {
             Mesh& mesh = asset->GetMesh(i);
-            if (!mesh.IsSkinned() || mesh.GetMaterialName() != material)
+            if (!mesh.IsSkinned() || (!material.empty() && mesh.GetMaterialName() != material))
                 continue;
             const RHIStructures::SkinnedVertex* vertices = static_cast<const RHIStructures::SkinnedVertex*>(mesh.GetCachedVertexData());
             for (uint32_t v = 0; v < mesh.GetVertexCount(); v++)
@@ -229,7 +259,7 @@ static SurfaceTarget FindSurfaceVertex(SceneNode* node, const std::string& mater
                 XMVECTOR position = XMVector3TransformCoord(XMLoadFloat3(&vertices[v].Position), world);
                 XMVECTOR normal = XMVector3Normalize(XMVector3TransformNormal(XMLoadFloat3(&vertices[v].Normal), world));
                 float distance = XMVectorGetX(XMVector3Length(position - point));
-                if (XMVectorGetX(XMVector3Dot(normal, facing)) < 0.6f || distance >= bestDistance)
+                if (XMVectorGetX(XMVector3Dot(normal, facing)) < 0.6f || distance >= bestDistance || (isOnSeam && vertices[v].PatchWeight < SeamVertexWeight))
                     continue;
                 bestDistance = distance;
                 best.Vertex = vertices[v];
@@ -240,19 +270,41 @@ static SurfaceTarget FindSurfaceVertex(SceneNode* node, const std::string& mater
     }
     for (SceneNode* child : node->GetChildren())
     {
-        SurfaceTarget found = FindSurfaceVertex(child, material, point, facing, world, bestDistance, millimetresPerUnit);
+        SurfaceTarget found = FindSurfaceVertex(child, material, point, facing, world, bestDistance, millimetresPerUnit, isOnSeam);
         if (found.IsValid)
             best = found;
     }
     return best;
 }
 
-// The target's position and normal now, skinned on the CPU with the animator's palette.
-static void SkinTarget(const SurfaceTarget& target, XMVECTOR& position, XMVECTOR& normal)
+// Seam vertices of every skinned mesh within a distance of a point, in the bind pose.
+static void CollectSeamVertices(SceneNode* node, XMVECTOR point, float within, const XMMATRIX& world)
+{
+    if (MeshComponent* component = static_cast<MeshComponent*>(node->GetComponent(MeshComponentType)))
+    {
+        MeshAsset* asset = component->GetMeshAsset();
+        for (uint32_t i = 0; i < asset->GetMeshCount(); i++)
+        {
+            Mesh& mesh = asset->GetMesh(i);
+            if (!mesh.IsSkinned())
+                continue;
+            const RHIStructures::SkinnedVertex* vertices = static_cast<const RHIStructures::SkinnedVertex*>(mesh.GetCachedVertexData());
+            for (uint32_t v = 0; v < mesh.GetVertexCount(); v++)
+                if (vertices[v].PatchWeight >= SeamVertexWeight &&
+                    XMVectorGetX(XMVector3Length(XMVector3TransformCoord(XMLoadFloat3(&vertices[v].Position), world) - point)) <= within)
+                    SeamVertices.push_back(vertices[v]);
+        }
+    }
+    for (SceneNode* child : node->GetChildren())
+        CollectSeamVertices(child, point, within, world);
+}
+
+// A skin vertex's position and normal now, skinned on the CPU with the animator's palette.
+static void SkinVertex(const RHIStructures::SkinnedVertex& vertex, XMVECTOR& position, XMVECTOR& normal)
 {
     const std::vector<XMFLOAT4X4>& palette = CharacterAnimator->GetPalette();
-    const float weights[4] = { target.Vertex.BoneWeights.x, target.Vertex.BoneWeights.y, target.Vertex.BoneWeights.z, target.Vertex.BoneWeights.w };
-    const uint32_t joints[4] = { target.Vertex.BoneIndices.x, target.Vertex.BoneIndices.y, target.Vertex.BoneIndices.z, target.Vertex.BoneIndices.w };
+    const float weights[4] = { vertex.BoneWeights.x, vertex.BoneWeights.y, vertex.BoneWeights.z, vertex.BoneWeights.w };
+    const uint32_t joints[4] = { vertex.BoneIndices.x, vertex.BoneIndices.y, vertex.BoneIndices.z, vertex.BoneIndices.w };
     XMMATRIX skin = XMMatrixIdentity();
     if (weights[0] + weights[1] + weights[2] + weights[3] > 0.0f && !palette.empty())
     {
@@ -262,8 +314,8 @@ static void SkinTarget(const SurfaceTarget& target, XMVECTOR& position, XMVECTOR
                 skin += XMLoadFloat4x4(&palette[joints[i]]) * weights[i];
     }
     XMMATRIX toWorld = skin * Character->GetWorldMatrix();
-    position = XMVector3TransformCoord(XMLoadFloat3(&target.Vertex.Position), toWorld);
-    normal = XMVector3Normalize(XMVector3TransformNormal(XMLoadFloat3(&target.Vertex.Normal), toWorld));
+    position = XMVector3TransformCoord(XMLoadFloat3(&vertex.Position), toWorld);
+    normal = XMVector3Normalize(XMVector3TransformNormal(XMLoadFloat3(&vertex.Normal), toWorld));
 }
 
 void SkinTest::StartOnCharacter(SceneNode* character)
@@ -292,6 +344,17 @@ void SkinTest::StartOnCharacter(SceneNode* character)
     }
     WorldPerMillimetre = XMVectorGetX(XMVector3Length(world.r[0])) / millimetresPerUnit;
 
+    // The neck's seam: a closed curve, so its patch has no ends.
+    distance = 1e30f;
+    float ignored = 0.0f;
+    SeamTarget = FindSurfaceVertex(character, "", JointWorldPosition(skeleton, "neck1", world), towardCamera, world, distance, ignored, true);
+    SeamVertices.clear();
+    if (SeamTarget.IsValid)
+    {
+        XMVECTOR seamPoint = XMVector3TransformCoord(XMLoadFloat3(&SeamTarget.Vertex.Position), world);
+        CollectSeamVertices(character, seamPoint, SeamSampleMillimetres * WorldPerMillimetre, world);
+    }
+
     Stops = {
         { "whole body", {}, 0.0f, false, Aim::WholeCharacter },
         { "torso 400 mm", {}, 400.0f, false, Aim::Torso },
@@ -299,6 +362,8 @@ void SkinTest::StartOnCharacter(SceneNode* character)
         { "forearm 20 mm", {}, 20.0f, true, Aim::Forearm, true },
         { "forearm 2 mm", {}, 2.0f, true, Aim::Forearm },
     };
+    if (SeamTarget.IsValid)
+        Stops.push_back({ "neck seam 60 mm", {}, SeamViewMillimetres, false, Aim::Seam, false, true });
     for (Stop& stop : Stops)
         stop.Width *= WorldPerMillimetre;
 
@@ -332,10 +397,11 @@ static void PlaceCamera(Camera* camera, const Stop& stop)
         camera->LookAtFloat3(target);
         return;
     }
-    if (stop.Target == Aim::Torso || stop.Target == Aim::Forearm)
+    if (stop.Target == Aim::Torso || stop.Target == Aim::Forearm || stop.Target == Aim::Seam)
     {
         XMVECTOR point, normal;
-        SkinTarget(stop.Target == Aim::Torso ? TorsoTarget : ForearmTarget, point, normal);
+        const SurfaceTarget& target = stop.Target == Aim::Torso ? TorsoTarget : (stop.Target == Aim::Forearm ? ForearmTarget : SeamTarget);
+        SkinVertex(target.Vertex, point, normal);
         float distance = stop.Width / (2.0f * aspect);
         camera->SetNearPlane((std::min)(Camera::DefaultNearPlane, 0.1f * distance));
         camera->SetPositionVector(point + normal * distance);
@@ -452,6 +518,123 @@ static void CompareCaptures(StopResult& result)
     result.NormalPercentile = Percentile(normal, 0.99);
 }
 
+static bool IsSurfacePixel(const Capture& capture, int32_t x, int32_t y)
+{
+    return x >= 0 && y >= 0 && x < static_cast<int32_t>(CaptureWidth) && y < static_cast<int32_t>(CaptureHeight) &&
+           capture.Albedo[(static_cast<size_t>(y) * CaptureWidth + x) * 4 + 3] != 0;
+}
+
+static SeamSteps MeasureSeamSteps(const Capture& capture, Camera* camera)
+{
+    int32_t width = static_cast<int32_t>(CaptureWidth), height = static_cast<int32_t>(CaptureHeight);
+    size_t pixels = static_cast<size_t>(width) * height;
+    std::vector<float> albedoStep(pixels, 0.0f), normalStep(pixels, 0.0f);
+    std::vector<uint8_t> isComplete(pixels, 0);
+    const uint16_t* normals = reinterpret_cast<const uint16_t*>(capture.Normal.data());
+    for (int32_t y = 1; y + 1 < height; y++)
+        for (int32_t x = 1; x + 1 < width; x++)
+        {
+            size_t i = static_cast<size_t>(y) * width + x;
+            bool isAllSurface = true;
+            for (int32_t dy = -1; dy <= 1; dy++)
+                for (int32_t dx = -1; dx <= 1; dx++)
+                {
+                    if (!IsSurfacePixel(capture, x + dx, y + dy))
+                    {
+                        isAllSurface = false;
+                        continue;
+                    }
+                    size_t j = static_cast<size_t>(y + dy) * width + x + dx;
+                    for (int c = 0; c < 3; c++)
+                        albedoStep[i] = (std::max)(albedoStep[i], static_cast<float>(std::abs(static_cast<int>(capture.Albedo[i * 4 + c]) - static_cast<int>(capture.Albedo[j * 4 + c]))));
+                    for (int c = 0; c < 2; c++)
+                        normalStep[i] = (std::max)(normalStep[i], std::abs(static_cast<int>(normals[i * 2 + c]) - static_cast<int>(normals[j * 2 + c])) / 65535.0f);
+                }
+            isComplete[i] = isAllSurface ? 1 : 0;
+        }
+    auto around = [&](const std::vector<float>& steps, int32_t x, int32_t y)
+    {
+        float largest = 0.0f;
+        for (int32_t dy = -1; dy <= 1; dy++)
+            for (int32_t dx = -1; dx <= 1; dx++)
+                largest = (std::max)(largest, steps[static_cast<size_t>(y + dy) * width + x + dx]);
+        return largest;
+    };
+    auto isUsable = [&](int32_t x, int32_t y)
+    {
+        if (x < 2 || y < 2 || x + 2 >= width || y + 2 >= height)
+            return false;
+        for (int32_t dy = -1; dy <= 1; dy++)
+            for (int32_t dx = -1; dx <= 1; dx++)
+                if (!isComplete[static_cast<size_t>(y + dy) * width + x + dx])
+                    return false;
+        return true;
+    };
+
+    // Seam samples: the seam vertices, skinned and projected; each pixel counts once.
+    SeamSteps steps;
+    XMMATRIX viewProjection = camera->GetView() * camera->GetProjection();
+    std::vector<uint8_t> isNearSeam(pixels, 0);
+    std::vector<std::pair<int32_t, int32_t>> samples;
+    for (const RHIStructures::SkinnedVertex& vertex : SeamVertices)
+    {
+        XMVECTOR position, normal;
+        SkinVertex(vertex, position, normal);
+        XMVECTOR clip = XMVector4Transform(XMVectorSetW(position, 1.0f), viewProjection);
+        float w = XMVectorGetW(clip);
+        if (w <= 0.0f)
+            continue;
+        int32_t x = static_cast<int32_t>((XMVectorGetX(clip) / w * 0.5f + 0.5f) * width);
+        int32_t y = static_cast<int32_t>((0.5f - XMVectorGetY(clip) / w * 0.5f) * height);
+        if (x < 0 || y < 0 || x >= width || y >= height)
+            continue;
+        for (int32_t dy = -SeamClearance; dy <= SeamClearance; dy++)
+            for (int32_t dx = -SeamClearance; dx <= SeamClearance; dx++)
+                if (x + dx >= 0 && y + dy >= 0 && x + dx < width && y + dy < height)
+                    isNearSeam[static_cast<size_t>(y + dy) * width + x + dx] = 1;
+        samples.push_back({ x, y });
+    }
+    std::sort(samples.begin(), samples.end());
+    samples.erase(std::unique(samples.begin(), samples.end()), samples.end());
+
+    uint64_t beside = 0;
+    for (const auto& [x, y] : samples)
+    {
+        if (!isUsable(x, y))
+            continue;
+        steps.SeamAlbedo += around(albedoStep, x, y);
+        steps.SeamNormal += around(normalStep, x, y);
+        steps.Samples++;
+        const int32_t offsets[4][2] = { { SeamBeside, 0 }, { -SeamBeside, 0 }, { 0, SeamBeside }, { 0, -SeamBeside } };
+        for (const auto& offset : offsets)
+        {
+            int32_t bx = x + offset[0], by = y + offset[1];
+            if (!isUsable(bx, by) || isNearSeam[static_cast<size_t>(by) * width + bx])
+                continue;
+            steps.BesideAlbedo += around(albedoStep, bx, by);
+            steps.BesideNormal += around(normalStep, bx, by);
+            beside++;
+        }
+    }
+    if (steps.Samples > 0)
+    {
+        steps.SeamAlbedo /= steps.Samples;
+        steps.SeamNormal /= steps.Samples;
+    }
+    if (beside > 0)
+    {
+        steps.BesideAlbedo /= static_cast<double>(beside);
+        steps.BesideNormal /= static_cast<double>(beside);
+    }
+    return steps;
+}
+
+static bool IsSeamHeld(const SeamSteps& steps)
+{
+    return steps.Samples > 0 && steps.SeamAlbedo <= SeamStepTolerance * steps.BesideAlbedo + SeamAlbedoFloor &&
+           steps.SeamNormal <= SeamStepTolerance * steps.BesideNormal + SeamNormalFloor;
+}
+
 static void BeginStop(Camera* camera)
 {
     if (Character)
@@ -560,7 +743,14 @@ void SkinTest::Update(float, Camera* camera)
         {
             Paging::SetLevelBias(0);
             CompareCaptures(result);
-            if (Stops[StopIndex].IsAnimated)
+            if (Stops[StopIndex].IsSeam)
+            {
+                PatchedSteps = MeasureSeamSteps(Wanted, camera);
+                Skin::SetPatchesEnabled(false);
+                CurrentPhase = Phase::Unpatching;
+                PhaseFrames = 0;
+            }
+            else if (Stops[StopIndex].IsAnimated)
             {
                 AnimationSystem::SetFrozen(false);
                 CurrentPhase = Phase::Animating;
@@ -568,6 +758,25 @@ void SkinTest::Update(float, Camera* camera)
             }
             else
                 FinishStop(camera);
+        }
+        break;
+
+    case Phase::Unpatching:
+        if ((PhaseFrames > MinimumSettleFrames && Paging::IsViewFullyResident()) || PhaseFrames > MaximumSettleFrames)
+        {
+            RequestCapture(Coarse);
+            CurrentPhase = Phase::CapturingUnpatched;
+            PhaseFrames = 0;
+        }
+        break;
+
+    case Phase::CapturingUnpatched:
+        if (Coarse.HasAlbedo && Coarse.HasNormal)
+        {
+            UnpatchedSteps = MeasureSeamSteps(Coarse, camera);
+            Skin::SetPatchesEnabled(true);
+            HasSeamRun = true;
+            FinishStop(camera);
         }
         break;
 
@@ -614,14 +823,17 @@ void SkinTest::PrintResults()
 
     std::ostringstream line;
     bool isInvariant = true;
+    size_t failedStops = 0;
     double albedoMean = 0.0, albedoPercentile = 0.0, normalMean = 0.0, normalPercentile = 0.0;
     double fastest = 1e30, slowest = 0.0;
     uint32_t longestConvergence = 0;
     bool isConverged = true;
     for (const StopResult& result : Results)
     {
-        isInvariant &= result.AlbedoMean <= AlbedoMeanTolerance && result.AlbedoPercentile <= AlbedoPercentileTolerance &&
-                       result.NormalMean <= NormalMeanTolerance && result.NormalPercentile <= NormalPercentileTolerance;
+        bool isStopInvariant = result.AlbedoMean <= AlbedoMeanTolerance && result.AlbedoPercentile <= AlbedoPercentileTolerance &&
+                               result.NormalMean <= NormalMeanTolerance && result.NormalPercentile <= NormalPercentileTolerance;
+        isInvariant &= isStopInvariant;
+        failedStops += isStopInvariant ? 0 : 1;
         albedoMean = (std::max)(albedoMean, result.AlbedoMean);
         albedoPercentile = (std::max)(albedoPercentile, result.AlbedoPercentile);
         normalMean = (std::max)(normalMean, result.NormalMean);
@@ -637,7 +849,8 @@ void SkinTest::PrintResults()
     double spread = fastest > 0.0 ? (slowest - fastest) / fastest : 0.0;
 
     std::cout << std::fixed << std::setprecision(3);
-    std::cout << "Skin test: level invariance " << (isInvariant ? "held" : "FAILED") << " at " << Results.size() << " stops; largest albedo difference mean "
+    std::cout << "Skin test: level invariance " << (isInvariant ? "held at " : "FAILED at ") << (isInvariant ? Results.size() : failedStops) << " of "
+              << Results.size() << " stops; largest albedo difference mean "
               << albedoMean << " (at most " << AlbedoMeanTolerance << "), 99th percentile " << albedoPercentile << " (at most " << AlbedoPercentileTolerance
               << ") in 8-bit levels; normal mean " << normalMean << " (at most " << NormalMeanTolerance << "), 99th percentile " << normalPercentile
               << " (at most " << NormalPercentileTolerance << ")" << std::endl;
@@ -655,7 +868,15 @@ void SkinTest::PrintResults()
     }
     else
     {
-        std::cout << "Skin test: seams, not measured" << std::endl;
+        if (!HasSeamRun)
+            std::cout << "Skin test: seams, not measured (" << (SeamTarget.IsValid ? "DID NOT RUN" : "no seam vertex near the neck") << ")" << std::endl;
+        else
+            std::cout << "Skin test: seams " << (IsSeamHeld(PatchedSteps) ? "held" : "FAILED") << " at " << PatchedSteps.Samples
+                      << " seam pixels; step to neighbouring pixels, albedo " << PatchedSteps.SeamAlbedo << " on the seam and " << PatchedSteps.BesideAlbedo
+                      << " beside it, normal " << PatchedSteps.SeamNormal << " and " << PatchedSteps.BesideNormal << " (seam at most "
+                      << SeamStepTolerance << " times beside, plus " << SeamAlbedoFloor << " and " << SeamNormalFloor << "); without patches "
+                      << (IsSeamHeld(UnpatchedSteps) ? "it would hold" : "it would fail") << ", albedo " << UnpatchedSteps.SeamAlbedo << " and "
+                      << UnpatchedSteps.BesideAlbedo << ", normal " << UnpatchedSteps.SeamNormal << " and " << UnpatchedSteps.BesideNormal << std::endl;
         std::cout << "Skin test: stability, " << StabilityFills << " pages filled in " << StabilityFrames << " frames with a clip playing and the camera "
                   << "following the skin, " << StabilityFramesWithFills << " frames with any" << (HasStabilityRun ? "" : " (DID NOT RUN)") << std::endl;
     }

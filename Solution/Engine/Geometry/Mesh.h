@@ -58,6 +58,12 @@ public:
     const std::string& GetMaterialName() const          { return MaterialName; }
     void SetMaterialName(const std::string& name)       { MaterialName = name; }
     const MeshChart& GetChart() const                   { return Chart; }
+    // Before upload: the skinned vertices and indices, which import steps may rewrite; then
+    // RefreshCounts.
+    SkinnedVertexCache* GetSkinnedCache()               { return TempSkinnedVertexCache; }
+    void RefreshCounts();
+    bool HasAuthoredPatch() const                       { return IsPatchAuthored; }
+    void SetAuthoredPatch(bool isAuthored)              { IsPatchAuthored = isAuthored; }
     void SetChart(MeshChart chart)                      { Chart = std::move(chart); }
     bool IsSkinned() const                              { return bIsSkinned; }
     MeshHandle GetGPUMesh() const                       { return GPUMesh; }
@@ -71,6 +77,7 @@ private:
     uint32_t LocalMaterialIndex;
     std::string MaterialName;
     MeshChart Chart;
+    bool IsPatchAuthored = false;
 
     MeshHandle GPUMesh = {};
     VertexCache* TempVertexCache = nullptr;
