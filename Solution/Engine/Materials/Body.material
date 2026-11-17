@@ -5,4 +5,4 @@ melanin = 0.5
 hemoglobin = 0.3
 tint = 0.95 0.9 0.85
 roughness = 0.45
-subsurface = 0
+subsurface = 1

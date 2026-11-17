@@ -18,6 +18,16 @@ struct SkinChartDesc
     uint32_t LevelCount = 16;
 };
 
+// -skin-view: what procedural surfaces draw in place of their albedo.
+enum class SkinView : uint32_t
+{
+    Off,
+    Level,              // The page level hit, coloured as -paging-tint
+    LiveBands,          // Black, red, yellow, white for 0 to 3 live bands
+    PatchWeight,        // Black to white
+    Residency           // Green at the wanted level, yellow coarser, red none
+};
+
 struct SkinStats
 {
     uint32_t Charts = 0;
@@ -27,6 +37,7 @@ struct SkinStats
     uint64_t FeatureCacheBytes = 0;
     uint32_t CellsGenerated = 0;        // This frame
     uint32_t ResidentCells = 0;
+    uint32_t CellCapacity = 0;
     uint32_t PeakResidentCells = 0;
     uint64_t TotalCellsGenerated = 0;
 };
@@ -64,5 +75,6 @@ public:
     static void RetirePatchTable(uint32_t table);
     // Off draws every surface from its primary chart alone, for comparing seams with and without.
     static void SetPatchesEnabled(bool isEnabled);
+    static void SetView(SkinView view);
     static const SkinStats& GetStats();
 };

@@ -19,5 +19,7 @@ public:
     static void HoldAtStop(int stop);
     static void Update(float dt, Camera* camera);
     static void PrintResults();
+    // The overlay's Skin panel; shown whether or not the test runs.
+    static void DrawPanel();
     static void Shutdown();
 };

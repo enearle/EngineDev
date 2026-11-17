@@ -11,6 +11,7 @@
 #include "PagingTest.h"
 #include "SkinTest.h"
 #include "Paging.h"
+#include "Skin/Skin.h"
 #include "imgui.h"
 #include "Camera.h"
 #include "CameraController.h"
@@ -42,6 +43,7 @@ static CameraController* sCameraCon = nullptr;
 static std::vector<MaterialHandle> sMaterials;
 static DebugOverlay::PanelID sStatsPanel = 0;
 static DebugOverlay::PanelID sPagingPanel = 0;
+static DebugOverlay::PanelID sSkinPanel = 0;
 
 static bool IsSwitchPresent(const wchar_t* name)
 {
@@ -288,11 +290,19 @@ void GameInit()
     else
         BuildDemoScene();
     Paging::SetTint(IsSwitchPresent(L" -paging-tint"));
+    // -skin-view level | bands | patch | residency
+    const std::pair<const wchar_t*, SkinView> skinViews[] = { { L"level", SkinView::Level }, { L"bands", SkinView::LiveBands },
+                                                              { L"patch", SkinView::PatchWeight }, { L"residency", SkinView::Residency } };
+    std::wstring skinView = SwitchText(L" -skin-view", L"");
+    for (const auto& [name, view] : skinViews)
+        if (skinView == name)
+            Skin::SetView(view);
 
     sCameraCon = new CameraController(sCamera, 5.0f);
     AnimationSystem::SetFrozen(IsSwitchPresent(L" -freeze-animation"));
     sStatsPanel = DebugOverlay::EnlistPanel("Renderer", DrawRendererPanel);
     sPagingPanel = DebugOverlay::EnlistPanel("Paging", PagingTest::DrawPanel);
+    sSkinPanel = DebugOverlay::EnlistPanel("Skin", SkinTest::DrawPanel);
     GameTime::Init();
 }
 
@@ -330,6 +340,7 @@ void GameShutdown()
     Renderer::WaitForGpu();
     DebugOverlay::RetirePanel(sStatsPanel);
     DebugOverlay::RetirePanel(sPagingPanel);
+    DebugOverlay::RetirePanel(sSkinPanel);
     ComputeTestPass::Retire();
     DeferredPasses::Retire();
     Renderer::GetRenderScene().Clear();

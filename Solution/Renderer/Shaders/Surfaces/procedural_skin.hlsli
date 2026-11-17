@@ -29,7 +29,7 @@ cbuffer SkinConstants : register(b0, space4)
     uint SkinCellTableBase;
     uint SkinCellTableMask;
     uint SkinIsPatched;             // 0 draws from the primary chart alone (Skin::SetPatchesEnabled)
-    uint SkinPadding;
+    uint SkinView;                  // SkinView in Renderer/Skin/Skin.h
     uint4 SkinPatchTableOffsets[4]; // Likewise for patch tables, one entry per patch chart
 };
 StructuredBuffer<float4> SkinRing : register(t1, space4);
@@ -80,6 +80,7 @@ struct ChartResult
     uint Level;
     uint WantedLevel;
     uint2 WantedPage;
+    uint LiveBands;
 };
 
 ChartResult EvaluateChart(uint texture, ChartDerivatives derived, float3 normal)
@@ -131,6 +132,7 @@ ChartResult EvaluateChart(uint texture, ChartDerivatives derived, float3 normal)
     result.Level = resolved.Level;
     result.WantedLevel = resolved.WantedLevel;
     result.WantedPage = resolved.WantedPage;
+    result.LiveBands = live;
     return result;
 }
 
@@ -175,6 +177,17 @@ Surface EvaluateSurface(SurfaceInput input)
     surface.Albedo = saturate(Tint * exp(-(melanin * MelaninAbsorption + hemoglobin * HemoglobinAbsorption)));
     if (PagingIsTinted != 0)
         surface.Albedo = lerp(surface.Albedo, PagingLevelTint(result.Level), 0.6);
+    if (SkinView == 1)
+        surface.Albedo = PagingLevelTint(result.Level);
+    else if (SkinView == 2)
+    {
+        static const float3 BandColours[4] = { float3(0.0, 0.0, 0.0), float3(1.0, 0.0, 0.0), float3(1.0, 1.0, 0.0), float3(1.0, 1.0, 1.0) };
+        surface.Albedo = BandColours[min(result.LiveBands, 3u)];
+    }
+    else if (SkinView == 3)
+        surface.Albedo = SkinIsPatched != 0 && PatchTable >= 0.0 ? w : 0.0;
+    else if (SkinView == 4)
+        surface.Albedo = result.Level == PAGING_NO_LEVEL ? float3(1.0, 0.0, 0.0) : (result.Level >= result.WantedLevel ? float3(0.0, 1.0, 0.0) : float3(1.0, 1.0, 0.0));
     surface.Normal = normalize(normal + result.NormalOffset);
     surface.Metallic = 0.0;
     surface.Roughness = saturate(sqrt(BaseRoughness * BaseRoughness + result.UnresolvedVariance));

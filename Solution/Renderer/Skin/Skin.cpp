@@ -115,6 +115,7 @@ static std::unordered_map<PagedTextureID, Chart> Charts;
 static std::vector<std::vector<PagedTextureID>> PatchTables;
 static std::vector<bool> IsPatchTableUsed;
 static bool IsPatched = true;
+static SkinView View = SkinView::Off;
 static std::vector<bool> IsLayerUsed;
 static std::vector<PendingUpload> Uploads;
 static ImageHandle ChartMaps = {};
@@ -591,13 +592,14 @@ void Skin::Update()
 
     FrameAllocation constants = allocator->AllocateFrameData(ConstantsSize, BufferAllocator::UniformAlignment);
     std::memcpy(constants.Address, offsets, sizeof(offsets));
-    uint32_t cellTable[4] = { FeatureCache::GetTableBase(), FeatureCache::GetTableMask(), IsPatched ? 1u : 0u, 0 };
+    uint32_t cellTable[4] = { FeatureCache::GetTableBase(), FeatureCache::GetTableMask(), IsPatched ? 1u : 0u, static_cast<uint32_t>(View) };
     std::memcpy(static_cast<uint8_t*>(constants.Address) + sizeof(offsets), cellTable, sizeof(cellTable));
     std::memcpy(static_cast<uint8_t*>(constants.Address) + sizeof(offsets) + sizeof(cellTable), patchOffsets, sizeof(patchOffsets));
     ConstantsOffset = static_cast<uint32_t>(constants.Offset);
     Stats.Charts = static_cast<uint32_t>(Charts.size());
     Stats.CellsGenerated = FeatureCache::GetCellsGenerated();
     Stats.ResidentCells = FeatureCache::GetResidentCells();
+    Stats.CellCapacity = FeatureCache::CellCount;
     Stats.PeakResidentCells = FeatureCache::GetPeakResidentCells();
     Stats.TotalCellsGenerated = FeatureCache::GetTotalCellsGenerated();
 }
@@ -700,6 +702,11 @@ void Skin::RetirePatchTable(uint32_t table)
 void Skin::SetPatchesEnabled(bool isEnabled)
 {
     IsPatched = isEnabled;
+}
+
+void Skin::SetView(SkinView view)
+{
+    View = view;
 }
 
 const SkinStats& Skin::GetStats()

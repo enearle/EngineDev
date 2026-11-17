@@ -13,6 +13,7 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include "imgui.h"
 #include "Camera.h"
 #include "Animation/AnimationSystem.h"
 #include "Animation/AnimatorComponent.h"
@@ -809,6 +810,17 @@ static void PrintStop(const StopResult& result)
               << " cells resident; albedo difference mean " << result.AlbedoMean << ", 99th percentile "
               << result.AlbedoPercentile << "; normal difference mean " << result.NormalMean << ", 99th percentile " << result.NormalPercentile
               << std::defaultfloat << std::endl;
+}
+
+void SkinTest::DrawPanel()
+{
+    const SkinStats& stats = Skin::GetStats();
+    ImGui::Text("Charts %u, chart maps %.1f MB", stats.Charts, stats.ChartMapBytes / (1024.0 * 1024.0));
+    ImGui::Text("Pages baked %u this frame, %llu in all", stats.PagesBaked, static_cast<unsigned long long>(stats.TotalPagesBaked));
+    ImGui::Text("Cells generated %u this frame, %llu in all", stats.CellsGenerated, static_cast<unsigned long long>(stats.TotalCellsGenerated));
+    ImGui::Text("Feature cache %u of %u cells, peak %u, %.1f MB", stats.ResidentCells, stats.CellCapacity, stats.PeakResidentCells,
+                stats.FeatureCacheBytes / (1024.0 * 1024.0));
+    ImGui::Text("Feature pass GPU %.3f ms, bake and copy (Paging fill) GPU %.3f ms", GpuMilliseconds("Skin features"), GpuMilliseconds("Paging fill"));
 }
 
 void SkinTest::PrintResults()

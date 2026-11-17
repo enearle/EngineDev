@@ -6,6 +6,10 @@ struct VSOutput
 
 #define PI 3.14159265358979323846
 
+// How far the diffuse term wraps past the terminator at subsurface strength 1, per colour channel:
+// light scatters furthest in red. One scatter colour for every material for now.
+static const float3 ScatterWrap = float3(0.5, 0.2, 0.1);
+
 #include "Colour.hlsli"
 #include "Common.hlsli"
 
@@ -24,13 +28,14 @@ static float roughness;
 static float metallic;
 static float ambientOcclusion;
 static float3 viewVector;
-static float3 materialData;
+static float4 materialData;
+static float subsurface;
 
 void init(VSOutput input, float depth)
 {
     albedo = DecodeSrgb(inAlbedo.Sample(pointClampSampler, input.uv).rgb);
     normal = DecodeNormal(inNormal.Sample(pointClampSampler, input.uv));
-    materialData = inMetallicRoughnessAO.Sample(pointClampSampler, input.uv).rgb;
+    materialData = inMetallicRoughnessAO.Sample(pointClampSampler, input.uv);
 
     float4 clip = float4(input.uv.x * 2.0 - 1.0, 1.0 - input.uv.y * 2.0, depth, 1.0);
     float4 world = mul(InverseViewProjection, clip);
@@ -40,6 +45,7 @@ void init(VSOutput input, float depth)
     roughness = max(materialData.g, 0.04);
     roughness = max(roughness * roughness, 0.001);
     ambientOcclusion = materialData.b;
+    subsurface = materialData.a;
     
     viewVector = normalize(CameraPosition.xyz - fragPosition);
 }
@@ -142,9 +148,19 @@ float3 LightPBR(Light light)
     cookTorranceDenominator = max(cookTorranceDenominator, 0.0001);
     float3 cookTorrance = cookTorranceNumerator / cookTorranceDenominator;
 
-    float3 bRDF = ((float3(1,1,1) - fresnel) * (1.0 - metallic)) * lambert + cookTorrance;
+    float3 diffuse = ((float3(1,1,1) - fresnel) * (1.0 - metallic)) * lambert;
+    float nDotL = dot(lightDirection, normal);
 
-    return  bRDF * lightColour * max(dot(lightDirection, normal), 0.0001) * Shadow(light, lightDirection);
+    // Subsurface: the cosine wraps by w per channel, (n.l + w) / (1 + w)^2, which integrates over the
+    // sphere to the same energy as the plain cosine over the hemisphere. Specular is unchanged.
+    float3 diffuseCosine = max(nDotL, 0.0001);
+    if (subsurface > 0.0)
+    {
+        float3 wrap = subsurface * ScatterWrap;
+        diffuseCosine = max(nDotL + wrap, 0.0) / ((1.0 + wrap) * (1.0 + wrap));
+    }
+
+    return (diffuse * diffuseCosine + cookTorrance * max(nDotL, 0.0001)) * lightColour * Shadow(light, lightDirection);
 }
 
 float4 main(VSOutput input) : SV_TARGET
