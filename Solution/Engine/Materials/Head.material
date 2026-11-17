@@ -1,0 +1,8 @@
+# Procedural skin, bound at load to the chart of the submesh that uses it; every skin material reads
+# skin.bands. Melanin and hemoglobin are the base concentrations the bands deviate from.
+type = procedural_skin
+melanin = 0.5
+hemoglobin = 0.3
+tint = 0.95 0.9 0.85
+roughness = 0.45
+subsurface = 0

@@ -201,8 +201,12 @@ static void BuildDemoScene()
     sMaterials = shellMaterials;
     sMaterials.insert(sMaterials.end(), derpMaterials.begin(), derpMaterials.end());
 
+    // The skin test on the character leaves the shells out: their box hides and shadows it.
+    bool isSkinTestOnCharacter = IsSwitchPresent(L" -skin-test") && !IsSwitchPresent(L" -skin-test plane");
     SceneNode* shells = GeometryImport::CreateMeshGroup("../Engine/Meshes/shells.fbx", "Shells", XMMatrixIdentity(), false);
     AssignMaterials(shells, shellMaterials);
+    if (isSkinTestOnCharacter)
+        shells->SetLocalMatrix(XMMatrixTranslation(0.0f, -1000.0f, 0.0f));
     shells->UploadToGPU();
 
     SceneNode* derp = GeometryImport::CreateMeshGroup("../Engine/Meshes/Derp.fbx", "derp", XMMatrixIdentity(), true);
@@ -232,6 +236,15 @@ static void BuildDemoScene()
 
     // The demo copies source vertices for the skinning check before the upload drops them.
     AnimationDemo::Start(characters, derpMaterials, SwitchNumber(L" -crowd", 100), IsSwitchPresent(L" -animation-test"));
+    if (IsSwitchPresent(L" -skin-test") && !IsSwitchPresent(L" -skin-test plane"))
+    {
+        if (characters.size() > 1)
+            SkinTest::StartOnCharacter(characters.back());
+        else
+            std::cout << "Skin test: failed, no character was loaded" << std::endl;
+        if (IsSwitchPresent(L" -skin-stop"))
+            SkinTest::HoldAtStop(static_cast<int>(SwitchNumber(L" -skin-stop", 0)));
+    }
     for (SceneNode* character : characters)
         character->UploadToGPU();
 
@@ -256,7 +269,7 @@ void GameInit()
     lightData.Intensity = 20.0f;
     lightData.Radius = 50.0f;
     lightData.Type = 1;
-    if (IsSwitchPresent(L" -paging-test") || IsSwitchPresent(L" -skin-test"))
+    if (IsSwitchPresent(L" -paging-test") || IsSwitchPresent(L" -skin-test plane"))
     {
         lightData.Position = XMFLOAT3(0.0f, 30.0f, 0.0f);
         lightData.Intensity = 4.0f;

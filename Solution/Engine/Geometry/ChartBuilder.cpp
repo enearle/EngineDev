@@ -114,6 +114,7 @@ MeshChart ChartBuilder::Build(std::span<const ChartVertex> vertices, std::span<c
     MeshChart chart;
     chart.MillimetresU = Median(lengthsU);
     chart.MillimetresV = Median(lengthsV);
+    chart.MillimetresPerUnit = millimetresPerUnit;
     if (!skeleton || chart.MillimetresU <= 0.0f || chart.MillimetresV <= 0.0f)
         return chart;
 

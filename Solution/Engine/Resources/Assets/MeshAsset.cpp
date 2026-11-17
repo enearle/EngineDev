@@ -31,6 +31,7 @@ void MeshAsset::Serialize(std::string& data)
         const MeshChart& chart = Meshes[i].GetChart();
         AssetSerializer::Write<float>(data, chart.MillimetresU);
         AssetSerializer::Write<float>(data, chart.MillimetresV);
+        AssetSerializer::Write<float>(data, chart.MillimetresPerUnit);
         AssetSerializer::Write<uint32_t>(data, static_cast<uint32_t>(chart.Map.size()));
         AssetSerializer::WriteBytes(data, chart.Map.data(), chart.Map.size());
         AssetSerializer::Write<uint32_t>(data, Meshes[i].GetVertexCount());
@@ -80,6 +81,7 @@ void MeshAsset::Deserialize(std::string& data, long& offset)
         MeshChart chart;
         chart.MillimetresU = AssetSerializer::Read<float>(data, offset);
         chart.MillimetresV = AssetSerializer::Read<float>(data, offset);
+        chart.MillimetresPerUnit = AssetSerializer::Read<float>(data, offset);
         chart.Map.resize(AssetSerializer::Read<uint32_t>(data, offset));
         AssetSerializer::ReadBytes(data, offset, chart.Map.data(), chart.Map.size());
         uint32_t vCount = AssetSerializer::Read<uint32_t>(data, offset);

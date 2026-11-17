@@ -51,7 +51,7 @@ struct ResidentCell
 };
 
 static std::unordered_map<FeatureKey, ResidentCell, FeatureKeyHash> Resident;
-static std::unordered_map<FeatureKey, FeatureChart, FeatureKeyHash> Requests;
+static std::unordered_map<FeatureKey, bool, FeatureKeyHash> Requests;
 static std::vector<uint32_t> FreeSlots;
 static std::vector<std::pair<FeatureKey, uint32_t>> Jobs;      // Key and slot, generated this frame
 static std::vector<FeatureChart> JobCharts;
@@ -144,23 +144,28 @@ void FeatureCache::Shutdown()
     JobCharts.clear();
 }
 
-void FeatureCache::Request(const FeatureKey& key, const FeatureChart& chart)
+void FeatureCache::Request(const FeatureKey& key)
 {
-    Requests.try_emplace(key, chart);
+    Requests.try_emplace(key, true);
 }
 
-void FeatureCache::Schedule(uint64_t frame)
+bool FeatureCache::IsResident(const FeatureKey& key)
+{
+    return Resident.contains(key);
+}
+
+void FeatureCache::Schedule(uint64_t frame, const std::function<FeatureChart(uint32_t chart)>& describe)
 {
     Jobs.clear();
     JobCharts.clear();
     std::vector<std::pair<FeatureKey, FeatureChart>> missing;
-    for (const auto& [key, chart] : Requests)
+    for (const auto& [key, isRequested] : Requests)
     {
         auto found = Resident.find(key);
         if (found != Resident.end())
             found->second.LastUsedFrame = frame;
         else if (missing.size() < JobsPerFrame)
-            missing.push_back({ key, chart });
+            missing.push_back({ key, describe(key.Chart) });
     }
 
     // Slots come from the free list, then from the least recently used cells no request touched
@@ -196,7 +201,7 @@ void FeatureCache::Schedule(uint64_t frame)
 
     // The GPU hash: open addressing, every cell within ProbeSteps of its hash or left out this frame.
     BufferAllocator* allocator = BufferAllocator::GetInstance();
-    uint32_t entryCount = std::bit_ceil(CellCount * 2);
+    uint32_t entryCount = std::bit_ceil(CellCount * 4);
     std::vector<XMUINT4> table(entryCount, XMUINT4(EmptyWord, EmptyWord, EmptyWord, EmptyWord));
     for (const auto& [key, cell] : Resident)
     {

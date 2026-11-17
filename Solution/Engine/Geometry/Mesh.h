@@ -27,6 +27,7 @@ struct MeshChart
     static constexpr uint32_t MapSize = 512;
     float MillimetresU = 0.0f;
     float MillimetresV = 0.0f;
+    float MillimetresPerUnit = 0.0f;    // Of the mesh's positions
     std::vector<uint8_t> Map;
 };
 

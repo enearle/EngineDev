@@ -13,6 +13,8 @@ class SkinTest
 {
 public:
     static void StartOnPlane();
+    // Before the character is uploaded: its skin vertices pick where the camera looks.
+    static void StartOnCharacter(SceneNode* character);
     // -skin-stop N: no checks; the camera stays at stop N (from 0) for looking at.
     static void HoldAtStop(int stop);
     static void Update(float dt, Camera* camera);

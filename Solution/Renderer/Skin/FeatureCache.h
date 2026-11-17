@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include <functional>
 #include "RHI/RHIStructures.h"
 
 class PipelineExecutor;
@@ -19,7 +20,7 @@ struct FeatureKey
 // What the feature pass needs to generate a cell of a chart's band.
 struct FeatureChart
 {
-    uint32_t TableOffset = 0;           // This frame's band table, in 16-byte entries of the ring
+    uint32_t TableOffset = 0;           // The frame's band table, in 16-byte entries of the ring
     float Millimetres[2] = { 0.0f, 0.0f };
     bool IsPeriodic = false;
     uint32_t ChartLayer = 0;
@@ -42,9 +43,11 @@ public:
     static void Start(RHIStructures::ImageHandle chartMaps);
     static void Shutdown();
 
-    // During the frame's update: every cell some page needs, then Schedule once.
-    static void Request(const FeatureKey& key, const FeatureChart& chart);
-    static void Schedule(uint64_t frame);
+    // Any time before Schedule: every cell some page needs. Schedule then generates the missing
+    // ones, describing each chart as it is this frame.
+    static void Request(const FeatureKey& key);
+    static bool IsResident(const FeatureKey& key);
+    static void Schedule(uint64_t frame, const std::function<FeatureChart(uint32_t chart)>& describe);
     static void ForgetChart(uint32_t chart);
 
     static RHIStructures::BufferHandle GetBuffer();

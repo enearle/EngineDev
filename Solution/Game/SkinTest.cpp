@@ -14,6 +14,9 @@
 #include <string>
 #include <vector>
 #include "Camera.h"
+#include "Animation/AnimationSystem.h"
+#include "Animation/AnimatorComponent.h"
+#include "Animation/Skeleton.h"
 #include "MaterialRegistry.h"
 #include "Paging.h"
 #include "Readback.h"
@@ -40,14 +43,33 @@ static constexpr double AlbedoPercentileTolerance = 16.0;
 static constexpr double NormalMeanTolerance = 0.01;         // Octahedral units, 0 to 1: about 2 degrees
 static constexpr double NormalPercentileTolerance = 0.05;   // About 9 degrees
 static constexpr double FragmentCostSpread = 0.25;
+static constexpr uint32_t AnimatedSettleFrames = 30;
+static constexpr uint32_t AnimatedFrames = 120;
 static const char* CacheDirectory = "../../Cache";
+
+enum class Aim
+{
+    PlaneCentre,
+    WholeCharacter,
+    Torso,
+    Forearm
+};
 
 struct Stop
 {
     std::string Name;
-    XMFLOAT3 Centre;
-    float Width;                    // Of the view in world units; 0 for the whole chart
+    XMFLOAT3 Centre;                // On the plane
+    float Width;                    // Of the view in world units; 0 for the whole chart or character
     bool IsSkinFilling;
+    Aim Target = Aim::PlaneCentre;
+    bool IsAnimated = false;        // A clip plays after the checks, for the stability line
+};
+
+// A vertex of the character's skin the camera looks at, followed through skinning.
+struct SurfaceTarget
+{
+    RHIStructures::SkinnedVertex Vertex;
+    bool IsValid = false;
 };
 
 enum class Phase
@@ -57,6 +79,7 @@ enum class Phase
     CapturingWanted,
     Biasing,
     CapturingCoarse,
+    Animating,
     Finished
 };
 
@@ -82,6 +105,8 @@ struct StopResult
     double NormalPercentile = 0.0;
     uint64_t MemoryBytes = 0;
     bool IsSkinFilling = false;
+    uint32_t CellsGenerated = 0;
+    uint32_t ResidentCells = 0;
 };
 
 static std::vector<Stop> Stops;
@@ -103,6 +128,15 @@ static bool IsPlane = false;
 static PagedTextureID Chart = 0;
 static MaterialHandle SkinMaterial = {};
 static int HeldStop = -1;
+static SceneNode* Character = nullptr;
+static AnimatorComponent* CharacterAnimator = nullptr;
+static SurfaceTarget TorsoTarget;
+static SurfaceTarget ForearmTarget;
+static float WorldPerMillimetre = 0.0f;
+static uint32_t StabilityFrames = 0;
+static uint32_t StabilityFills = 0;
+static uint32_t StabilityFramesWithFills = 0;
+static bool HasStabilityRun = false;
 
 static double GpuMilliseconds(const char* pass)
 {
@@ -167,12 +201,147 @@ void SkinTest::StartOnPlane()
     Results.clear();
 }
 
-// Straight down on the stop's centre from the height that makes the view that wide, tilted a little
-// so the look-at frame is defined. The near plane follows the height.
+static XMVECTOR JointWorldPosition(const Skeleton& skeleton, const char* name, const XMMATRIX& world)
+{
+    int32_t joint = skeleton.FindJoint(name);
+    if (joint < 0)
+        return world.r[3];
+    return XMVector3TransformCoord(XMMatrixInverse(nullptr, XMLoadFloat4x4(&skeleton.GetJoint(joint).InverseBind)).r[3], world);
+}
+
+// The skinned vertex nearest a point among a material's vertices whose normal faces a direction, in
+// the bind pose. Vertices are read before upload drops them.
+static SurfaceTarget FindSurfaceVertex(SceneNode* node, const std::string& material, XMVECTOR point, XMVECTOR facing, const XMMATRIX& world,
+                                       float& bestDistance, float& millimetresPerUnit)
+{
+    SurfaceTarget best;
+    if (MeshComponent* component = static_cast<MeshComponent*>(node->GetComponent(MeshComponentType)))
+    {
+        MeshAsset* asset = component->GetMeshAsset();
+        for (uint32_t i = 0; i < asset->GetMeshCount(); i++)
+        {
+            Mesh& mesh = asset->GetMesh(i);
+            if (!mesh.IsSkinned() || mesh.GetMaterialName() != material)
+                continue;
+            const RHIStructures::SkinnedVertex* vertices = static_cast<const RHIStructures::SkinnedVertex*>(mesh.GetCachedVertexData());
+            for (uint32_t v = 0; v < mesh.GetVertexCount(); v++)
+            {
+                XMVECTOR position = XMVector3TransformCoord(XMLoadFloat3(&vertices[v].Position), world);
+                XMVECTOR normal = XMVector3Normalize(XMVector3TransformNormal(XMLoadFloat3(&vertices[v].Normal), world));
+                float distance = XMVectorGetX(XMVector3Length(position - point));
+                if (XMVectorGetX(XMVector3Dot(normal, facing)) < 0.6f || distance >= bestDistance)
+                    continue;
+                bestDistance = distance;
+                best.Vertex = vertices[v];
+                best.IsValid = true;
+                millimetresPerUnit = mesh.GetChart().MillimetresPerUnit;
+            }
+        }
+    }
+    for (SceneNode* child : node->GetChildren())
+    {
+        SurfaceTarget found = FindSurfaceVertex(child, material, point, facing, world, bestDistance, millimetresPerUnit);
+        if (found.IsValid)
+            best = found;
+    }
+    return best;
+}
+
+// The target's position and normal now, skinned on the CPU with the animator's palette.
+static void SkinTarget(const SurfaceTarget& target, XMVECTOR& position, XMVECTOR& normal)
+{
+    const std::vector<XMFLOAT4X4>& palette = CharacterAnimator->GetPalette();
+    const float weights[4] = { target.Vertex.BoneWeights.x, target.Vertex.BoneWeights.y, target.Vertex.BoneWeights.z, target.Vertex.BoneWeights.w };
+    const uint32_t joints[4] = { target.Vertex.BoneIndices.x, target.Vertex.BoneIndices.y, target.Vertex.BoneIndices.z, target.Vertex.BoneIndices.w };
+    XMMATRIX skin = XMMatrixIdentity();
+    if (weights[0] + weights[1] + weights[2] + weights[3] > 0.0f && !palette.empty())
+    {
+        skin = XMMATRIX(XMVectorZero(), XMVectorZero(), XMVectorZero(), XMVectorZero());
+        for (int i = 0; i < 4; i++)
+            if (weights[i] > 0.0f && joints[i] < palette.size())
+                skin += XMLoadFloat4x4(&palette[joints[i]]) * weights[i];
+    }
+    XMMATRIX toWorld = skin * Character->GetWorldMatrix();
+    position = XMVector3TransformCoord(XMLoadFloat3(&target.Vertex.Position), toWorld);
+    normal = XMVector3Normalize(XMVector3TransformNormal(XMLoadFloat3(&target.Vertex.Normal), toWorld));
+}
+
+void SkinTest::StartOnCharacter(SceneNode* character)
+{
+    Character = character;
+    CharacterAnimator = static_cast<AnimatorComponent*>(character->GetComponent(AnimatorComponentType));
+    if (!CharacterAnimator || !CharacterAnimator->GetSkeleton())
+    {
+        std::cout << "Skin test: failed, the character has no skeleton" << std::endl;
+        return;
+    }
+
+    XMMATRIX world = character->GetWorldMatrix();
+    const Skeleton& skeleton = *CharacterAnimator->GetSkeleton();
+    XMVECTOR towardCamera = XMVectorSet(0.0f, 0.0f, -1.0f, 0.0f);
+    float distance = 1e30f, millimetresPerUnit = 10.0f;
+    TorsoTarget = FindSurfaceVertex(character, "Body", JointWorldPosition(skeleton, "spine2", world), towardCamera, world, distance, millimetresPerUnit);
+    XMVECTOR forearm = XMVectorLerp(JointWorldPosition(skeleton, "l_forearm", world), JointWorldPosition(skeleton, "l_hand", world), 0.45f);
+    distance = 1e30f;
+    ForearmTarget = FindSurfaceVertex(character, "Arms", forearm, XMVector3Normalize(XMVectorSet(0.0f, 10.0f, -8.0f, 0.0f) - forearm), world,
+                                      distance, millimetresPerUnit);
+    if (!TorsoTarget.IsValid || !ForearmTarget.IsValid)
+    {
+        std::cout << "Skin test: failed, no Body or Arms skin vertex faces the camera" << std::endl;
+        return;
+    }
+    WorldPerMillimetre = XMVectorGetX(XMVector3Length(world.r[0])) / millimetresPerUnit;
+
+    Stops = {
+        { "whole body", {}, 0.0f, false, Aim::WholeCharacter },
+        { "torso 400 mm", {}, 400.0f, false, Aim::Torso },
+        { "forearm 200 mm", {}, 200.0f, false, Aim::Forearm },
+        { "forearm 20 mm", {}, 20.0f, true, Aim::Forearm, true },
+        { "forearm 2 mm", {}, 2.0f, true, Aim::Forearm },
+    };
+    for (Stop& stop : Stops)
+        stop.Width *= WorldPerMillimetre;
+
+    Readback::Watch(DeferredPasses::GetAlbedoImage());
+    Readback::Watch(DeferredPasses::GetNormalImage());
+    IsRunning = true;
+    StopIndex = 0;
+    CurrentPhase = Phase::Settling;
+    PhaseFrames = 0;
+    Results.clear();
+}
+
+// On the plane: straight down on the stop's centre from the height that makes the view that wide,
+// tilted a little so the look-at frame is defined. On the character: along the target's normal.
+// The near plane follows the distance.
 static void PlaceCamera(Camera* camera, const Stop& stop)
 {
     Window* window = Renderer::GetWindow();
     float aspect = static_cast<float>(window->GetWidth()) / static_cast<float>((std::max)(window->GetHeight(), 1u));
+    if (stop.Target == Aim::WholeCharacter)
+    {
+        const XMFLOAT4& bounds = CharacterAnimator->GetModelBounds();
+        XMMATRIX world = Character->GetWorldMatrix();
+        XMVECTOR centre = XMVector3TransformCoord(XMLoadFloat3(reinterpret_cast<const XMFLOAT3*>(&bounds)), world);
+        float radius = bounds.w * XMVectorGetX(XMVector3Length(world.r[0]));
+        XMFLOAT3 target, position;
+        XMStoreFloat3(&target, centre);
+        XMStoreFloat3(&position, centre + XMVectorSet(0.0f, 0.0f, -1.2f * radius, 0.0f));
+        camera->SetNearPlane(Camera::DefaultNearPlane);
+        camera->SetPositionFloat3(position);
+        camera->LookAtFloat3(target);
+        return;
+    }
+    if (stop.Target == Aim::Torso || stop.Target == Aim::Forearm)
+    {
+        XMVECTOR point, normal;
+        SkinTarget(stop.Target == Aim::Torso ? TorsoTarget : ForearmTarget, point, normal);
+        float distance = stop.Width / (2.0f * aspect);
+        camera->SetNearPlane((std::min)(Camera::DefaultNearPlane, 0.1f * distance));
+        camera->SetPositionVector(point + normal * distance);
+        camera->LookAtVector(point);
+        return;
+    }
     if (stop.Width <= 0.0f)
     {
         camera->SetNearPlane(Camera::DefaultNearPlane);
@@ -272,7 +441,11 @@ static void CompareCaptures(StopResult& result)
         normalSum += normal[i];
     }
     if (std::wcsstr(GetCommandLineW(), L" -skin-diff"))
-        WriteDifferenceImage(result.Name.substr(0, result.Name.find(' ')), normal);
+    {
+        std::string name = result.Name;
+        std::replace(name.begin(), name.end(), ' ', '_');
+        WriteDifferenceImage(name, normal);
+    }
     result.AlbedoMean = albedoSum / pixels;
     result.NormalMean = normalSum / pixels;
     result.AlbedoPercentile = Percentile(albedo, 0.99);
@@ -281,6 +454,8 @@ static void CompareCaptures(StopResult& result)
 
 static void BeginStop(Camera* camera)
 {
+    if (Character)
+        AnimationSystem::SetFrozen(true);
     PlaceCamera(camera, Stops[StopIndex]);
     ArrivalFrame = Renderer::GetExecutor()->GetFrameNumber();
     LastMissingFrame = ArrivalFrame;
@@ -290,6 +465,21 @@ static void BeginStop(Camera* camera)
     result.Name = Stops[StopIndex].Name;
     result.IsSkinFilling = Stops[StopIndex].IsSkinFilling;
     Results.push_back(result);
+}
+
+static void PrintStop(const StopResult& result);
+
+static void FinishStop(Camera* camera)
+{
+    PrintStop(Results.back());
+    StopIndex++;
+    if (StopIndex >= Stops.size())
+    {
+        CurrentPhase = Phase::Finished;
+        PostQuitMessage(0);
+    }
+    else
+        BeginStop(camera);
 }
 
 void SkinTest::HoldAtStop(int stop)
@@ -313,6 +503,8 @@ void SkinTest::Update(float, Camera* camera)
     StopResult& result = Results.back();
     uint64_t frame = Renderer::GetExecutor()->GetFrameNumber();
     PhaseFrames++;
+    result.CellsGenerated += Skin::GetStats().CellsGenerated;
+    result.ResidentCells = Skin::GetStats().ResidentCells;
     switch (CurrentPhase)
     {
     case Phase::Settling:
@@ -368,25 +560,46 @@ void SkinTest::Update(float, Camera* camera)
         {
             Paging::SetLevelBias(0);
             CompareCaptures(result);
-            std::cout << std::fixed << std::setprecision(3) << "Skin stop " << result.Name << ": " << (result.IsConverged ? "converged in " : "not converged after ")
-                      << result.Convergence << " frames, G-buffer " << result.GBufferMilliseconds << " ms, frame " << result.FrameMilliseconds << " ms, "
-                      << result.PagesBaked << " pages baked while measuring; albedo difference mean " << result.AlbedoMean << ", 99th percentile "
-                      << result.AlbedoPercentile << "; normal difference mean " << result.NormalMean << ", 99th percentile " << result.NormalPercentile
-                      << std::defaultfloat << std::endl;
-            StopIndex++;
-            if (StopIndex >= Stops.size())
+            if (Stops[StopIndex].IsAnimated)
             {
-                CurrentPhase = Phase::Finished;
-                PostQuitMessage(0);
+                AnimationSystem::SetFrozen(false);
+                CurrentPhase = Phase::Animating;
+                PhaseFrames = 0;
             }
             else
-                BeginStop(camera);
+                FinishStop(camera);
+        }
+        break;
+
+    case Phase::Animating:
+        if (PhaseFrames > AnimatedSettleFrames)
+        {
+            uint32_t fills = Paging::GetStats().Fills;
+            StabilityFills += fills;
+            StabilityFramesWithFills += fills > 0 ? 1 : 0;
+            StabilityFrames++;
+        }
+        if (PhaseFrames >= AnimatedSettleFrames + AnimatedFrames)
+        {
+            AnimationSystem::SetFrozen(true);
+            HasStabilityRun = true;
+            FinishStop(camera);
         }
         break;
 
     case Phase::Finished:
         break;
     }
+}
+
+static void PrintStop(const StopResult& result)
+{
+    std::cout << std::fixed << std::setprecision(3) << "Skin stop " << result.Name << ": " << (result.IsConverged ? "converged in " : "not converged after ")
+              << result.Convergence << " frames, G-buffer " << result.GBufferMilliseconds << " ms, frame " << result.FrameMilliseconds << " ms, "
+              << result.PagesBaked << " pages baked while measuring, " << result.CellsGenerated << " cells generated, " << result.ResidentCells
+              << " cells resident; albedo difference mean " << result.AlbedoMean << ", 99th percentile "
+              << result.AlbedoPercentile << "; normal difference mean " << result.NormalMean << ", 99th percentile " << result.NormalPercentile
+              << std::defaultfloat << std::endl;
 }
 
 void SkinTest::PrintResults()
@@ -439,6 +652,12 @@ void SkinTest::PrintResults()
     {
         std::cout << "Skin test: seams, none on the plane" << std::endl;
         std::cout << "Skin test: stability, not run on the plane" << std::endl;
+    }
+    else
+    {
+        std::cout << "Skin test: seams, not measured" << std::endl;
+        std::cout << "Skin test: stability, " << StabilityFills << " pages filled in " << StabilityFrames << " frames with a clip playing and the camera "
+                  << "following the skin, " << StabilityFramesWithFills << " frames with any" << (HasStabilityRun ? "" : " (DID NOT RUN)") << std::endl;
     }
     std::cout << std::defaultfloat;
 }

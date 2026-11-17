@@ -98,12 +98,14 @@ struct PendingUpload
     std::vector<uint8_t> Texels;
 };
 
+// A page is ready once every feature cell its bake reads is resident; asking requests the missing
+// ones, which the feature pass generates before the next frame's fills.
 class SkinBakeProducer : public PageProducer
 {
 public:
     bool IsComputing() const override { return true; }
     void Begin(const PageKey&) override {}
-    bool IsReady(const PageKey&) override { return true; }
+    bool IsReady(const PageKey& page) override;
     void Fill(PipelineExecutor* executor, const PageKey& page, const PageSlot& slot) override;
     void Cancel(const PageKey&) override {}
 };
@@ -440,8 +442,9 @@ void Skin::Shutdown()
     BakeLayout = nullptr;
 }
 
-// The cells of a point band a page reads, gutter included: one per lattice cell.
-static void RequestPageCells(PagedTextureID id, const Chart& chart, uint32_t bandIndex, const PageKey& page)
+// The cells of a point band a page reads, gutter included: one per lattice cell. True when every one
+// is resident.
+static bool RequestPageCells(PagedTextureID id, const Chart& chart, uint32_t bandIndex, const PageKey& page)
 {
     const Band& band = Tables[chart.Table].Bands[bandIndex];
     double pages = std::ldexp(1.0, static_cast<int>(page.Level));
@@ -455,17 +458,38 @@ static void RequestPageCells(PagedTextureID id, const Chart& chart, uint32_t ban
         range[axis][1] = static_cast<int64_t>(std::floor((position + 1.0 + gutter) * cells / pages));
     }
     if ((range[0][1] - range[0][0] + 1) * (range[1][1] - range[1][0] + 1) > 4096)
-        return;
+        return true;
 
-    FeatureChart featureChart;
-    featureChart.TableOffset = Tables[chart.Table].RingOffset;
-    featureChart.Millimetres[0] = chart.Millimetres[0];
-    featureChart.Millimetres[1] = chart.Millimetres[1];
-    featureChart.IsPeriodic = chart.IsPeriodic;
-    featureChart.ChartLayer = chart.Layer;
+    bool isResident = true;
     for (int64_t y = range[1][0]; y <= range[1][1]; y++)
         for (int64_t x = range[0][0]; x <= range[0][1]; x++)
-            FeatureCache::Request({ id, bandIndex, static_cast<int32_t>(x), static_cast<int32_t>(y) }, featureChart);
+        {
+            FeatureKey key = { id, bandIndex, static_cast<int32_t>(x), static_cast<int32_t>(y) };
+            FeatureCache::Request(key);
+            isResident &= FeatureCache::IsResident(key);
+        }
+    return isResident;
+}
+
+static bool IsBakeGrowing(const Band& band, const Chart& chart, uint32_t level)
+{
+    float scale = BandScale(band);
+    return BandWeight(scale, LevelTexelMillimetres(chart.Millimetres, level)) -
+           (level > 0 ? BandWeight(scale, LevelTexelMillimetres(chart.Millimetres, level - 1)) : 0.0f) > 0.0f;
+}
+
+bool SkinBakeProducer::IsReady(const PageKey& page)
+{
+    auto found = Charts.find(page.Texture);
+    if (found == Charts.end())
+        return true;
+    const Chart& chart = found->second;
+    const std::vector<Band>& bands = Tables[chart.Table].Bands;
+    bool isReady = true;
+    for (uint32_t b = 0; b < bands.size(); b++)
+        if (bands[b].Primitive != 0 && IsBakeGrowing(bands[b], chart, page.Level))
+            isReady &= RequestPageCells(page.Texture, chart, b, page);
+    return isReady;
 }
 
 // Cells come from pages: those under each page baked this frame, for the point bands its bake adds,
@@ -484,10 +508,7 @@ static void RequestFeatureCells()
         {
             if (bands[b].Primitive == 0)
                 continue;
-            float scale = BandScale(bands[b]);
-            float growth = BandWeight(scale, LevelTexelMillimetres(chart.Millimetres, page.Level)) -
-                           (page.Level > 0 ? BandWeight(scale, LevelTexelMillimetres(chart.Millimetres, page.Level - 1)) : 0.0f);
-            if (growth > 0.0f)
+            if (bands[b].Primitive != 0 && IsBakeGrowing(bands[b], chart, page.Level))
                 RequestPageCells(page.Texture, chart, b, page);
         }
     });
@@ -542,7 +563,17 @@ void Skin::Update()
         std::memcpy(ring.Address, entries.data(), entries.size() * sizeof(XMFLOAT4));
 
     RequestFeatureCells();
-    FeatureCache::Schedule(Renderer::GetExecutor()->GetFrameNumber());
+    FeatureCache::Schedule(Renderer::GetExecutor()->GetFrameNumber(), [](uint32_t id)
+    {
+        const Chart& chart = Charts.at(id);
+        FeatureChart described;
+        described.TableOffset = Tables[chart.Table].RingOffset;
+        described.Millimetres[0] = chart.Millimetres[0];
+        described.Millimetres[1] = chart.Millimetres[1];
+        described.IsPeriodic = chart.IsPeriodic;
+        described.ChartLayer = chart.Layer;
+        return described;
+    });
 
     FrameAllocation constants = allocator->AllocateFrameData(ConstantsSize, BufferAllocator::UniformAlignment);
     std::memcpy(constants.Address, offsets, sizeof(offsets));

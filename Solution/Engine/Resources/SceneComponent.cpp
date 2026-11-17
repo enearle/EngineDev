@@ -3,8 +3,44 @@
 #include "AssetSerializer.h"
 #include "../Scene/SceneNode.h"
 #include "../Animation/AnimatorComponent.h"
+#include <map>
 #include "MaterialRegistry.h"
 #include "Skinning.h"
+#include "Skin/Skin.h"
+
+// Every procedural_skin material reads the band table of this name.
+static const char* SkinBandTable = "skin";
+
+struct SharedChart
+{
+    PagedTextureID Chart = 0;
+    uint32_t References = 0;
+};
+
+// One chart per submesh of a mesh asset, shared by every component that draws it, so copies of a
+// character share pages.
+static std::map<std::pair<const MeshAsset*, uint32_t>, SharedChart> SharedCharts;
+
+static PagedTextureID AcquireChart(MeshAsset* asset, uint32_t submesh)
+{
+    SharedChart& shared = SharedCharts[{ asset, submesh }];
+    if (shared.References++ == 0)
+    {
+        const MeshChart& chart = asset->GetMesh(submesh).GetChart();
+        shared.Chart = Skin::EnlistChart({ .MillimetresU = chart.MillimetresU, .MillimetresV = chart.MillimetresV,
+                                           .BandTable = SkinBandTable, .Map = chart.Map });
+    }
+    return shared.Chart;
+}
+
+static void ReleaseChart(const MeshAsset* asset, uint32_t submesh)
+{
+    auto found = SharedCharts.find({ asset, submesh });
+    if (found == SharedCharts.end() || --found->second.References > 0)
+        return;
+    Skin::RetireChart(found->second.Chart);
+    SharedCharts.erase(found);
+}
 
 void SceneComponentBase::Serialize(std::string& data)
 {
@@ -71,12 +107,26 @@ void MeshComponent::AssignMaterialsByName()
     for (MaterialHandle material : EnlistedMaterials)
         MaterialRegistry::Retire(material);
     EnlistedMaterials.clear();
+    for (uint32_t submesh : HeldCharts)
+        ReleaseChart(meshAsset, submesh);
+    HeldCharts.clear();
 
+    MaterialTypeID skinType = 0;
+    bool hasSkinType = MaterialTypes::Find("procedural_skin", skinType);
     SubmeshMaterials.resize(meshAsset->GetMeshCount());
     for (uint32_t i = 0; i < meshAsset->GetMeshCount(); i++)
     {
         SubmeshMaterials[i] = MaterialRegistry::Enlist(meshAsset->GetMesh(i).GetMaterialName());
         EnlistedMaterials.push_back(SubmeshMaterials[i]);
+
+        // A procedural surface is bound to the chart of the submesh it is assigned to.
+        bool isSkin = hasSkinType && MaterialRegistry::GetType(SubmeshMaterials[i]) == skinType;
+        if (isSkin && meshAsset->GetMesh(i).GetChart().MillimetresU > 0.0f)
+        {
+            float chart = static_cast<float>(AcquireChart(meshAsset, i));
+            MaterialRegistry::SetParameter(SubmeshMaterials[i], "chart", { &chart, 1 });
+            HeldCharts.push_back(i);
+        }
     }
 }
 
@@ -108,6 +158,9 @@ void MeshComponent::FreeGPUResources()
         MaterialRegistry::Retire(material);
     EnlistedMaterials.clear();
     SubmeshMaterials.clear();
+    for (uint32_t submesh : HeldCharts)
+        ReleaseChart(LoadedMesh, submesh);
+    HeldCharts.clear();
 }
 
 bool SceneComponentFactory::SceneComponentExists(SceneComponentType sceneComponentType, SceneNode* owner)
