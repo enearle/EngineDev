@@ -1427,3 +1427,23 @@ void DirectX12BufferAllocator::ReleaseDescriptorSet(DescriptorSetAllocation& all
     delete tableData;
     allocation.PlatformData = nullptr;
 }
+
+bool VulkanBufferAllocator::CanWriteStorageImage(Format format) const
+{
+    VkPhysicalDevice device = VulkanCore::Instance().GetPhysicalDevice();
+    VkPhysicalDeviceFeatures features = {};
+    vkGetPhysicalDeviceFeatures(device, &features);
+    VkFormatProperties properties = {};
+    vkGetPhysicalDeviceFormatProperties(device, VulkanFormat(format), &properties);
+    bool isExtendedFormat = format != Format::R8G8B8A8_UNORM && format != Format::R16G16B16A16_FLOAT &&
+                            format != Format::R32G32B32A32_FLOAT && format != Format::R32_FLOAT && format != Format::R32_UINT;
+    return (properties.optimalTilingFeatures & VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT) && (!isExtendedFormat || features.shaderStorageImageExtendedFormats);
+}
+
+bool DirectX12BufferAllocator::CanWriteStorageImage(Format format) const
+{
+    D3D12_FEATURE_DATA_FORMAT_SUPPORT support = { DXFormat(format) };
+    if (FAILED(D3DCore::Instance().GetDevice()->CheckFeatureSupport(D3D12_FEATURE_FORMAT_SUPPORT, &support, sizeof(support))))
+        return false;
+    return (support.Support1 & D3D12_FORMAT_SUPPORT1_TYPED_UNORDERED_ACCESS_VIEW) && (support.Support2 & D3D12_FORMAT_SUPPORT2_UAV_TYPED_STORE);
+}

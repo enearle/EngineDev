@@ -15,12 +15,14 @@
 using namespace RHIStructures;
 
 // cs_skinning reads vertices as 32-bit words at these offsets.
-static_assert(sizeof(Vertex) == 56 && offsetof(Vertex, Normal) == 12 && offsetof(Vertex, Tangent) == 24 &&
-              offsetof(Vertex, Bitangent) == 36 && offsetof(Vertex, TexCoord) == 48);
+static_assert(sizeof(Vertex) == 72 && offsetof(Vertex, Normal) == 12 && offsetof(Vertex, Tangent) == 24 &&
+              offsetof(Vertex, Bitangent) == 36 && offsetof(Vertex, TexCoord) == 48 && offsetof(Vertex, TexCoord1) == 56 &&
+              offsetof(Vertex, PatchWeight) == 64 && offsetof(Vertex, PatchChart) == 68);
 static_assert(Skinning::MaxPoolVertices == (1ull << 27) * 4 / sizeof(Vertex));
-static_assert(sizeof(SkinnedVertex) == 88 && offsetof(SkinnedVertex, Normal) == 12 && offsetof(SkinnedVertex, Tangent) == 24 &&
-              offsetof(SkinnedVertex, Bitangent) == 36 && offsetof(SkinnedVertex, TexCoord) == 48 &&
-              offsetof(SkinnedVertex, BoneWeights) == 56 && offsetof(SkinnedVertex, BoneIndices) == 72);
+static_assert(sizeof(SkinnedVertex) == 104 && offsetof(SkinnedVertex, Normal) == 12 && offsetof(SkinnedVertex, Tangent) == 24 &&
+              offsetof(SkinnedVertex, Bitangent) == 36 && offsetof(SkinnedVertex, TexCoord) == 48 && offsetof(SkinnedVertex, TexCoord1) == 56 &&
+              offsetof(SkinnedVertex, PatchWeight) == 64 && offsetof(SkinnedVertex, PatchChart) == 68 &&
+              offsetof(SkinnedVertex, BoneWeights) == 72 && offsetof(SkinnedVertex, BoneIndices) == 88);
 
 static constexpr uint32_t GroupSize = 64;
 static constexpr uint32_t SkinningSetIndex = 1;

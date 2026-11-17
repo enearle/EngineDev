@@ -177,6 +177,9 @@ void VulkanCore::CreateLogicalDevice()
     deviceFeatures.depthClamp = VK_TRUE;            // Enable depth clamp feature
     deviceFeatures.fillModeNonSolid = VK_TRUE;      // Enable wireframe/line polygon mode
     deviceFeatures.fragmentStoresAndAtomics = VK_TRUE;
+    VkPhysicalDeviceFeatures supportedFeatures = {};
+    vkGetPhysicalDeviceFeatures(PhysicalDevice, &supportedFeatures);
+    deviceFeatures.shaderStorageImageExtendedFormats = supportedFeatures.shaderStorageImageExtendedFormats;
 
     // Enable dynamic rendering feature
     VkPhysicalDeviceDynamicRenderingFeatures dynamicRenderingFeature{};

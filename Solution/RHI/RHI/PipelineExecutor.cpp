@@ -288,6 +288,17 @@ void D3DPipelineExecutor::CopyImageToBuffer(ImageHandle image, const ImageRegion
     GetCommandList()->CopyTextureRegion(&destination, 0, 0, 0, &source, &box);
 }
 
+void D3DPipelineExecutor::CopyImage(ImageHandle source, const ImageRegion& sourceRegion, ImageHandle destination, const ImageRegion& destinationRegion)
+{
+    BufferAllocator* allocator = BufferAllocator::GetInstance();
+    const ImageAllocation& sourceAllocation = allocator->GetImageAllocation(source);
+    const ImageAllocation& destinationAllocation = allocator->GetImageAllocation(destination);
+    D3D12_TEXTURE_COPY_LOCATION from = D3DSubresource(static_cast<DX12ImageData*>(sourceAllocation.Image)->Image.Get(), sourceAllocation.Desc, sourceRegion);
+    D3D12_TEXTURE_COPY_LOCATION to = D3DSubresource(static_cast<DX12ImageData*>(destinationAllocation.Image)->Image.Get(), destinationAllocation.Desc, destinationRegion);
+    D3D12_BOX box = { sourceRegion.X, sourceRegion.Y, 0, sourceRegion.X + sourceRegion.Width, sourceRegion.Y + sourceRegion.Height, 1 };
+    GetCommandList()->CopyTextureRegion(&to, destinationRegion.X, destinationRegion.Y, 0, &from, &box);
+}
+
 void D3DPipelineExecutor::CopyBuffer(BufferHandle source, uint64_t sourceOffset, BufferHandle destination, uint64_t destinationOffset, uint64_t size)
 {
     BufferAllocator* allocator = BufferAllocator::GetInstance();
@@ -744,6 +755,22 @@ void VulkanPipelineExecutor::CopyImageToBuffer(ImageHandle image, const ImageReg
     VkBufferImageCopy copy = VulkanCopyRegion(bufferOffset, rowPitch, imageAllocation.Desc, region);
     vkCmdCopyImageToBuffer(GetCommandBuffer(), static_cast<VulkanImageData*>(imageAllocation.Image)->ImageHandle, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
         static_cast<VulkanBufferData*>(allocator->GetBufferAllocation(buffer).Buffer)->Buffer, 1, &copy);
+}
+
+void VulkanPipelineExecutor::CopyImage(ImageHandle source, const ImageRegion& sourceRegion, ImageHandle destination, const ImageRegion& destinationRegion)
+{
+    BufferAllocator* allocator = BufferAllocator::GetInstance();
+    const ImageAllocation& sourceAllocation = allocator->GetImageAllocation(source);
+    const ImageAllocation& destinationAllocation = allocator->GetImageAllocation(destination);
+
+    VkImageCopy copy{};
+    copy.srcSubresource = { VulkanAspects(sourceAllocation.Desc.Format), sourceRegion.Mip, sourceRegion.Layer, 1 };
+    copy.srcOffset = { static_cast<int32_t>(sourceRegion.X), static_cast<int32_t>(sourceRegion.Y), 0 };
+    copy.dstSubresource = { VulkanAspects(destinationAllocation.Desc.Format), destinationRegion.Mip, destinationRegion.Layer, 1 };
+    copy.dstOffset = { static_cast<int32_t>(destinationRegion.X), static_cast<int32_t>(destinationRegion.Y), 0 };
+    copy.extent = { sourceRegion.Width, sourceRegion.Height, 1 };
+    vkCmdCopyImage(GetCommandBuffer(), static_cast<VulkanImageData*>(sourceAllocation.Image)->ImageHandle, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+        static_cast<VulkanImageData*>(destinationAllocation.Image)->ImageHandle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
 }
 
 void VulkanPipelineExecutor::CopyBuffer(BufferHandle source, uint64_t sourceOffset, BufferHandle destination, uint64_t destinationOffset, uint64_t size)

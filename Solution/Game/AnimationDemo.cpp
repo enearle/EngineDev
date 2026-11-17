@@ -80,7 +80,9 @@ static void FindSkinnedSubmesh(SceneNode* node)
 }
 
 // Mirrors Shaders/cs_skinning.hlsl.
-static void SkinOnCpu(const RHIStructures::SkinnedVertex& source, const std::vector<XMFLOAT4X4>& palette, float out[14])
+static constexpr int VertexWords = sizeof(RHIStructures::Vertex) / sizeof(float);
+
+static void SkinOnCpu(const RHIStructures::SkinnedVertex& source, const std::vector<XMFLOAT4X4>& palette, float out[VertexWords])
 {
     const float weights[4] = { source.BoneWeights.x, source.BoneWeights.y, source.BoneWeights.z, source.BoneWeights.w };
     const uint32_t joints[4] = { source.BoneIndices.x, source.BoneIndices.y, source.BoneIndices.z, source.BoneIndices.w };
@@ -98,9 +100,10 @@ static void SkinOnCpu(const RHIStructures::SkinnedVertex& source, const std::vec
     XMStoreFloat3(&normal, XMVector3Normalize(XMVector3TransformNormal(XMLoadFloat3(&source.Normal), skin)));
     XMStoreFloat3(&tangent, XMVector3Normalize(XMVector3TransformNormal(XMLoadFloat3(&source.Tangent), skin)));
     XMStoreFloat3(&bitangent, XMVector3Normalize(XMVector3TransformNormal(XMLoadFloat3(&source.Bitangent), skin)));
-    const float values[14] = { position.x, position.y, position.z, normal.x, normal.y, normal.z, tangent.x, tangent.y, tangent.z,
-                               bitangent.x, bitangent.y, bitangent.z, source.TexCoord.x, source.TexCoord.y };
-    std::copy(values, values + 14, out);
+    const float values[VertexWords] = { position.x, position.y, position.z, normal.x, normal.y, normal.z, tangent.x, tangent.y, tangent.z,
+                                        bitangent.x, bitangent.y, bitangent.z, source.TexCoord.x, source.TexCoord.y,
+                                        source.TexCoord1.x, source.TexCoord1.y, source.PatchWeight, source.PatchChart };
+    std::copy(values, values + VertexWords, out);
 }
 
 // Also checks that every vertex lies inside the model-space bounds used for culling that frame.
@@ -109,20 +112,20 @@ static void CompareSkinnedVertices(const ReadbackResult& result, const std::vect
     const float* gpu = reinterpret_cast<const float*>(result.Data);
     for (size_t v = 0; v < CheckedSource.size(); v++)
     {
-        float expected[14];
+        float expected[VertexWords];
         SkinOnCpu(CheckedSource[v], palette, expected);
-        for (int k = 0; k < 14; k++)
+        for (int k = 0; k < VertexWords; k++)
         {
-            float error = std::abs(gpu[v * 14 + k] - expected[k]);
+            float error = std::abs(gpu[v * VertexWords + k] - expected[k]);
             LargestSkinningError = (std::max)(LargestSkinningError, error);
             if (error > 1e-3f * (1.0f + std::abs(expected[k])) && SkinningFailure.empty())
-                SkinningFailure = "vertex " + std::to_string(v) + " word " + std::to_string(k) + " is " + std::to_string(gpu[v * 14 + k]) +
+                SkinningFailure = "vertex " + std::to_string(v) + " word " + std::to_string(k) + " is " + std::to_string(gpu[v * VertexWords + k]) +
                                   ", expected " + std::to_string(expected[k]) + " (frame " + std::to_string(result.RequestedFrame) + ")";
         }
     }
     for (size_t v = 0; v < CheckedSource.size() && SkinningFailure.empty(); v++)
     {
-        float distance = XMVectorGetX(XMVector3Length(XMVectorSet(gpu[v * 14], gpu[v * 14 + 1], gpu[v * 14 + 2], 0.0f) - XMLoadFloat3(reinterpret_cast<const XMFLOAT3*>(&bounds))));
+        float distance = XMVectorGetX(XMVector3Length(XMVectorSet(gpu[v * VertexWords], gpu[v * VertexWords + 1], gpu[v * VertexWords + 2], 0.0f) - XMLoadFloat3(reinterpret_cast<const XMFLOAT3*>(&bounds))));
         if (distance > bounds.w * 1.0001f + 1e-5f)
             SkinningFailure = "vertex " + std::to_string(v) + " is outside the culling bounds by " + std::to_string(distance - bounds.w);
     }

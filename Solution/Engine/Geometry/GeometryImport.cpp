@@ -308,6 +308,9 @@ Mesh GeometryImport::LoadSkinnedMesh(const aiMesh* mesh, const XMMATRIX& meshToM
         XMStoreFloat3(&vertex.Tangent, XMVector3Normalize(XMVector3TransformNormal(XMLoadFloat3(&basis.Tangent), meshToModel)));
         XMStoreFloat3(&vertex.Bitangent, XMVector3Normalize(XMVector3TransformNormal(XMLoadFloat3(&basis.Bitangent), meshToModel)));
         vertex.TexCoord = basis.TexCoord;
+        vertex.TexCoord1 = basis.TexCoord1;
+        vertex.PatchWeight = basis.PatchWeight;
+        vertex.PatchChart = basis.PatchChart;
         vertex.BoneWeights = XMFLOAT4(0.0f, 0.0f, 0.0f, 0.0f);
         vertex.BoneIndices = XMUINT4(0, 0, 0, 0);
     }

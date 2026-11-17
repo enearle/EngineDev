@@ -20,7 +20,7 @@ namespace RHIStructures
     //====================================//
     
     // Format Mappings
-    constexpr std::array<VkFormat, 28> VULKAN_FORMATS = {
+    constexpr std::array<VkFormat, 29> VULKAN_FORMATS = {
         VK_FORMAT_UNDEFINED,
         VK_FORMAT_R8G8B8A8_UNORM,
         VK_FORMAT_R8G8B8A8_SRGB,
@@ -49,9 +49,10 @@ namespace RHIStructures
         VK_FORMAT_R16G16_SFLOAT,
         VK_FORMAT_R16_UINT,
         VK_FORMAT_R32_UINT,
+        VK_FORMAT_R16G16B16A16_UNORM,
     };
 
-    constexpr std::array<DXGI_FORMAT, 28> DX_FORMATS = {
+    constexpr std::array<DXGI_FORMAT, 29> DX_FORMATS = {
         DXGI_FORMAT_UNKNOWN,
         DXGI_FORMAT_R8G8B8A8_UNORM,
         DXGI_FORMAT_R8G8B8A8_UNORM_SRGB,
@@ -80,6 +81,7 @@ namespace RHIStructures
         DXGI_FORMAT_R16G16_FLOAT,
         DXGI_FORMAT_R16_UINT,
         DXGI_FORMAT_R32_UINT,
+        DXGI_FORMAT_R16G16B16A16_UNORM,
     };
 
     VkFormat VulkanFormat(Format format)
@@ -151,6 +153,7 @@ namespace RHIStructures
         case Format::R32G32_FLOAT:
             return 8;
         case Format::R16G16B16A16_FLOAT:
+        case Format::R16G16B16A16_UNORM:
             return 8;
         case Format::R32G32B32_FLOAT:
             return 12;

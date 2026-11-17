@@ -38,6 +38,8 @@ namespace RHIStructures
         uint32_t SwapchainMSAASamples = 1;
     };
     
+    // TexCoord1, PatchWeight and PatchChart place a vertex in its seam patch: the patch's UV, the
+    // patch's share of the blend (1 on the seam), and the patch chart's index.
     struct Vertex
     {
         DirectX::XMFLOAT3 Position = {0,0,0};
@@ -45,6 +47,9 @@ namespace RHIStructures
         DirectX::XMFLOAT3 Tangent = {0,0,0};
         DirectX::XMFLOAT3 Bitangent = {0,0,0};
         DirectX::XMFLOAT2 TexCoord = {0,0};
+        DirectX::XMFLOAT2 TexCoord1 = {0,0};
+        float PatchWeight = 0.0f;
+        float PatchChart = 0.0f;
     };
     
     struct SkinnedVertex
@@ -54,6 +59,9 @@ namespace RHIStructures
         DirectX::XMFLOAT3 Tangent = {0,0,0};
         DirectX::XMFLOAT3 Bitangent = {0,0,0};
         DirectX::XMFLOAT2 TexCoord = {0,0};
+        DirectX::XMFLOAT2 TexCoord1 = {0,0};
+        float PatchWeight = 0.0f;
+        float PatchChart = 0.0f;
         DirectX::XMFLOAT4 BoneWeights = {0,0,0,0};
         DirectX::XMUINT4 BoneIndices = {0,0,0,0};
     };
@@ -112,11 +120,12 @@ namespace RHIStructures
         R16G16_FLOAT = 25,
         R16_UINT = 26,
         R32_UINT = 27,
+        R16G16B16A16_UNORM = 28,
     };
     VkFormat VulkanFormat(Format format);
     DXGI_FORMAT DXFormat(Format format);
     VkImageAspectFlags VulkanAspects(Format format);
-    size_t FormatSize(Format format);
+    RHI_API size_t FormatSize(Format format);
     RHI_API bool IsDepthFormat(Format format);
 
     

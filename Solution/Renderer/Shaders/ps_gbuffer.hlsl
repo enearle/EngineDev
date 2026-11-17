@@ -13,6 +13,8 @@ struct PSInput
     float3 binormal : BINORMAL;
     float2 uv : TEXCOORD;
     float3 worldPosition : TEXCOORD1;
+    float2 uv1 : TEXCOORD2;
+    float2 patch : TEXCOORD3;
 };
 
 struct PSOutput
@@ -34,12 +36,15 @@ PSOutput main(PSInput input)
     surfaceInput.Tangent = input.tangent;
     surfaceInput.Bitangent = input.binormal;
     surfaceInput.UV = input.uv;
+    surfaceInput.UV1 = input.uv1;
+    surfaceInput.PatchWeight = input.patch.x;
+    surfaceInput.PatchChart = input.patch.y;
     surfaceInput.PixelPosition = input.position;
     Surface surface = EvaluateSurface(surfaceInput);
 
     PSOutput output;
     output.albedo = float4(EncodeSrgb(surface.Albedo), 1.0);
     output.normal = EncodeNormal(surface.Normal);
-    output.material = float4(surface.Metallic, surface.Roughness, surface.Occlusion, 1.0);
+    output.material = float4(surface.Metallic, surface.Roughness, surface.Occlusion, surface.Subsurface);
     return output;
 }

@@ -101,6 +101,9 @@ public:
                                                       const std::vector<DescriptorSetBinding>& bindings) = 0;
     virtual void UpdateDescriptorSet(DescriptorSetHandle set, const std::vector<DescriptorSetBinding>& newBindings) = 0;
 
+    // Whether compute shaders can write images of this format as storage images.
+    virtual bool CanWriteStorageImage(Format format) const = 0;
+
     const ImageAllocation& GetImageAllocation(ImageHandle image) const { return Images.Get(image); }
     const BufferAllocation& GetBufferAllocation(BufferHandle buffer) const { return Buffers.Get(buffer); }
     const DescriptorSetAllocation& GetDescriptorSet(DescriptorSetHandle set) const { return DescriptorSets.Get(set); }
@@ -122,6 +125,7 @@ public:
                                               const std::vector<DescriptorSetBinding>& bindings) override;
     void UpdateDescriptorSet(DescriptorSetHandle set, const std::vector<DescriptorSetBinding>& newBindings) override;
     void EvictImage(ImageHandle image) override;
+    bool CanWriteStorageImage(Format format) const override;
 
     VkDescriptorSetLayout GetRegisteredDescriptorSetLayout(uint32_t layoutID, uint32_t setIndex);
     VkImageView GetImageView(ImageHandle image, SubresourceRange range);
@@ -198,6 +202,7 @@ public:
                                               const std::vector<DescriptorSetBinding>& bindings) override;
     void UpdateDescriptorSet(DescriptorSetHandle set, const std::vector<DescriptorSetBinding>& newBindings) override;
     void EvictImage(ImageHandle image) override;
+    bool CanWriteStorageImage(Format format) const override;
 
     ID3D12DescriptorHeap* GetShaderResourceHeap() const { return ShaderResourceHeap.Get(); }
     D3D12_CPU_DESCRIPTOR_HANDLE GetRenderTargetView(ImageHandle image, SubresourceRange range);

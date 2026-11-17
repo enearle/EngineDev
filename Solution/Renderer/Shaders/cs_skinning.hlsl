@@ -1,8 +1,8 @@
 // Skins one mesh into its range of the vertex pool. Vertices are read and written as 32-bit words,
 // because DXC may lay out a struct of float3 fields differently for SPIR-V than the packed C++
 // Vertex and SkinnedVertex. Word offsets match the static_asserts in Renderer/Skinning.cpp.
-#define SOURCE_WORDS 22         // SkinnedVertex: position, normal, tangent, bitangent, uv, weights, joints
-#define DESTINATION_WORDS 14    // Vertex: position, normal, tangent, bitangent, uv
+#define SOURCE_WORDS 26         // SkinnedVertex: position, normal, tangent, bitangent, uv, uv1, patch weight and chart, weights, joints
+#define DESTINATION_WORDS 18    // Vertex: position, normal, tangent, bitangent, uv, uv1, patch weight and chart
 
 struct PaletteMatrix
 {
@@ -44,8 +44,8 @@ void main(uint3 id : SV_DispatchThreadID)
         return;
 
     uint source = id.x * SOURCE_WORDS;
-    float4 weights = asfloat(uint4(Source[source + 14], Source[source + 15], Source[source + 16], Source[source + 17]));
-    uint4 joints = uint4(Source[source + 18], Source[source + 19], Source[source + 20], Source[source + 21]);
+    float4 weights = asfloat(uint4(Source[source + 18], Source[source + 19], Source[source + 20], Source[source + 21]));
+    uint4 joints = uint4(Source[source + 22], Source[source + 23], Source[source + 24], Source[source + 25]);
 
     // A vertex with no weights keeps its bind position.
     float4x4 skin = (float4x4)0;
@@ -66,6 +66,6 @@ void main(uint3 id : SV_DispatchThreadID)
     StoreFloat3(destination + 3, normalize(mul(basis, LoadFloat3(source + 3))));
     StoreFloat3(destination + 6, normalize(mul(basis, LoadFloat3(source + 6))));
     StoreFloat3(destination + 9, normalize(mul(basis, LoadFloat3(source + 9))));
-    Destination[destination + 12] = Source[source + 12];
-    Destination[destination + 13] = Source[source + 13];
+    for (uint word = 12; word < DESTINATION_WORDS; word++)
+        Destination[destination + word] = Source[source + word];
 }

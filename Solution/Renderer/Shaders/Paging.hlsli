@@ -8,7 +8,6 @@
 #define PAGE_GUTTER 4
 #define PAGE_SLOT_SIZE 136
 #define PAGING_PROBE_STEPS 4
-#define PAGING_MAX_TEXTURES 16
 #define PAGING_LEVELS_PROBED 4
 #define PAGING_EMPTY 0xFFFFFFFF
 #define PAGING_NO_LEVEL 0xFFFFFFFF
@@ -24,14 +23,38 @@ cbuffer PagingConstants : register(b0, space3)
     uint2 PagingFeedbackSize;
     uint2 PagingJitter;
     uint PagingIsTinted;
-    uint PagingPadding;
-    uint4 PagedTextures[PAGING_MAX_TEXTURES];     // x: level count
+    uint PagingTexturesBase;
 };
 
+// The frame ring: the table, the user words and the per-texture entries all live in it.
 StructuredBuffer<uint4> PageTable : register(t1, space3);
 RWStructuredBuffer<uint2> PagingFeedback : register(u2, space3);
-Texture2D PagingAtlas : register(t3, space3);
+Texture2D PagingAtlas0 : register(t3, space3);      // Colour or pigment fields
+Texture2D PagingAtlas1 : register(t4, space3);      // Height, slope along U, slope along V
 SamplerState PagingAtlasSampler : register(s2, space0);
+
+// Mirrors PagedTextureDesc in Renderer/Paging.h: two entries per texture.
+struct PagedTextureInfo
+{
+    uint LevelCount;
+    float2 Millimetres;
+    bool IsPeriodic;
+    uint BandTable;
+    uint ChartMapLayer;
+};
+
+PagedTextureInfo LoadPagedTexture(uint texture)
+{
+    uint4 first = PageTable[PagingTexturesBase + texture * 2];
+    uint4 second = PageTable[PagingTexturesBase + texture * 2 + 1];
+    PagedTextureInfo info;
+    info.LevelCount = first.x;
+    info.Millimetres = asfloat(first.yz);
+    info.IsPeriodic = first.w != 0;
+    info.BandTable = second.x;
+    info.ChartMapLayer = second.y;
+    return info;
+}
 
 // Mirrors HashPage in Renderer/Paging.cpp.
 uint HashPage(uint texture, uint level, uint x, uint y)
@@ -68,64 +91,99 @@ uint2 GetPageUserWords(uint slot)
     return PageTable[PagingUserBase + slot].xy;
 }
 
-struct PagedSample
-{
-    float4 Colour;
-    uint Level;             // The level sampled, or PAGING_NO_LEVEL when not even level 0 is resident
-    uint WantedLevel;
-    uint2 WantedPage;
-};
-
 uint2 PageAt(float2 uv, uint level)
 {
     uint pagesPerSide = 1u << level;
     return min(uint2(uv * pagesPerSide), pagesPerSide - 1);
 }
 
-// Wants the level whose texels cover one to two pixels, then samples the finest resident page among
-// that level and its parents, PAGING_LEVELS_PROBED levels in all, falling back to level 0, which is
-// pinned. Bilinear filtering within one level; the gutter keeps it from reading a neighbour slot.
-PagedSample SamplePagedTexture(uint texture, float2 uv, float2 uvDdx, float2 uvDdy)
+// Where a texture's texels for this pixel are: the wanted level, whose texels cover one to two
+// pixels, or the finest resident page among it and its parents, PAGING_LEVELS_PROBED levels in all,
+// falling back to level 0, which is pinned.
+struct PageResolve
 {
-    uint levelCount = PagedTextures[texture].x;
+    bool IsFound;
+    uint Slot;
+    uint Level;             // The level found, or PAGING_NO_LEVEL
+    float2 AtlasUV;
+    float2 WithinPage;      // 0 to 1 across the found page
+    uint2 Page;             // The found page
+    uint WantedLevel;
+    uint2 WantedPage;
+};
+
+PageResolve ResolvePage(uint texture, float2 uv, float2 uvDdx, float2 uvDdy)
+{
+    uint levelCount = LoadPagedTexture(texture).LevelCount;
     uv = clamp(uv, 0.0, 0.99999994);
     float levelZeroTexelsPerPixel = max(length(uvDdx), length(uvDdy)) * PAGE_SIZE;
     float wanted = floor(-log2(max(levelZeroTexelsPerPixel, 1e-20)));
 
-    PagedSample result;
+    PageResolve result;
     result.WantedLevel = (uint)clamp(wanted, 0.0, float(levelCount - 1));
     result.WantedPage = PageAt(uv, result.WantedLevel);
     result.Level = PAGING_NO_LEVEL;
-    result.Colour = float4(0.5, 0.5, 0.5, 1.0);
+    result.IsFound = false;
+    result.Slot = 0;
+    result.AtlasUV = 0.0;
+    result.WithinPage = 0.0;
+    result.Page = 0;
 
-    uint slot = 0;
     uint level = result.WantedLevel;
-    bool isFound = false;
     [unroll]
     for (uint probe = 0; probe < PAGING_LEVELS_PROBED; probe++)
     {
         uint probedLevel = level - min(probe, level);
         uint probedSlot = 0;
-        if (!isFound && FindPage(texture, probedLevel, PageAt(uv, probedLevel), probedSlot))
+        if (!result.IsFound && FindPage(texture, probedLevel, PageAt(uv, probedLevel), probedSlot))
         {
-            slot = probedSlot;
-            level = probedLevel;
-            isFound = true;
+            result.Slot = probedSlot;
+            result.Level = probedLevel;
+            result.IsFound = true;
         }
     }
-    if (!isFound && FindPage(texture, 0, uint2(0, 0), slot))
+    if (!result.IsFound && FindPage(texture, 0, uint2(0, 0), result.Slot))
     {
-        level = 0;
-        isFound = true;
+        result.Level = 0;
+        result.IsFound = true;
     }
-    if (!isFound)
+    if (!result.IsFound)
         return result;
 
-    float2 withinPage = uv * float(1u << level) - float2(PageAt(uv, level));
-    float2 slotOrigin = float2(slot % PagingSlotsPerSide, slot / PagingSlotsPerSide) * PAGE_SLOT_SIZE;
-    float2 atlasUV = (slotOrigin + PAGE_GUTTER + withinPage * PAGE_SIZE) * PagingAtlasTexelSize;
-    result.Colour = PagingAtlas.SampleLevel(PagingAtlasSampler, atlasUV, 0);
-    result.Level = level;
+    result.Page = PageAt(uv, result.Level);
+    result.WithinPage = uv * float(1u << result.Level) - float2(result.Page);
+    float2 slotOrigin = float2(result.Slot % PagingSlotsPerSide, result.Slot / PagingSlotsPerSide) * PAGE_SLOT_SIZE;
+    result.AtlasUV = (slotOrigin + PAGE_GUTTER + result.WithinPage * PAGE_SIZE) * PagingAtlasTexelSize;
+    return result;
+}
+
+float4 SamplePagingAtlas0(PageResolve resolved)
+{
+    return resolved.IsFound ? PagingAtlas0.SampleLevel(PagingAtlasSampler, resolved.AtlasUV, 0) : float4(0.5, 0.5, 0.5, 1.0);
+}
+
+float4 SamplePagingAtlas1(PageResolve resolved)
+{
+    return resolved.IsFound ? PagingAtlas1.SampleLevel(PagingAtlasSampler, resolved.AtlasUV, 0) : float4(0.0, 0.0, 0.0, 0.0);
+}
+
+struct PagedSample
+{
+    float4 Colour;
+    uint Level;
+    uint WantedLevel;
+    uint2 WantedPage;
+};
+
+// Resolve and one fetch of atlas image 0.
+PagedSample SamplePagedTexture(uint texture, float2 uv, float2 uvDdx, float2 uvDdy)
+{
+    PageResolve resolved = ResolvePage(texture, uv, uvDdx, uvDdy);
+    PagedSample result;
+    result.Colour = SamplePagingAtlas0(resolved);
+    result.Level = resolved.Level;
+    result.WantedLevel = resolved.WantedLevel;
+    result.WantedPage = resolved.WantedPage;
     return result;
 }
 

@@ -1,14 +1,16 @@
 #pragma once
+#include <cmath>
 #include <DirectXMath.h>
 #include "ENGINE_API_Macro.h"
 #include "Renderer.h"
 
+// Reversed depth with no far plane: the near plane maps to depth 1 and infinity to 0, which keeps
+// float depth precise from millimetres to kilometres.
 class ENGINE_API Camera
 {
     float FOV;
     float AspectRatio;
     float NearPlane;
-    float FarPlane;
     DirectX::XMMATRIX Transform;
     DirectX::XMMATRIX View;
     DirectX::XMMATRIX Projection;
@@ -19,22 +21,32 @@ class ENGINE_API Camera
         ResizeSubscription = Renderer::EventOnResize().Subscribe([this](uint32_t width, uint32_t height) { OnResize(width, height); });
     }
 
+    void UpdateProjection()
+    {
+        float yScale = 1.0f / std::tan(FOV * 0.5f);
+        Projection = DirectX::XMMATRIX(yScale / AspectRatio, 0.0f, 0.0f, 0.0f,
+                                       0.0f, yScale, 0.0f, 0.0f,
+                                       0.0f, 0.0f, 0.0f, 1.0f,
+                                       0.0f, 0.0f, NearPlane, 0.0f);
+    }
+
 public:
     static Camera* ActiveCamera;
+    static constexpr float DefaultNearPlane = 0.01f;
 
-    Camera(float fovDeg, float aspectRatio, const DirectX::XMFLOAT3& position, const DirectX::XMFLOAT3& rotation = {}, float nearPlane = 0.1f, float farPlane = 100.0f)
-        : FOV(fovDeg / 180.0f * DirectX::XM_PI), AspectRatio(aspectRatio), NearPlane(nearPlane), FarPlane(farPlane)
+    Camera(float fovDeg, float aspectRatio, const DirectX::XMFLOAT3& position, const DirectX::XMFLOAT3& rotation = {}, float nearPlane = DefaultNearPlane)
+        : FOV(fovDeg / 180.0f * DirectX::XM_PI), AspectRatio(aspectRatio), NearPlane(nearPlane)
     {
         SetTransform(DirectX::XMMatrixTranslation(position.x, position.y, position.z) * DirectX::XMMatrixRotationRollPitchYaw(rotation.x, rotation.y, rotation.z));
-        Projection = DirectX::XMMatrixPerspectiveFovLH(FOV, AspectRatio, NearPlane, FarPlane);
+        UpdateProjection();
         SubscribeToResize();
     }
 
-    Camera(float fovDeg, float aspectRatio, const DirectX::XMMATRIX& transformOrView, bool isView = false, float nearPlane = 0.1f, float farPlane = 1000.0f)
-        : FOV(fovDeg / 180.0f * DirectX::XM_PI), AspectRatio(aspectRatio), NearPlane(nearPlane), FarPlane(farPlane)
+    Camera(float fovDeg, float aspectRatio, const DirectX::XMMATRIX& transformOrView, bool isView = false, float nearPlane = DefaultNearPlane)
+        : FOV(fovDeg / 180.0f * DirectX::XM_PI), AspectRatio(aspectRatio), NearPlane(nearPlane)
     {
         isView ? SetView(transformOrView) : SetTransform(transformOrView);
-        Projection = DirectX::XMMatrixPerspectiveFovLH(FOV, AspectRatio, NearPlane, FarPlane);
+        UpdateProjection();
         SubscribeToResize();
     }
 
@@ -79,9 +91,12 @@ public:
         SetTransform(transform);
     }
 
+    void SetNearPlane(float nearPlane) { NearPlane = nearPlane; UpdateProjection(); }
+    float GetNearPlane() const { return NearPlane; }
+
     void OnResize(uint32_t width, uint32_t height)
     {
         AspectRatio = static_cast<float>(width) / static_cast<float>(height);
-        Projection = DirectX::XMMatrixPerspectiveFovLH(FOV, AspectRatio, NearPlane, FarPlane);
+        UpdateProjection();
     }
 };

@@ -65,6 +65,7 @@ public:
 
     uint32_t GetLevelCount() const { return LevelCount; }
 
+    uint32_t GetFillsPerFrame() const override { return 16; }
     void Begin(const PageKey& page) override;
     bool IsReady(const PageKey& page) override;
     void Fill(PipelineExecutor* executor, const PageKey& page, const PageSlot& slot) override;

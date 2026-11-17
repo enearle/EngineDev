@@ -1,6 +1,7 @@
 #include "Renderer.h"
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <iostream>
 #include "Window.h"
 #include "GraphicsSettings.h"
@@ -144,7 +145,9 @@ void Renderer::Start(Window* mainWindow)
     Readback::Start();
     MipGenerator::Start();
     Skinning::Start();
-    Paging::Start();
+    PagingSettings pagingSettings;
+    pagingSettings.SlotsPerSide = (std::max)(1u, static_cast<uint32_t>(std::sqrt(static_cast<double>(GRAPHICS_SETTINGS.AtlasSlots))));
+    Paging::Start(pagingSettings);
 
     MaterialTypes::RegisterBuiltInTypes();
     ResourceLayout sceneResources;

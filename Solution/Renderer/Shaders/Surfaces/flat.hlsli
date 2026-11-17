@@ -13,5 +13,6 @@ Surface EvaluateSurface(SurfaceInput input)
     surface.Metallic = Metallic;
     surface.Roughness = Roughness;
     surface.Occlusion = 1.0;
+    surface.Subsurface = 0.0;
     return surface;
 }

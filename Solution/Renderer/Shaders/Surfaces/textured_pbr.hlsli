@@ -14,5 +14,6 @@ Surface EvaluateSurface(SurfaceInput input)
     surface.Metallic = metallicRoughnessOcclusion.r;
     surface.Roughness = metallicRoughnessOcclusion.g;
     surface.Occlusion = metallicRoughnessOcclusion.b;
+    surface.Subsurface = 0.0;
     return surface;
 }

@@ -27,9 +27,13 @@ Frustum Frustum::FromViewProjection(const XMFLOAT4X4& viewProjection)
         columns.r[3] - columns.r[2],
     };
 
+    // A reversed infinite projection has no far plane; its row is (0, 0, 0, near) and always passes.
     Frustum frustum;
     for (int i = 0; i < 6; i++)
-        XMStoreFloat4(&frustum.Planes[i], XMPlaneNormalize(planes[i]));
+        if (XMVectorGetX(XMVector3LengthSq(planes[i])) < 1e-20f)
+            frustum.Planes[i] = { 0.0f, 0.0f, 0.0f, 1.0f };
+        else
+            XMStoreFloat4(&frustum.Planes[i], XMPlaneNormalize(planes[i]));
     return frustum;
 }
 

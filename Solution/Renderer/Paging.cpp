@@ -2,6 +2,9 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
+#include <cmath>
+#include <iostream>
 #include <chrono>
 #include <climits>
 #include <cstring>
@@ -29,8 +32,9 @@ static constexpr uint32_t ClearGroupSize = 64;
 static constexpr uint32_t ClearSetIndex = 1;
 static constexpr uint32_t JitterFrames = Paging::FeedbackBlockSize * Paging::FeedbackBlockSize;
 static constexpr uint64_t FramesBeforeCancel = 60;
-static constexpr uint32_t MaxQueuedPages = 64;
-static constexpr uint32_t ConstantsSize = 512;
+static constexpr uint32_t MaxQueuedPages = 256;
+static constexpr uint32_t ConstantsSize = 256;
+static constexpr uint32_t EntriesPerTexture = 2;
 
 // Mirrors the cbuffer PagingConstants in Shaders/Paging.hlsli.
 struct PagingConstants
@@ -43,8 +47,7 @@ struct PagingConstants
     uint32_t FeedbackSize[2];           // In blocks
     uint32_t Jitter[2];
     uint32_t IsTinted;
-    uint32_t Padding;
-    DirectX::XMUINT4 Textures[Paging::MaxTextures];     // x: level count
+    uint32_t TexturesBase;              // In 16-byte entries of the frame ring, EntriesPerTexture per texture
 };
 static_assert(sizeof(PagingConstants) <= ConstantsSize);
 
@@ -72,7 +75,7 @@ struct PageKeyHash
 
 struct PagedTexture
 {
-    uint32_t LevelCount = 0;
+    PagedTextureDesc Desc;
     PageProducer* Producer = nullptr;
     bool IsLive = false;
 };
@@ -110,6 +113,8 @@ static std::vector<std::pair<PageKey, uint32_t>> Fills;    // Page and slot, fil
 static std::vector<ImageHandle> AtlasImages;
 static std::vector<GraphImageID> AtlasGraphImages;
 static uint32_t AtlasSize = 0;
+static std::vector<ImageHandle> ScratchImages;
+static ImageLayout ScratchLayout = ImageLayout::Undefined;
 static BufferHandle FeedbackBuffer = {};
 static GraphBufferID FeedbackGraphBuffer = 0;
 static DescriptorSetHandle PagingSet = {};
@@ -137,9 +142,34 @@ static bool HasLiveTextures()
     return std::any_of(Textures.begin(), Textures.end(), [](const PagedTexture& texture) { return texture.IsLive; });
 }
 
-static PageSlot MakeSlot(uint32_t slot)
+static PageSlot MakeSlot(const PageKey& page, uint32_t slot)
 {
-    return { slot, slot % Settings.SlotsPerSide * Paging::SlotSize, slot / Settings.SlotsPerSide * Paging::SlotSize, AtlasImages };
+    PageSlot made = { slot, slot % Settings.SlotsPerSide * Paging::SlotSize, slot / Settings.SlotsPerSide * Paging::SlotSize, AtlasImages, AtlasImages };
+    if (page.Level > 0)
+    {
+        auto parent = Resident.find(Parent(page));
+        if (parent != Resident.end())
+        {
+            made.HasParent = true;
+            made.ParentX = parent->second.Slot % Settings.SlotsPerSide * Paging::SlotSize;
+            made.ParentY = parent->second.Slot / Settings.SlotsPerSide * Paging::SlotSize;
+        }
+    }
+    return made;
+}
+
+static PageSlot MakeScratchSlot(const PageKey& page, uint32_t slot, uint32_t scratchSlot)
+{
+    PageSlot made = MakeSlot(page, slot);
+    made.X = scratchSlot % Settings.ScratchSlotsPerSide * Paging::SlotSize;
+    made.Y = scratchSlot / Settings.ScratchSlotsPerSide * Paging::SlotSize;
+    made.Images = ScratchImages;
+    return made;
+}
+
+static bool IsComputingFill(const PageKey& page)
+{
+    return Textures[page.Texture].IsLive && Textures[page.Texture].Producer->IsComputing();
 }
 
 // Feedback holds two words per block: level and x, then texture and y, each with 24 bits of
@@ -177,24 +207,79 @@ static void ExecuteClear(const PassContext& context)
     executor->Dispatch((FeedbackBlocks + ClearGroupSize - 1) / ClearGroupSize, 1, 1);
 }
 
-static void TransitionAtlas(PipelineExecutor* executor, ImageLayout from, ImageLayout to)
+static void TransitionAll(PipelineExecutor* executor, std::span<const ImageHandle> images, ImageLayout from, ImageLayout to)
 {
+    if (from == to)
+        return;
     std::vector<ImageTransition> transitions;
-    for (ImageHandle image : AtlasImages)
+    for (ImageHandle image : images)
         transitions.push_back({ image, from, to });
     executor->TransitionImages(transitions);
 }
 
+static void SetScratchLayout(PipelineExecutor* executor, ImageLayout layout)
+{
+    TransitionAll(executor, ScratchImages, ScratchLayout, layout);
+    ScratchLayout = layout;
+}
+
+// Fills run a level at a time, coarse first, so a child reads what its parent was just given. A
+// group holds at most one scratch image's worth of computing fills: they write scratch while the
+// atlas stays readable, then scratch is copied into the atlas beside the copying fills.
 static void ExecuteFills(const PassContext& context)
 {
     if (Fills.empty())
         return;
 
-    TransitionAtlas(context.Executor, ImageLayout::Storage, ImageLayout::TransferDst);
-    for (const auto& [page, slot] : Fills)
-        if (Textures[page.Texture].IsLive)
-            Textures[page.Texture].Producer->Fill(context.Executor, page, MakeSlot(slot));
-    TransitionAtlas(context.Executor, ImageLayout::TransferDst, ImageLayout::Storage);
+    PipelineExecutor* executor = context.Executor;
+    uint32_t scratchSlots = Settings.ScratchSlotsPerSide * Settings.ScratchSlotsPerSide;
+    TransitionAll(executor, AtlasImages, ImageLayout::Storage, ImageLayout::ShaderReadOnly);
+    for (size_t first = 0; first < Fills.size();)
+    {
+        uint32_t level = Fills[first].first.Level;
+        size_t end = first;
+        uint32_t computing = 0;
+        while (end < Fills.size() && Fills[end].first.Level == level)
+        {
+            bool isComputing = IsComputingFill(Fills[end].first);
+            if (isComputing && computing == scratchSlots)
+                break;
+            computing += isComputing ? 1 : 0;
+            end++;
+        }
+
+        if (computing > 0)
+        {
+            SetScratchLayout(executor, ImageLayout::Storage);
+            uint32_t scratchSlot = 0;
+            for (size_t i = first; i < end; i++)
+                if (IsComputingFill(Fills[i].first))
+                    Textures[Fills[i].first.Texture].Producer->Fill(executor, Fills[i].first, MakeScratchSlot(Fills[i].first, Fills[i].second, scratchSlot++));
+            SetScratchLayout(executor, ImageLayout::TransferSrc);
+        }
+
+        TransitionAll(executor, AtlasImages, ImageLayout::ShaderReadOnly, ImageLayout::TransferDst);
+        uint32_t scratchSlot = 0;
+        for (size_t i = first; i < end; i++)
+        {
+            const auto& [page, slot] = Fills[i];
+            if (!Textures[page.Texture].IsLive)
+                continue;
+            if (!IsComputingFill(page))
+            {
+                Textures[page.Texture].Producer->Fill(executor, page, MakeSlot(page, slot));
+                continue;
+            }
+            PageSlot scratch = MakeScratchSlot(page, slot, scratchSlot++);
+            PageSlot atlas = MakeSlot(page, slot);
+            for (size_t image = 0; image < AtlasImages.size(); image++)
+                executor->CopyImage(ScratchImages[image], { 0, 0, scratch.X, scratch.Y, Paging::SlotSize, Paging::SlotSize },
+                                    AtlasImages[image], { 0, 0, atlas.X, atlas.Y, Paging::SlotSize, Paging::SlotSize });
+        }
+        TransitionAll(executor, AtlasImages, ImageLayout::TransferDst, ImageLayout::ShaderReadOnly);
+        first = end;
+    }
+    TransitionAll(executor, AtlasImages, ImageLayout::ShaderReadOnly, ImageLayout::Storage);
 }
 
 void Paging::Start(const PagingSettings& settings)
@@ -209,6 +294,14 @@ void Paging::Start(const PagingSettings& settings)
 
     BufferAllocator* allocator = BufferAllocator::GetInstance();
     PassGraph& graph = Renderer::GetPassGraph();
+    for (Format& format : Settings.AtlasFormats)
+        if (format == Format::R16G16B16A16_UNORM && !allocator->CanWriteStorageImage(format))
+        {
+            std::cout << "Paging: R16G16B16A16_UNORM cannot be written from compute here, so the atlas uses R16G16B16A16_FLOAT" << std::endl;
+            format = Format::R16G16B16A16_FLOAT;
+        }
+
+    uint32_t scratchSize = Settings.ScratchSlotsPerSide * SlotSize;
     for (Format format : Settings.AtlasFormats)
     {
         ImageDesc desc;
@@ -223,7 +316,15 @@ void Paging::Start(const PagingSettings& settings)
         ImageHandle image = allocator->CreateImage(desc);
         AtlasImages.push_back(image);
         AtlasGraphImages.push_back(graph.ImportImage(image, ImageLayout::Undefined, ImageLayout::ShaderReadOnly));
+        Stats.AtlasBytes += static_cast<uint64_t>(AtlasSize) * AtlasSize * FormatSize(format);
+
+        desc.Width = scratchSize;
+        desc.Height = scratchSize;
+        desc.Usage.TransferDestination = false;
+        ScratchImages.push_back(allocator->CreateImage(desc));
+        Stats.ScratchBytes += static_cast<uint64_t>(scratchSize) * scratchSize * FormatSize(format);
     }
+    ScratchLayout = ImageLayout::Undefined;
 
     BufferDesc feedback;
     feedback.Size = static_cast<uint64_t>(MaxFeedbackBlocks) * 2 * sizeof(uint32_t);
@@ -273,6 +374,9 @@ void Paging::Shutdown()
     BufferAllocator* allocator = BufferAllocator::GetInstance();
     for (ImageHandle image : AtlasImages)
         allocator->DestroyImage(image);
+    for (ImageHandle image : ScratchImages)
+        allocator->DestroyImage(image);
+    ScratchImages.clear();
     if (FeedbackBuffer.IsValid())
         allocator->DestroyBuffer(FeedbackBuffer);
     if (PagingSet.IsValid())
@@ -341,29 +445,16 @@ static void StampUsed(PageKey page, uint64_t frame)
     }
 }
 
-static PageKey CoarsestMissingAncestor(PageKey page)
-{
-    PageKey coarsest = page;
-    while (page.Level > 0)
-    {
-        page = Parent(page);
-        if (Resident.contains(page))
-            break;
-        coarsest = page;
-    }
-    return coarsest;
-}
-
 static bool IsLiveRequest(const PageKey& page)
 {
-    if (page.Texture >= Textures.size() || !Textures[page.Texture].IsLive || page.Level >= Textures[page.Texture].LevelCount)
+    if (page.Texture >= Textures.size() || !Textures[page.Texture].IsLive || page.Level >= Textures[page.Texture].Desc.LevelCount)
         return false;
     uint32_t pagesPerSide = 1u << page.Level;
     return page.X < pagesPerSide && page.Y < pagesPerSide;
 }
 
-// Turns the latest feedback into queued pages: the coarsest missing ancestor of each missing page,
-// coarse levels and the most requested first.
+// Turns the latest feedback into queued pages: each missing page and every missing ancestor of it,
+// coarse levels and the most requested first, so the whole chain can be filled in one frame.
 static void QueueRequestedPages(uint64_t frame)
 {
     std::unordered_map<PageKey, uint32_t, PageKeyHash> wanted;
@@ -379,7 +470,13 @@ static void QueueRequestedPages(uint64_t frame)
         missing++;
         RequestTimes& times = Requested.try_emplace(page, RequestTimes{ LatestFeedbackFrame, LatestFeedbackFrame }).first->second;
         times.Last = LatestFeedbackFrame;
-        wanted[CoarsestMissingAncestor(page)] += count;
+        for (PageKey ancestor = page;;)
+        {
+            wanted[ancestor] += count;
+            if (ancestor.Level == 0 || Resident.contains(Parent(ancestor)))
+                break;
+            ancestor = Parent(ancestor);
+        }
     }
     Stats.Requests = missing;
     if (HasNewFeedback)
@@ -472,11 +569,15 @@ static void ScheduleFills(uint64_t frame)
         return a.first.Level != b.first.Level ? a.first.Level < b.first.Level : a.second.Requests > b.second.Requests;
     });
 
+    std::unordered_map<PageProducer*, uint32_t> fillsByProducer;
     for (const auto& [page, queued] : ready)
     {
         if (Fills.size() >= Settings.FillsPerFrame)
             break;
         if (page.Level > 0 && !Resident.contains(Parent(page)))
+            continue;
+        PageProducer* producer = Textures[page.Texture].Producer;
+        if (fillsByProducer[producer] >= producer->GetFillsPerFrame())
             continue;
         uint32_t slot = 0;
         if (!ClaimSlot(frame, slot))
@@ -489,6 +590,7 @@ static void ScheduleFills(uint64_t frame)
         IsSlotUsed[slot] = true;
         SlotUserWords[slot] = { 0, 0 };
         Fills.push_back({ page, slot });
+        fillsByProducer[producer]++;
         Stats.Fills++;
         Stats.TotalFills++;
 
@@ -499,7 +601,7 @@ static void ScheduleFills(uint64_t frame)
             Requested.erase(requested);
         }
         if (FillObserver)
-            FillObserver(page, MakeSlot(slot));
+            FillObserver(page, MakeSlot(page, slot));
     }
 }
 
@@ -562,8 +664,19 @@ static void WriteGpuData(uint64_t frame)
     constants.Jitter[0] = jitter % Paging::FeedbackBlockSize;
     constants.Jitter[1] = jitter / Paging::FeedbackBlockSize;
     constants.IsTinted = IsTintOn;
-    for (uint32_t i = 0; i < Textures.size(); i++)
-        constants.Textures[i].x = Textures[i].IsLive ? Textures[i].LevelCount : 0;
+
+    std::vector<DirectX::XMUINT4> textureEntries((std::max)(Textures.size(), size_t(1)) * EntriesPerTexture, DirectX::XMUINT4(0, 0, 0, 0));
+    for (size_t i = 0; i < Textures.size(); i++)
+        if (Textures[i].IsLive)
+        {
+            const PagedTextureDesc& desc = Textures[i].Desc;
+            textureEntries[i * EntriesPerTexture] = { desc.LevelCount, std::bit_cast<uint32_t>(desc.MillimetresU), std::bit_cast<uint32_t>(desc.MillimetresV),
+                                                      desc.IsPeriodic ? 1u : 0u };
+            textureEntries[i * EntriesPerTexture + 1] = { desc.BandTable, desc.ChartMapLayer, 0, 0 };
+        }
+    FrameAllocation textureAllocation = allocator->AllocateFrameData(textureEntries.size() * sizeof(DirectX::XMUINT4), sizeof(DirectX::XMUINT4));
+    std::memcpy(textureAllocation.Address, textureEntries.data(), textureEntries.size() * sizeof(DirectX::XMUINT4));
+    constants.TexturesBase = static_cast<uint32_t>(textureAllocation.Offset / sizeof(DirectX::XMUINT4));
 
     FrameAllocation constantsAllocation = allocator->AllocateFrameData(ConstantsSize, BufferAllocator::UniformAlignment);
     std::memcpy(constantsAllocation.Address, &constants, sizeof(constants));
@@ -596,10 +709,10 @@ void Paging::Update()
     Stats.UpdateMilliseconds = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
 }
 
-PagedTextureID Paging::EnlistTexture(uint32_t levelCount, PageProducer* producer)
+PagedTextureID Paging::EnlistTexture(const PagedTextureDesc& desc, PageProducer* producer)
 {
-    if (levelCount == 0 || levelCount > MaxLevelCount)
-        throw std::runtime_error("A paged texture has 1 to " + std::to_string(MaxLevelCount) + " levels, not " + std::to_string(levelCount));
+    if (desc.LevelCount == 0 || desc.LevelCount > MaxLevelCount)
+        throw std::runtime_error("A paged texture has 1 to " + std::to_string(MaxLevelCount) + " levels, not " + std::to_string(desc.LevelCount));
 
     PagedTextureID texture = 0;
     while (texture < Textures.size() && Textures[texture].IsLive)
@@ -608,7 +721,7 @@ PagedTextureID Paging::EnlistTexture(uint32_t levelCount, PageProducer* producer
         throw std::runtime_error("Too many paged textures");
     if (texture == Textures.size())
         Textures.emplace_back();
-    Textures[texture] = { levelCount, producer, true };
+    Textures[texture] = { desc, producer, true };
 
     PageKey root = { texture, 0, 0, 0 };
     Queued[root] = { Renderer::GetExecutor()->GetFrameNumber(), 0, true };
@@ -672,6 +785,11 @@ const PagingStats& Paging::GetStats()
 GraphImageID Paging::GetAtlasImage(uint32_t formatIndex)
 {
     return AtlasGraphImages[formatIndex];
+}
+
+Format Paging::GetAtlasFormat(uint32_t formatIndex)
+{
+    return Settings.AtlasFormats[formatIndex];
 }
 
 void Paging::SetFillObserver(std::function<void(const PageKey&, const PageSlot&)> observer)

@@ -150,7 +150,7 @@ float3 LightPBR(Light light)
 float4 main(VSOutput input) : SV_TARGET
 {
     float depth = inDepth.Sample(pointClampSampler, input.uv);
-    if (depth >= 1.0)
+    if (depth <= 0.0)
         return float4(0.0, 0.0, 0.0, 1.0);
     init(input, depth);
     

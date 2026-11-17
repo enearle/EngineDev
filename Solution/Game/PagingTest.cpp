@@ -141,7 +141,7 @@ void PagingTest::Start(const std::string& imagePath)
 
     Producer = std::make_unique<FilePageProducer>(pagePath);
     TextureSize = Paging::PageSize << (Producer->GetLevelCount() - 1);
-    Texture = Paging::EnlistTexture(Producer->GetLevelCount(), Producer.get());
+    Texture = Paging::EnlistTexture({ .LevelCount = Producer->GetLevelCount() }, Producer.get());
     PlaneMaterial = MaterialRegistry::Enlist("paging_test");
     float textureValue = static_cast<float>(Texture);
     MaterialRegistry::SetParameter(PlaneMaterial, "paged_texture", { &textureValue, 1 });

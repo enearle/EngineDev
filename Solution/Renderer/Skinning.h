@@ -14,8 +14,8 @@ class RENDERER_API Skinning
 {
 public:
     // D3D12 buffer views hold at most 2^27 elements, and the pool is viewed as 4-byte words of
-    // 56-byte vertices.
-    static constexpr uint32_t MaxPoolVertices = static_cast<uint32_t>((1ull << 29) / 56);
+    // 72-byte vertices.
+    static constexpr uint32_t MaxPoolVertices = static_cast<uint32_t>((1ull << 29) / 72);
 
     static void Start();
     static void Shutdown();

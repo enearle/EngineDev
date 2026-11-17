@@ -14,10 +14,14 @@ struct SurfaceInput
     float3 Tangent;
     float3 Bitangent;
     float2 UV;
+    float2 UV1;
+    float PatchWeight;
+    float PatchChart;
     float4 PixelPosition;
 };
 
-// Albedo is linear colour and Normal a unit world-space normal.
+// Albedo is linear colour, Normal a unit world-space normal, and Subsurface the strength of the
+// lighting pass's scattering term, 0 for none.
 struct Surface
 {
     float3 Albedo;
@@ -25,6 +29,7 @@ struct Surface
     float Metallic;
     float Roughness;
     float Occlusion;
+    float Subsurface;
 };
 
 SamplerState MaterialSampler : register(s0, space0);

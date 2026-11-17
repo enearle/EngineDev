@@ -63,6 +63,8 @@ public:
     // CopyRowPitch and buffer offsets are multiples of CopyPlacementAlignment.
     virtual void CopyBufferToImage(BufferHandle buffer, uint64_t bufferOffset, uint32_t rowPitch, ImageHandle image, const ImageRegion& region) = 0;
     virtual void CopyImageToBuffer(ImageHandle image, const ImageRegion& region, BufferHandle buffer, uint64_t bufferOffset, uint32_t rowPitch) = 0;
+    // Same-format images; the source in TransferSrc and the destination in TransferDst.
+    virtual void CopyImage(ImageHandle source, const ImageRegion& sourceRegion, ImageHandle destination, const ImageRegion& destinationRegion) = 0;
     // The source must be in CopySource and the destination in CopyDestination.
     virtual void CopyBuffer(BufferHandle source, uint64_t sourceOffset, BufferHandle destination, uint64_t destinationOffset, uint64_t size) = 0;
 
@@ -111,6 +113,7 @@ public:
     void TransitionBuffers(std::span<const BufferTransition> transitions) override;
     void CopyBufferToImage(BufferHandle buffer, uint64_t bufferOffset, uint32_t rowPitch, ImageHandle image, const ImageRegion& region) override;
     void CopyImageToBuffer(ImageHandle image, const ImageRegion& region, BufferHandle buffer, uint64_t bufferOffset, uint32_t rowPitch) override;
+    void CopyImage(ImageHandle source, const ImageRegion& sourceRegion, ImageHandle destination, const ImageRegion& destinationRegion) override;
     void CopyBuffer(BufferHandle source, uint64_t sourceOffset, BufferHandle destination, uint64_t destinationOffset, uint64_t size) override;
     void BeginRendering(const RenderingDesc& desc) override;
     void EndRendering() override;
@@ -154,6 +157,7 @@ public:
     void TransitionBuffers(std::span<const BufferTransition> transitions) override;
     void CopyBufferToImage(BufferHandle buffer, uint64_t bufferOffset, uint32_t rowPitch, ImageHandle image, const ImageRegion& region) override;
     void CopyImageToBuffer(ImageHandle image, const ImageRegion& region, BufferHandle buffer, uint64_t bufferOffset, uint32_t rowPitch) override;
+    void CopyImage(ImageHandle source, const ImageRegion& sourceRegion, ImageHandle destination, const ImageRegion& destinationRegion) override;
     void CopyBuffer(BufferHandle source, uint64_t sourceOffset, BufferHandle destination, uint64_t destinationOffset, uint64_t size) override;
     void BeginRendering(const RenderingDesc& desc) override;
     void EndRendering() override;

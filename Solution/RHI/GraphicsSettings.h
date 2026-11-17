@@ -17,6 +17,7 @@ inline struct GraphicsSettings
     bool VSync = true;
     int Monitor = -1;               // Display the main window opens on, 0 being the primary; -1 lets Windows choose
     bool CanTakeFocus = true;       // False shows the main window without activating it
+    unsigned AtlasSlots = 256;      // Page atlas slots, rounded down to a square
 
     void SetEditorMode(bool isEditor)
     {
@@ -38,6 +39,8 @@ inline struct GraphicsSettings
                 Monitor = std::atoi(arguments[++i]);
             else if (std::strcmp(arguments[i], "-no-focus") == 0)
                 CanTakeFocus = false;
+            else if (std::strcmp(arguments[i], "-atlas-slots") == 0 && i + 1 < argumentCount)
+                AtlasSlots = static_cast<unsigned>(std::atoi(arguments[++i]));
     }
 };
 

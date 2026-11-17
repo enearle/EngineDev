@@ -48,13 +48,15 @@ static std::vector<VertexAttribute> StaticAttributes(bool isPositionOnly)
     attributes.push_back({ .Binding = 0, .Location = 2, .Format = Format::R32G32B32_FLOAT, .Offset = 24, .SemanticName = SemanticName::Tangent, .SemanticIndex = 0 });
     attributes.push_back({ .Binding = 0, .Location = 3, .Format = Format::R32G32B32_FLOAT, .Offset = 36, .SemanticName = SemanticName::Binormal, .SemanticIndex = 0 });
     attributes.push_back({ .Binding = 0, .Location = 4, .Format = Format::R32G32_FLOAT, .Offset = 48, .SemanticName = SemanticName::TexCoord, .SemanticIndex = 0 });
+    attributes.push_back({ .Binding = 0, .Location = 5, .Format = Format::R32G32_FLOAT, .Offset = 56, .SemanticName = SemanticName::TexCoord, .SemanticIndex = 1 });
+    attributes.push_back({ .Binding = 0, .Location = 6, .Format = Format::R32G32_FLOAT, .Offset = 64, .SemanticName = SemanticName::TexCoord, .SemanticIndex = 2 });
     return attributes;
 }
 
-static DepthStencilState DepthState(bool isEnabled)
+static DepthStencilState DepthState(bool isEnabled, CompareOp compare = CompareOp::LessEqual)
 {
     StencilOpState keep = { CompareOp::Always, StencilOp::Keep, StencilOp::Keep, StencilOp::Keep };
-    return { isEnabled, isEnabled, isEnabled ? CompareOp::LessEqual : CompareOp::Always, false, 0.0f, 1.0f, false, 0xFF, 0xFF, keep, keep };
+    return { isEnabled, isEnabled, isEnabled ? compare : CompareOp::Always, false, 0.0f, 1.0f, false, 0xFF, 0xFF, keep, keep };
 }
 
 static RasterizerState Rasterizer(CullMode cullMode)
@@ -92,7 +94,7 @@ static void CreatePipelines()
         gBuffer.Layout = Renderer::GetSceneLayout();
         gBuffer.FragmentShader = LoadShader("ps_gbuffer_" + MaterialTypes::Get(type).Name);
         gBuffer.RasterizerState = Rasterizer(CullMode::Back);
-        gBuffer.DepthStencilState = DepthState(true);
+        gBuffer.DepthStencilState = DepthState(true, CompareOp::GreaterEqual);
         gBuffer.BlendAttachmentStates = { DisabledBlendAttachmentState, DisabledBlendAttachmentState, DisabledBlendAttachmentState };
         gBuffer.RenderTargetFormats = { Format::R8G8B8A8_UNORM, Format::R16G16_UNORM, Format::R8G8B8A8_UNORM };
         gBuffer.DepthStencilFormat = Format::D32_FLOAT;
@@ -177,7 +179,7 @@ void DeferredPasses::Enlist()
     Albedo = graph.CreateImage({ .Name = "Albedo", .Format = Format::R8G8B8A8_UNORM });
     Normal = graph.CreateImage({ .Name = "Normal", .Format = Format::R16G16_UNORM, .ClearColour = { 0.5f, 0.5f, 0.0f, 0.0f } });
     Material = graph.CreateImage({ .Name = "Material", .Format = Format::R8G8B8A8_UNORM });
-    Depth = graph.CreateImage({ .Name = "Depth", .Format = Format::D32_FLOAT });
+    Depth = graph.CreateImage({ .Name = "Depth", .Format = Format::D32_FLOAT, .ClearDepth = 0.0f });
 
 
     PassDesc gBuffer;
